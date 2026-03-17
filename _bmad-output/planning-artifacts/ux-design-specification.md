@@ -1,12 +1,13 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 inputDocuments: ['docs/flowmind-prd.md', 'docs/ux-design-references.md', '_bmad-output/planning-artifacts/architecture.md']
 workflowType: 'ux-design'
 project_name: 'flowmind'
 user_name: 'Eric'
 date: '2026-03-17'
-lastStep: 11
-status: 'in-progress'
+lastStep: 14
+status: 'complete'
+completedAt: '2026-03-17'
 ---
 
 # UX Design Specification — Flowmind
@@ -523,3 +524,502 @@ Flowmind introduces several genuinely novel interaction patterns that require ca
 - **Reduced motion**: `prefers-reduced-motion` media query disables animations; transitions become instant
 - **Screen reader**: All interactive elements have proper ARIA labels; live regions for dynamic updates (graph changes, AI suggestions)
 - **Font scaling**: Layout accommodates up to 200% text zoom without horizontal scrolling
+
+## Design Direction Decision
+
+### Design Directions Explored
+
+Six design direction variations were evaluated against Flowmind's requirements:
+
+| Direction | Concept | Layout | Density | Best For |
+|-----------|---------|--------|---------|----------|
+| **A: Scholar's Desk** | Academic/research feel | Wide sidebar + reading pane | Moderate | Long-form thinking, research workflows |
+| **B: Clean Canvas** | Apple-minimal, whitespace-heavy | Narrow sidebar + expansive canvas | Low | Graph exploration, visual thinking |
+| **C: Power Dashboard** | Linear-style density | Compact sidebar + split panels | High | Power users, keyboard-driven workflows |
+| **D: Zen Garden** | Extreme minimalism | No sidebar, fullscreen content | Very low | Capture mode, focus writing |
+| **E: Knowledge Studio** | Craft.do-inspired blocks | Collapsible sidebar + block editor | Moderate | Unit editing, content creation |
+| **F: Thinking Map** | Graph-first layout | Graph as main view, cards overlay | Variable | Exploration, connection discovery |
+
+### Chosen Direction
+
+**Direction B: Clean Canvas — with selective elements from C and F**
+
+The chosen direction is a **clean, Apple-like canvas** approach that prioritizes whitespace, content clarity, and spatial navigation. This is augmented with:
+- Power-user keyboard efficiency from Direction C (command palette, keyboard shortcuts)
+- Graph-first navigation option from Direction F (as an alternate main view)
+
+### Design Rationale
+
+1. **Aligns with emotional goals**: The clean canvas creates calm confidence and reduces cognitive load — essential for a tool asking users to rethink their knowledge workflow
+2. **Supports progressive disclosure**: Low-density layout has room to reveal complexity without feeling crowded
+3. **Premium trust signal**: Apple-like minimalism communicates quality and care, building trust for a paradigm-shifting product
+4. **Graph readability**: Generous whitespace makes the thought graph legible and beautiful rather than cluttered
+5. **Capture Mode compatibility**: The clean canvas naturally transitions to a distraction-free capture experience
+
+### Implementation Approach
+
+**Layout system:**
+- Sidebar: 260px default, collapsible to 60px (icon-only), fully hideable
+- Main content: Fluid, minimum 600px, maximum 1200px centered
+- Detail panel: 360px, slides in from right, overlays on narrow screens
+- Graph View: Full canvas, no content width constraint
+
+**View modes:**
+- **Canvas Mode** (default): Clean three-column layout for focused work
+- **Focus Mode**: Sidebar and detail panel hidden, full-screen content
+- **Graph Mode**: Graph View takes full main area, cards overlay on selection
+
+**Transitions:** All view transitions use 300ms ease-out with Framer Motion for smooth, meaningful animation.
+
+## User Journey Flows
+
+### Journey 1: First-Time Thought Capture & Decomposition
+
+**Entry**: User signs up and lands on the empty workspace
+
+```mermaid
+flowchart TD
+    A[User lands on empty workspace] --> B[Guided tooltip: 'What are you thinking about?']
+    B --> C[User types or pastes text]
+    C --> D{Text length?}
+    D -->|Short - 1-2 sentences| E[Create single unit with type suggestion]
+    D -->|Long - paragraph+| F[AI proposes decomposition]
+    F --> G[Highlight proposed unit boundaries]
+    G --> H{User reviews}
+    H -->|Accept All| I[Units created with types]
+    H -->|Adjust boundaries| J[User drags boundary handles]
+    J --> I
+    H -->|Cancel| K[Keep as single unit]
+    I --> L[AI proposes relations to existing units]
+    L --> M{Relations exist?}
+    M -->|Yes| N[Show relation lines, user confirms]
+    M -->|No - first units| O[Units placed in graph]
+    N --> O
+    O --> P[Completeness Compass updates]
+    P --> Q[AI suggests: 'This claim has no evidence - add some?']
+```
+
+### Journey 2: Re-entry After Absence
+
+**Entry**: User opens Flowmind after days/weeks away
+
+```mermaid
+flowchart TD
+    A[User opens Flowmind] --> B[Load last active project]
+    B --> C[Context Briefing Panel appears]
+    C --> D[Shows: Last session summary]
+    D --> E[Shows: Open questions highlighted]
+    E --> F[Shows: New AI suggestions since last visit]
+    F --> G{User chooses}
+    G -->|Continue where left off| H[Navigate to last position]
+    G -->|Start fresh| I[Navigate to project overview]
+    G -->|Explore suggestions| J[Review AI suggestions]
+    H --> K[Context restored - full graph state]
+    I --> L[Project dashboard with contexts]
+    J --> M[Review queue of AI suggestions]
+    M --> N{For each suggestion}
+    N -->|Accept| O[Apply to graph]
+    N -->|Reject| P[Dismiss suggestion]
+    N -->|Later| Q[Keep in queue]
+```
+
+### Journey 3: Assembly Creation (Scattered Thoughts → Document)
+
+**Entry**: User has accumulated units and wants to produce a document
+
+```mermaid
+flowchart TD
+    A[User clicks 'New Assembly'] --> B[Choose Assembly Template]
+    B --> C{Template type?}
+    C -->|From Domain Template| D[Pre-defined slots appear]
+    C -->|Freeform| E[Empty arrangement canvas]
+    D --> F[AI auto-maps existing units to slots]
+    F --> G[Show filled and empty slots]
+    G --> H{User reviews mapping}
+    H -->|Adjust| I[Drag units between slots]
+    H -->|Accept| J[Mapping confirmed]
+    E --> K[User drags units from search/graph]
+    I --> J
+    K --> J
+    J --> L[Arrange unit order within slots]
+    L --> M[Generate Bridge Text between units]
+    M --> N[Preview document output]
+    N --> O{Satisfied?}
+    O -->|Yes| P[Export to format]
+    O -->|Edit bridge text| Q[Inline edit connecting text]
+    O -->|Add more units| R[Search/browse for units]
+    Q --> N
+    R --> J
+    P --> S[Export History recorded]
+```
+
+### Journey 4: Graph Exploration & Discovery
+
+**Entry**: User wants to explore their thought network
+
+```mermaid
+flowchart TD
+    A[User switches to Graph View] --> B[Layer 1: Global Overview]
+    B --> C[See type-colored nodes, thin edges]
+    C --> D[Auto-detected clusters visible]
+    D --> E{User action}
+    E -->|Hover node| F[Expand to show label + type]
+    E -->|Click node| G[Transition to Layer 2: Local Card Array]
+    E -->|Click cluster| H[Zoom into cluster]
+    E -->|Search in graph| I[Highlight matching nodes]
+    G --> J[Cards arranged by Domain Template layout]
+    J --> K[See relations as connecting lines]
+    K --> L{Navigation purpose?}
+    L -->|Argument| M[Supports/contradicts highlighted]
+    L -->|Creative| N[Inspires/echoes highlighted]
+    L -->|Chronological| O[Time-ordered emphasis]
+    M --> P[Click card for Unit Detail]
+    N --> P
+    O --> P
+    P --> Q[See full metadata, all relations]
+    Q --> R{Action}
+    R -->|Edit unit| S[Inline edit content]
+    R -->|Add relation| T[Draw connection to another unit]
+    R -->|Back to global| B
+```
+
+### Journey Patterns
+
+**Common patterns across all journeys:**
+
+1. **Progressive entry**: Every journey starts with the simplest possible action and reveals complexity through interaction
+2. **AI-as-suggestion**: AI actions always appear as proposals with accept/reject affordances, never as fait accompli
+3. **Visual feedback loop**: Every user action produces immediate visual feedback (animation, color change, element appearing)
+4. **Graceful exit**: Users can abandon or pause any journey without losing progress
+5. **Cross-view continuity**: Selecting a unit in any view highlights it in all other views
+
+### Flow Optimization Principles
+
+1. **Minimize decisions before value**: Users should see value (first unit created, first decomposition) within 30 seconds of starting
+2. **Default to the common case**: "Accept All" is prominent for decomposition; individual adjustment is available but not required
+3. **Reversible by default**: Every action can be undone; destructive operations require confirmation
+4. **Context preservation**: Navigating away and back restores exact previous state (scroll position, selection, panel state)
+
+## Component Strategy
+
+### Design System Components (from Radix UI + Tailwind)
+
+**Available primitives (no custom build needed):**
+
+| Component | Radix Primitive | Flowmind Usage |
+|-----------|----------------|----------------|
+| Dialog | `@radix-ui/react-dialog` | Confirmation modals, export settings |
+| DropdownMenu | `@radix-ui/react-dropdown-menu` | Unit type selector, context menu |
+| Tooltip | `@radix-ui/react-tooltip` | Metadata hints, relation descriptions |
+| Popover | `@radix-ui/react-popover` | Quick unit preview, AI suggestion detail |
+| Tabs | `@radix-ui/react-tabs` | View switching, detail panel sections |
+| ScrollArea | `@radix-ui/react-scroll-area` | Sidebar, thread view, card lists |
+| ContextMenu | `@radix-ui/react-context-menu` | Right-click actions on units/cards |
+| Command | `cmdk` | Command palette (Cmd+K) |
+| Toggle | `@radix-ui/react-toggle` | View mode toggles, filter toggles |
+| Separator | `@radix-ui/react-separator` | Section dividers |
+
+### Custom Components
+
+#### UnitCard
+**Purpose**: The primary display component for a Thought Unit
+**Anatomy**: Type-colored left border (4px) + content area + metadata row + relation indicators
+**States**: Default, Hover (lift + shadow), Selected (blue outline), Draft (dashed border, muted), Pending (yellow accent), Confirmed (standard)
+**Variants**: Compact (list view, single line), Standard (card view, full content), Expanded (detail view, all metadata)
+**Accessibility**: Focusable, keyboard-navigable, ARIA role="article", type announced via sr-only label
+
+#### GraphCanvas
+**Purpose**: Interactive force-directed graph visualization
+**Anatomy**: Canvas element + node layer + edge layer + control overlay (zoom, filter, navigation mode)
+**States**: Global (Layer 1, small dots), Local (Layer 2, card array), Transitioning (animated zoom)
+**Interactions**: Pan (drag), Zoom (scroll/pinch), Select (click node), Hover (expand label), Filter (navigation purpose toggle)
+**Technology**: React + D3.js force simulation or React Flow
+
+#### ContextSidebar
+**Purpose**: Project and Context navigation panel
+**Anatomy**: Project selector + Context tree + Quick actions + Search shortcut
+**States**: Expanded (260px), Collapsed (60px, icons only), Hidden (0px, Focus Mode)
+**Interactions**: Click to navigate, drag to reorder, right-click for context menu, keyboard shortcuts for expand/collapse
+
+#### AssemblyBoard
+**Purpose**: Drag-and-drop document composition workspace
+**Anatomy**: Slot container + unit cards + bridge text zones + preview toggle
+**States**: Editing (drag handles visible), Preview (rendered output), Empty (template slots with "+" icons)
+**Interactions**: Drag units into/between slots, click bridge text to edit, toggle preview
+**Technology**: @dnd-kit for accessible drag-and-drop
+
+#### CompletenessCompass
+**Purpose**: Ambient progress indicator for thought-landscape completeness
+**Anatomy**: Radial progress visualization + category breakdown + action suggestions
+**States**: Collapsed (small indicator in toolbar), Expanded (popover with full detail)
+**Variants**: By Domain Template (different categories per domain)
+
+#### DecompositionReview
+**Purpose**: The defining-experience interaction for reviewing AI-proposed unit boundaries
+**Anatomy**: Original text display + highlighted boundary markers + type badges + accept/reject controls
+**States**: Reviewing (boundaries highlighted), Adjusting (boundary handles draggable), Confirmed (units created)
+**Interactions**: Click to accept unit, drag handle to adjust boundary, Cmd+Enter to accept all
+
+#### ContextBriefing
+**Purpose**: Re-entry briefing panel shown when returning to a Context
+**Anatomy**: Summary section + open questions list + suggestions + "Continue" / "Start fresh" buttons
+**States**: Active (on Context entry), Dismissed (after user action)
+
+#### AILifecycleBadge
+**Purpose**: Visual indicator for unit lifecycle state (Draft/Pending/Confirmed)
+**Anatomy**: Small badge with icon + label
+**States**: Draft (dashed outline, gray), Pending (yellow accent), Confirmed (hidden or subtle checkmark)
+
+### Component Implementation Strategy
+
+- All custom components built using Tailwind utility classes + Radix primitives where applicable
+- Design tokens from `tailwind.config.ts` ensure consistency
+- Framer Motion for all animated transitions
+- Storybook for component development, testing, and documentation
+- Components organized by atomic design: atoms (Badge, Icon) → molecules (UnitCard, SearchBar) → organisms (GraphCanvas, AssemblyBoard) → templates (MainLayout, FocusLayout)
+
+### Implementation Roadmap
+
+**Phase 1 — Core (MVP):**
+- UnitCard (all variants and states)
+- ContextSidebar
+- DecompositionReview
+- Command palette (cmdk)
+- Basic GraphCanvas (Layer 1 only)
+
+**Phase 2 — Exploration:**
+- GraphCanvas Layer 2 (card array)
+- ContextBriefing
+- CompletenessCompass
+- AILifecycleBadge
+
+**Phase 3 — Composition:**
+- AssemblyBoard
+- Bridge text editor
+- Export functionality
+- Assembly diff view
+
+## UX Consistency Patterns
+
+### Button Hierarchy
+
+**Primary action** (one per view): Filled blue (`--accent-primary`), white text, 12px radius, prominent placement. Used for: "Create Unit", "Accept All", "Export Assembly".
+
+**Secondary action**: Outlined, `--text-primary` text, `--border-default` border. Used for: "Cancel", "Save Draft", "Add to Context".
+
+**Tertiary/Ghost action**: No border, no background, `--text-secondary` text with hover underline. Used for: "Show more", "Skip", inline links.
+
+**Destructive action**: Red text (`--error`), no fill by default; red fill only for irreversible confirmation dialogs. Used for: "Delete Unit", "Remove from Assembly".
+
+**Icon-only buttons**: 32x32px touch target (minimum 44x44px on mobile), tooltip on hover, ARIA label required. Used for: toolbar actions, card actions, view toggles.
+
+### Feedback Patterns
+
+**Toast notifications** (non-blocking):
+- Appear bottom-center, 300ms slide-up animation
+- Auto-dismiss after 4 seconds (configurable)
+- Types: Success (green accent), Error (red accent), Info (blue accent), Warning (amber accent)
+- Include "Undo" action for reversible operations
+- Maximum 1 toast visible at a time; queue additional
+
+**Inline validation**:
+- Errors appear below the field, red text, after blur (not while typing)
+- Success shown as subtle green checkmark, never intrusive
+- Helper text in `--text-tertiary`, appears on focus
+
+**Loading states**:
+- Skeleton screens for content areas (never spinners for layout)
+- Subtle pulse animation on skeleton elements
+- Inline loading indicators for specific actions (e.g., AI processing)
+- AI processing: animated dots ("Analyzing...") with cancel option
+
+**Empty states**:
+- Centered illustration (simple, line-art style, muted colors)
+- Clear headline: "No units yet" / "No results found"
+- Single action button: "Create your first thought" / "Try a different search"
+- Never leave a completely blank area
+
+### Form Patterns
+
+**Text input**:
+- Clean underline style (no full border box) for the main capture field
+- Full bordered input for settings and metadata forms
+- Placeholder text in `--text-tertiary`
+- Focus: `--accent-primary` underline/border with smooth 150ms transition
+
+**Selection controls**:
+- Unit type selector: Dropdown with type-colored indicators
+- Context selector: Searchable dropdown with hierarchy
+- Relation type selector: Grouped by category (argument, creative, structure)
+
+**AI suggestion approval**:
+- Card-style inline suggestions with dashed border
+- Two primary actions: Accept (checkmark) and Dismiss (X)
+- "Modify" as secondary action that expands for editing
+- Batch approval: "Accept All" button when multiple suggestions
+
+### Navigation Patterns
+
+**Sidebar navigation**:
+- Tree structure: Project → Context → (optional sub-contexts)
+- Active item: `--accent-primary` background tint with rounded corners (8px)
+- Hover: `--bg-hover` background
+- Collapse/expand: Chevron icon, 250ms rotation animation
+- Drag to reorder projects and contexts
+
+**Breadcrumb navigation**:
+- Appears in toolbar: `Project Name / Context Name / Unit Title`
+- Each segment clickable for quick navigation
+- Truncates with "..." for long names; full name on hover tooltip
+
+**View switching**:
+- Tab bar in toolbar: Graph | Thread | Assembly | Search
+- Active tab: `--accent-primary` underline (2px), bold text
+- Transition: 300ms cross-fade between views with Framer Motion
+- Keyboard shortcut: Cmd+1/2/3/4
+
+**Command palette** (Cmd+K):
+- Full-width overlay at top of viewport
+- Fuzzy search across: actions, units, contexts, projects, settings
+- Grouped results with section headers
+- Recent actions shown by default
+- Keyboard navigation: arrow keys + Enter
+
+### Additional Patterns
+
+**Context menu (right-click)**:
+- Clean list with icons, grouped by action type
+- Keyboard shortcut hints aligned right
+- Separator lines between groups
+- Maximum 10 items; less common actions in sub-menus
+
+**Drag and drop**:
+- Drag handle: subtle grip dots (6 dots, 2x3 grid), visible on hover
+- During drag: element slightly transparent (0.8 opacity), elevated shadow
+- Drop zone: dashed border highlight with `--accent-primary` color
+- Snap animation on drop: 200ms spring physics
+
+**Keyboard shortcuts**:
+- Discoverable via command palette and tooltips
+- Never require more than 2-key combinations for frequent actions
+- Respect system shortcuts (Cmd+C/V/Z are sacrosanct)
+- Help overlay: Cmd+/ shows all available shortcuts
+
+**Undo/Redo**:
+- Cmd+Z / Cmd+Shift+Z for all operations
+- Toast notification shows what was undone with "Redo" option
+- Multi-step undo: maintains full operation history for current session
+
+## Responsive Design & Accessibility
+
+### Responsive Strategy
+
+**Desktop-first** approach (primary platform), with graceful degradation for smaller screens.
+
+**Desktop (1440px+):**
+- Full three-column layout: sidebar (260px) + main content + detail panel (360px)
+- Graph View uses full available canvas
+- Multiple panels visible simultaneously
+- Keyboard shortcuts as primary power-user input
+
+**Desktop compact (1024px - 1439px):**
+- Sidebar collapsed to icons (60px) by default
+- Detail panel becomes slide-in overlay (doesn't push content)
+- Main content uses full width
+- Graph View still fully functional
+
+**Tablet (768px - 1023px):**
+- Sidebar hidden by default, hamburger toggle
+- Detail panel as full-screen overlay
+- Touch-optimized card sizes (larger touch targets, 48px minimum)
+- Simplified graph interactions (tap to select, pinch to zoom)
+- Thread View as primary navigation mode
+
+**Mobile (< 768px) — Future phase:**
+- Single-column layout
+- Bottom navigation bar (4 tabs: Capture, Browse, Search, Profile)
+- Simplified capture-only experience
+- Thread View for reading, no graph manipulation
+- Quick capture widget for home screen
+
+### Breakpoint Strategy
+
+| Breakpoint | Token | Width | Layout Change |
+|------------|-------|-------|---------------|
+| `--bp-mobile` | sm | 640px | Single column, stacked layout |
+| `--bp-tablet` | md | 768px | Sidebar hidden, overlay panels |
+| `--bp-desktop` | lg | 1024px | Sidebar collapsed, inline panels |
+| `--bp-wide` | xl | 1280px | Full three-column layout |
+| `--bp-ultrawide` | 2xl | 1536px | Extra whitespace, centered max-width |
+
+**Container strategy:**
+- Main content max-width: 1200px centered at ultrawide
+- Text content max-width: 720px for readability
+- Graph View: no max-width (uses full canvas)
+- Cards: responsive grid (1 column mobile, 2 tablet, 3-4 desktop)
+
+### Accessibility Strategy
+
+**Target: WCAG 2.1 AA compliance** across all features.
+
+**Color and Contrast:**
+- All text meets 4.5:1 contrast ratio against background
+- Large text (18px+) meets 3:1 contrast ratio
+- Interactive elements have 3:1 contrast against adjacent colors
+- Unit type colors are never the sole indicator — always paired with icon or text label
+- High contrast mode: CSS custom properties swap to high-contrast values
+
+**Keyboard Navigation:**
+- Full keyboard access for all actions (no mouse-only interactions)
+- Logical tab order following visual layout
+- Focus trap in modals and overlays
+- Skip-to-content link as first focusable element
+- Arrow key navigation within component groups (tabs, menus, graph nodes)
+- Escape key closes overlays, deselects, exits modes
+
+**Screen Reader Support:**
+- Semantic HTML5 elements (`nav`, `main`, `article`, `section`, `aside`)
+- ARIA landmarks for major regions
+- ARIA live regions for dynamic content (AI suggestions, graph changes, toast notifications)
+- Unit cards announced as: "[Type]: [content preview] - [lifecycle state]"
+- Graph navigation announced as: "[N] connections, [type] cluster"
+
+**Motion and Animation:**
+- `prefers-reduced-motion`: all animations become instant (0ms duration)
+- No animation is required to understand content or complete actions
+- Parallax and decorative motion disabled in reduced-motion mode
+- Critical state changes use color/icon, never motion alone
+
+**Focus Management:**
+- Visible focus ring: 2px solid `--accent-primary`, 2px offset
+- Focus restored to trigger element when closing overlays
+- Auto-focus first interactive element in new views/panels
+- Focus trap in modals (Tab cycles within modal)
+
+### Testing Strategy
+
+**Automated testing:**
+- axe-core integration in CI/CD pipeline
+- Lighthouse accessibility audit on every PR
+- Color contrast checking in design token validation
+- Jest + Testing Library with accessibility queries (`getByRole`, `getByLabelText`)
+
+**Manual testing cadence:**
+- Keyboard-only testing: every sprint
+- VoiceOver (macOS) testing: every major feature
+- NVDA (Windows) testing: every release
+- Color blindness simulation: every visual design change
+
+### Implementation Guidelines
+
+**Development rules:**
+1. Every interactive element must have a visible focus state
+2. Every image must have alt text (decorative images get `alt=""`)
+3. Every form input must have an associated `<label>`
+4. Every icon-only button must have an `aria-label`
+5. Color must never be the only means of conveying information
+6. Touch targets must be at least 44x44px on touch devices
+7. Page must be usable at 200% browser zoom
+8. All functionality must work with keyboard alone
+9. Dynamic content updates must use ARIA live regions
+10. Animations must respect `prefers-reduced-motion`
