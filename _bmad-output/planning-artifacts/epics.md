@@ -712,7 +712,7 @@ So that my thoughts are persisted as first-class cognitive units in the system.
 
 **Given** the Prisma schema and database from Epic 1
 **When** the Thought Unit model is defined
-**Then** each Unit has: `id` (cuid), `content` (text), `created_at`, `updated_at`, `user_id`, `unit_type` (enum: claim, question, evidence, counterargument, observation, idea, definition, assumption, action), `lifecycle` (enum: draft, pending, confirmed), `origin_type` (enum: direct_write, external_excerpt, external_inspiration, external_summary, ai_generated, ai_refined), and `source_span` (JSON: parent_input_id, position, excerpt_preview) per FR1, FR2, FR20
+**Then** each Unit has: `id` (cuid), `content` (text), `created_at`, `updated_at`, `user_id`, `unit_type` (enum: claim, question, evidence, counterargument, observation, idea, definition, assumption, action), `lifecycle` (enum: draft, pending, confirmed), `origin_type` (enum: direct_write, external_excerpt, external_inspiration, external_summary, ai_generated, ai_refined), `source_span` (JSON: parent_input_id, position, excerpt_preview), and `ai_trust_level` (enum: user_authored, ai_confirmed, inferred; default: user_authored) per FR1, FR2, FR20, FR30
 **And** tRPC router exposes `unit.create`, `unit.getById`, `unit.list`, `unit.update`, `unit.delete` procedures
 **And** the service layer (`server/services/unitService.ts`) handles business logic; routers never access Prisma directly
 **And** the repository layer (`server/repositories/unitRepository.ts`) is the sole Prisma accessor
@@ -772,6 +772,8 @@ So that I can capture ideas at the speed of thinking without any UI friction.
 **And** no AI intervention occurs in Capture Mode — the text is stored as-is per FR24
 **And** input accepts text of any length without a character limit per FR18
 **And** after submission, the input clears and remains open for the next thought (rapid-fire capture)
+**And** a mode indicator distinguishes Capture Mode (no AI) from Organize Mode (AI-assisted); the user can toggle between them via a toolbar switch or Cmd+Shift+N per FR24
+**And** in Organize Mode, submitted text is immediately routed to the AI decomposition pipeline (Epic 5, Story 5.2) instead of being stored as a single Unit
 
 ### Story 2.5: AI Lifecycle System (Draft → Pending → Confirmed)
 
@@ -860,7 +862,7 @@ So that I understand the thought-unit paradigm without reading documentation.
 **And** after submitting their first thought, a brief 3-step tooltip tour highlights: (1) their newly created Unit card, (2) the sidebar where Contexts will appear, (3) the view switcher in the toolbar
 **And** each tooltip has a "Next" and "Skip" option
 **And** the tour completion state is stored in user preferences so it doesn't repeat
-**And** the first-input decomposition trigger is a placeholder — the actual AI decomposition comes in Epic 5, but a visual hint ("Later, AI will help you break this down into connected ideas") is shown
+**And** the first-input decomposition trigger is a placeholder — the actual AI decomposition comes in Epic 5 (Story 5.3 wires it), but a visual hint ("Later, AI will help you break this down into connected ideas") is shown per UX-DR34
 
 ### Story 2.10: Drag-and-Drop Foundation & Undo/Redo System
 
@@ -1238,7 +1240,9 @@ So that my raw thinking becomes structured knowledge with minimal manual effort.
   Step 3: Propose relations between new Units and existing Units in the active Context
 **And** all proposed Units are created with `lifecycle: "draft"` and `origin_type: "ai_generated"` per FR27
 **And** proposed relations are stored but marked as draft (not active until both endpoints are confirmed)
-**And** the AI processes different input types per FR18: raw thought (propose Unit boundaries), external web clip (create Citation Unit + Resource Unit), structured note (recognize then decompose), code (Unit-ize by code block)
+**And** the AI processes different input types per FR18: raw thought (propose Unit boundaries), external web clip (create Citation Unit + Resource Unit), structured note (recognize then decompose), audio transcription (transcribe via API, create Unit with link to original audio Resource Unit), code (Unit-ize by code block)
+**And** when the user submits text in Organize Mode (toggled from Capture Mode per Story 2.4), the decomposition pipeline triggers automatically per FR24
+**And** the AI upgrades the heuristic-based type assignment from Story 2.2 to LLM-based type proposals using the AI service layer per FR2
 **And** the decomposition runs as a Trigger.dev background job with progress reporting
 **And** AI processing shows a dot animation with cancel button per UX-DR36
 
@@ -1260,6 +1264,7 @@ So that I shape the AI's proposals into exactly the structure I want.
 **And** rejected Units are removed from the proposal
 **And** an "Accept All" button approves all proposed Units at once
 **And** the review panel follows the AI suggestion card pattern: dashed border container, accept/dismiss per item, batch controls per UX-DR39
+**And** when triggered from the onboarding first-input flow (Story 2.9), the DecompositionReview provides the "aha moment" — completing the first-input decomposition trigger per UX-DR34
 
 ### Story 5.4: Unit Split with Relation Re-Attribution
 
@@ -1363,6 +1368,7 @@ So that I can strengthen my thinking by addressing logical gaps and conflicts.
 **And** label-based flow prediction alerts on missing argument structure: "This claim has no evidence", "This question has no answer", "This evidence has no claim it supports" per FR32
 **And** when a piece of evidence with narrow scope supports a claim with broader scope, a "scope jump warning" is displayed per FR74
 **And** all detected tensions and gaps appear in the Context's `contradictions` and `unresolved_questions` arrays per FR9
+**And** the system auto-generates and updates the Context `snapshot_summary` (AI-generated summary of the Context's current state) whenever tensions/gaps are recomputed or on-demand via a "Refresh Summary" action per FR9
 **And** detection results are available via tRPC procedure `ai.getTensionsForContext`
 **And** all alerts are proposals per NFR11 — the user can dismiss any alert and it won't recur for that specific pair per NFR13
 
@@ -1431,3 +1437,629 @@ So that I can process AI proposals efficiently and enrich my thinking with outsi
 **And** when the user searches for external knowledge, results are saved as Resource Units and attached as references to the relevant Unit per FR33
 **And** search results respect the current Context and Unit type for relevance ranking per FR33
 **And** ARIA live regions announce new suggestions politely per UX-DR55
+
+---
+
+## Epic 6: Navigation, Search & Discovery
+
+**Goal:** Users can explore their thought graph through Thread View (linear reading), purpose-based navigation weights (argument/creative/chronological modes), user-defined Navigators, multi-layer search (text, semantic, structural, temporal), ThoughtRank scoring, natural language queries, Context Dashboard statistics, and cross-view synchronization.
+
+**FRs covered:** FR35, FR36, FR37, FR38, FR39, FR40, FR41, FR42, FR43, FR44, FR45, FR46, FR50
+**NFRs addressed:** NFR1, NFR2, NFR3, NFR4, NFR6, NFR15
+**UX-DRs covered:** UX-DR25 (Command Palette), UX-DR29 (Thread View), UX-DR31 (Search View), UX-DR55 (ARIA live regions)
+
+### Story 6.1: Thread View — Linear Reading Mode
+
+As a user,
+I want to read my Units in a linear vertical list ordered chronologically or by derivation,
+So that I can follow a train of thought from beginning to end like reading a document.
+
+**Acceptance Criteria:**
+
+**Given** Units exist within a Context with relations
+**When** the user switches to Thread View
+**Then** Units are displayed as a vertical list of UnitCards stacked in chronological or derivation order per FR46, UX-DR29
+**And** relation connectors (thin lines with type-colored dots) link related cards between the stacked list per UX-DR29
+**And** branch points display a fork indicator showing the number of branches per FR46
+**And** clicking a fork indicator reveals branch options and the user can choose which branch to follow
+**And** ScrollArea integration provides smooth scrolling with the 4px hover-visible scrollbar per UX-DR23
+**And** the user can toggle between chronological order and derivation order via a toolbar toggle
+**And** Thread View is accessible as an alternative to Graph View for users who prefer text-based navigation per UX-DR56
+
+### Story 6.2: Purpose-Based Relation Weight Rendering
+
+As a user,
+I want relation line thickness, color, and visibility to change dynamically based on my current navigation purpose,
+So that I see the most relevant connections for what I'm currently exploring.
+
+**Acceptance Criteria:**
+
+**Given** Units are displayed in Graph View or Thread View with relations
+**When** the user selects a navigation purpose mode
+**Then** in Argument Exploration mode: supports, contradicts are highlighted (thick lines, full opacity); inspires, echoes are dimmed (thin lines, 30% opacity) per FR37
+**And** in Creative mode: inspires, echoes, foreshadows are highlighted; supports, contradicts are dimmed per FR37
+**And** in Chronological mode: relation strength is recalculated by created_at order per FR37
+**And** custom relation types with a `purpose_tag` are included in the navigation weight system per FR38
+**And** weight changes update in real time without page reload per NFR2
+**And** a purpose mode selector is accessible from the Graph View floating filter bar and Thread View toolbar
+**And** the active purpose mode is persisted in session state
+
+### Story 6.3: Navigators — User-Defined & AI-Generated Reading Paths
+
+As a user,
+I want to create named reading paths through my Units for specific purposes,
+So that I can share curated journeys through my thinking or revisit them later.
+
+**Acceptance Criteria:**
+
+**Given** Units exist across one or more Contexts
+**When** the user creates a Navigator
+**Then** they can name it, add an ordered list of Unit references (not copies), and optionally describe its purpose per FR35
+**And** multiple Navigators can be created from the same Units per FR35
+**And** Navigators do not copy or move Units — they reference them per FR35
+**And** the Navigator displays as a sequential card list with "Previous" / "Next" navigation
+**And** AI can auto-generate a Navigator based on a stated purpose (e.g., "Create a reading path for my argument about X") using relation graph traversal
+**And** Navigators are listed in the sidebar under a "Navigators" section
+**And** draft Units (lifecycle: "draft") cannot be added to Navigators per FR27, NFR8
+**And** editing a Unit's content is automatically reflected in all Navigators containing it per NFR12
+
+### Story 6.4: 4-Layer Search Index & Search View
+
+As a user,
+I want to search my thoughts across text, meaning, structure, and time,
+So that I can find any thought regardless of how I remember it.
+
+**Acceptance Criteria:**
+
+**Given** Units exist with content, embeddings, types, relations, and timestamps
+**When** the Search View is opened
+**Then** a prominent query input is displayed at the top per UX-DR31
+**And** the system supports 4-layer indexing per FR39:
+  Text index — keyword-based search via full-text PostgreSQL search (Typesense/Elasticsearch in future)
+  Semantic index — vector embedding similarity via pgvector `<=>` operator
+  Structure index — search by Unit type, lifecycle state, Context membership, relation graph position
+  Temporal index — search by creation time, modification time, relation formation order
+**And** results are grouped by type (Units, Contexts, Projects) per UX-DR31
+**And** the search supports natural-language queries (e.g., "things I claimed about social media") per FR43
+**And** an empty state displays suggestions for what to search per UX-DR37
+**And** search is also accessible via the Command Palette (Cmd+K) per UX-DR25
+
+### Story 6.5: ThoughtRank Importance Score
+
+As a user,
+I want each Unit to have an importance score reflecting its centrality in my knowledge graph,
+So that search results and navigation prioritize my most significant thoughts.
+
+**Acceptance Criteria:**
+
+**Given** Units exist with relations, Context memberships, and Assembly references
+**When** ThoughtRank is computed for a Unit
+**Then** the score combines: number of referencing Units, number of Assemblies it appears in, diversity of connected Contexts, recency, and hub role (high in-degree + high out-degree) per FR40
+**And** ThoughtRank is re-calculable per Unit with different weights depending on navigation purpose at query time per NFR4
+**And** search results are ranked by ThoughtRank as one of the sorting factors
+**And** Unit card relation/attribute display is prioritized by: (1) relevance to current navigation purpose, (2) ThoughtRank of connected Unit, (3) recency per FR41
+**And** by default, top 3–5 relations are shown on each card; "See more" expands the full list per FR41
+**And** ThoughtRank scores are computed asynchronously via Trigger.dev and cached, recomputed on relation changes
+
+### Story 6.6: Context Dashboard — Statistics & Entry Points
+
+As a user,
+I want a dashboard for each Context showing key metrics, gaps, and recommended starting points,
+So that I can quickly assess the state of an exploration and decide where to focus.
+
+**Acceptance Criteria:**
+
+**Given** a Context has Units with relations
+**When** the user opens the Context Dashboard
+**Then** it displays: total Unit count, incomplete/unresolved questions, key hub Units (highest ThoughtRank), unaddressed counterarguments (claims without support), unsupported claims, cycle presence indicator, and recommended entry points per FR42
+**And** recommended entry points are the top 3 Units by ThoughtRank within the Context
+**And** clicking any metric or hub Unit navigates to that Unit in the active view
+**And** the dashboard auto-refreshes when Units or Relations change within the Context
+**And** the Relation Type Glossary is accessible from the dashboard via a help icon per NFR15
+
+### Story 6.7: Graph View Navigation Purpose Integration
+
+As a user,
+I want the Graph View to adapt its visual emphasis based on my navigation purpose,
+So that the graph highlights what matters most for my current exploration mode.
+
+**Acceptance Criteria:**
+
+**Given** the Graph Canvas from Epic 4 is rendered
+**When** a navigation purpose is selected (argument, creative, chronological, explore)
+**Then** relation line thickness, color intensity, and visibility update in real time per FR37, NFR2
+**And** node positions optionally re-cluster based on the active purpose (argument mode clusters by support/contradict chains; creative mode clusters by inspiration chains)
+**And** the navigation path supports simultaneous vertical (chronological/derivation) and horizontal (semantic jump) movement per FR36
+**And** the layer indicator reflects the current purpose mode
+**And** the Global Overview → Local Card Array → Unit Detail navigation path is preserved across all purpose modes per FR44, FR45
+
+### Story 6.8: Cross-View Coordination Enhancement
+
+As a user,
+I want all views (Graph, Thread, Context, Search, Dashboard) to stay synchronized when I select or navigate to a Unit,
+So that switching between views feels seamless and I never lose my place.
+
+**Acceptance Criteria:**
+
+**Given** multiple views exist (Graph View, Thread View, Context View, Search View)
+**When** the user selects a Unit in any view
+**Then** all other open views highlight the same Unit simultaneously per FR50
+**And** the Detail Panel updates to show the selected Unit
+**And** synchronization is instantaneous from the user's perspective per NFR3
+**And** tRPC Subscriptions via WebSocket enable multi-tab sync — selecting a Unit in one tab highlights it in another per architecture requirement
+**And** ARIA live regions announce view changes politely per UX-DR55
+**And** the selection store from Epic 4 (Story 4.9) is extended to support all view types
+
+---
+
+## Epic 7: Assembly, Composition & Export
+
+**Goal:** Users can compose documents by arranging Units into Assembly slots using drag-and-drop, use templates with AI auto-mapping, generate bridge text between Units, compare Assembly diffs side-by-side, export to multiple formats, maintain export history, and auto-generate source maps and reasoning chains.
+
+**FRs covered:** FR16, FR17, FR47, FR48, FR51, FR52, FR53, FR54, FR75, FR76
+**NFRs addressed:** NFR12, NFR19
+**UX-DRs covered:** UX-DR13 (AssemblyBoard), UX-DR30 (Assembly View screen)
+
+### Story 7.1: Assembly Data Model & CRUD API
+
+As a user,
+I want to create Assemblies as ordered lists of Unit references that I can name and manage,
+So that I can compose documents from my existing thoughts without duplicating content.
+
+**Acceptance Criteria:**
+
+**Given** the database schema
+**When** the Assembly model is defined
+**Then** it includes: `id` (cuid), `name`, `description` (optional), `user_id`, `template_id` (nullable FK), `created_at`, `updated_at` per FR16
+**And** an `assembly_unit` join table stores ordered references: `assembly_id`, `unit_id`, `position` (integer for ordering), `slot_name` (optional, for template slots)
+**And** Assemblies reference Units — they do not copy them. Modifying a Unit is automatically reflected in all Assemblies per FR16, NFR12
+**And** tRPC procedures `assembly.create`, `assembly.getById`, `assembly.list`, `assembly.update`, `assembly.delete`, `assembly.addUnit`, `assembly.removeUnit`, `assembly.reorderUnits` are available
+**And** an Assembly can contain Units from multiple Contexts
+**And** draft Units (lifecycle: "draft") cannot be added to Assemblies per NFR8
+
+### Story 7.2: Assembly View with Drag-and-Drop Ordering
+
+As a user,
+I want to arrange Units in an Assembly by dragging and dropping them into the order I want,
+So that I can compose my document structure intuitively.
+
+**Acceptance Criteria:**
+
+**Given** an Assembly exists with Units
+**When** the user opens Assembly View
+**Then** the AssemblyBoard component renders Units as draggable cards in their ordered positions per UX-DR13, FR47
+**And** a left search/browse rail allows finding and adding Units to the Assembly per UX-DR30
+**And** drag-and-drop uses dnd-kit with 6-dot grip handles, 0.8 opacity during drag, dashed drop zones, and 200ms spring snap per UX-DR40
+**And** assembly metadata (name, description, unit count, last modified) is displayed in a header per UX-DR30
+**And** a preview/edit toggle switches between editing mode (drag-and-drop) and preview mode (read-only rendered) per UX-DR13
+**And** keyboard-based reordering is supported (select card, use arrow keys to move position)
+**And** removing a Unit from an Assembly does not delete the Unit globally
+
+### Story 7.3: Assembly Templates with AI Slot Mapping
+
+As a user,
+I want to start composing from a template that proposes a structure and automatically maps my existing Units to slots,
+So that I get a head start on document structure with AI doing the heavy lifting.
+
+**Acceptance Criteria:**
+
+**Given** the Assembly model supports templates
+**When** the user creates an Assembly from a template
+**Then** Assembly Templates propose structure based on writing purpose (e.g., "Argumentative Essay" has Introduction, Thesis, Evidence 1–3, Counterargument, Conclusion) per FR17
+**And** AI auto-maps existing Units in the active Context to template slots based on Unit type and content relevance per FR17
+**And** empty slots are visually distinguished (dashed border, "Drop a Unit here" placeholder) per FR17, UX-DR13
+**And** the user can accept, reject, or override any AI slot mapping
+**And** at least 4 built-in templates are available: Essay, Report, Decision Brief, Research Summary
+**And** users can save a custom Assembly arrangement as a new template
+
+### Story 7.4: Bridge Text Generation
+
+As a user,
+I want AI to generate logical connecting sentences between Units in my Assembly,
+So that the exported document reads as a coherent narrative rather than disjointed fragments.
+
+**Acceptance Criteria:**
+
+**Given** an Assembly with ordered Units
+**When** the user triggers "Generate Bridge Text"
+**Then** AI generates connecting sentences between adjacent Units that create logical flow per FR52
+**And** bridge text zones are visually displayed between Unit cards in the Assembly View per UX-DR13
+**And** bridge text is NOT stored as a Unit and does NOT modify the original Unit graph per FR52
+**And** bridge text is stored only within the Assembly as ephemeral connecting content
+**And** the user can edit, regenerate, or delete any bridge text segment
+**And** bridge text is included in exports but clearly generated (not attributed to the user)
+
+### Story 7.5: Assembly Diff — Side-by-Side Comparison
+
+As a user,
+I want to compare two versions or two different Assemblies side by side,
+So that I can see what changed or how two compositions differ.
+
+**Acceptance Criteria:**
+
+**Given** two Assemblies exist (or two versions of the same Assembly)
+**When** the user selects "Compare Assemblies"
+**Then** a side-by-side view renders both Assemblies with color visualization: Units present only in the left Assembly (red), only in the right (green), and in both (neutral) per FR48
+**And** shared Units are aligned horizontally where possible
+**And** the diff summary shows: units added, removed, reordered, and content changes
+**And** clicking a highlighted Unit scrolls both sides to show it in context
+
+### Story 7.6: Multi-Format Export with Unit Conversion Rules
+
+As a user,
+I want to export my Assembly to Essay, Presentation, Email, or Social format with appropriate formatting per Unit type,
+So that my thoughts become polished outputs ready for their destination.
+
+**Acceptance Criteria:**
+
+**Given** an Assembly with ordered Units and optional bridge text
+**When** the user triggers export and selects a format
+**Then** format-specific Unit conversion rules are applied per Unit type per FR51:
+  Essay — Claims become thesis statements, Evidence becomes supporting paragraphs, Questions become rhetorical questions or section headers
+  Presentation — Each Unit becomes a slide bullet or slide; type determines formatting
+  Email — Concise format with Claims as key points, Action Units as action items
+  Social — Condensed format with character limits respected
+**And** an export dialog allows format selection, preview, and download per UX-DR30
+**And** the export includes bridge text if generated per FR52
+
+### Story 7.7: Partial Export & Export History
+
+As a user,
+I want to export only specific Units from an Assembly and track when and how I exported,
+So that I can create targeted outputs and know what's changed since my last export.
+
+**Acceptance Criteria:**
+
+**Given** an Assembly exists
+**When** the user configures a Partial Export
+**Then** they can filter by: specific Unit type only, specific Context membership, specific evidence_domain, or confirmed Units only per FR53
+**And** the export preview updates to show only matching Units
+**When** an export completes
+**Then** an Export History record is created with: export timestamp, format, Unit IDs included, and a snapshot hash of included Unit content per FR54
+**And** when Units have changed since the last export, a notification badge appears on the Assembly with "N units changed since last export" per FR54
+**And** the user can view export history and re-export with the same or updated settings
+
+### Story 7.8: Assembly Source Map & Reasoning Chains
+
+As a user,
+I want to see which external resources contributed to my Assembly and trace reasoning chains from evidence to conclusion,
+So that I can verify the provenance and logical structure of my compositions.
+
+**Acceptance Criteria:**
+
+**Given** an Assembly contains Units with provenance data (origin_type, source_span)
+**When** the user views the Assembly Source Map
+**Then** it auto-generates a visualization showing which external resources contributed to the Assembly and at what ratio per FR75
+**And** each source shows: resource name/URL, number of Units derived from it, and percentage of Assembly coverage
+**When** the user views Reasoning Chains
+**Then** explicit structures show the path from evidence through inference to conclusion per FR76
+**And** the chain visualization highlights the relation types connecting each step (e.g., Evidence →[supports]→ Claim →[derives_from]→ Conclusion)
+**And** gaps in the reasoning chain are highlighted (e.g., "This conclusion has no supporting evidence path")
+
+---
+
+## Epic 8: Feedback Loop & Thought Evolution
+
+**Goal:** Users can evolve their thinking over time through an Incubation Queue, Compression, Orphan Unit Recovery, external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, and unit drift detection from project purpose.
+
+**FRs covered:** FR19, FR21, FR57, FR58, FR59, FR62, FR64
+**NFRs addressed:** NFR13, NFR14, NFR24
+**UX-DRs covered:** UX-DR14 (CompletenessCompass)
+
+### Story 8.1: Incubation Queue for Incomplete Thoughts
+
+As a user,
+I want a dedicated queue for thoughts that are incomplete but valuable, with periodic surfacing reminders,
+So that no potentially important idea gets lost just because it's not fully formed yet.
+
+**Acceptance Criteria:**
+
+**Given** Units exist in various states of completeness
+**When** a Unit is marked as "incubating" (manually or automatically when it has low completeness — e.g., no relations, no Context, single sentence)
+**Then** it enters the Incubation Queue per FR58
+**And** the Incubation Queue is accessible from the sidebar as a dedicated section
+**And** the system periodically surfaces incubating Units to the user (configurable interval: daily, weekly) via non-interrupting notification per FR58, NFR24
+**And** surfaced Units show context: when they were created, what they were thinking about at the time
+**And** the user can: promote (add to a Context), discard, or snooze each incubating Unit
+**And** the notification follows non-interrupting policy — dismissed notifications don't repeat for the same Unit per NFR24
+
+### Story 8.2: Compression — Similar Claim Core Extraction
+
+As a user,
+I want the system to detect when I've said similar things multiple times and propose extracting the common core,
+So that my knowledge graph stays concise without losing nuance.
+
+**Acceptance Criteria:**
+
+**Given** multiple Units exist with semantically similar content
+**When** the Compression service detects variations of similar claims (via embedding similarity threshold)
+**Then** it proposes extraction of the common core into a single Unit per FR59
+**And** the proposal shows: the similar Units side-by-side, the proposed extracted core Unit, and which variations add unique nuance
+**And** the user can accept (creates core Unit, archives variations with relations to core), reject (keeps all as-is), or customize (edit the core before accepting)
+**And** accepted compressions preserve all relations from the original Units on the core Unit
+**And** the detection runs periodically as a Trigger.dev background job
+**And** the user can manually trigger compression detection for a specific Context
+
+### Story 8.3: Orphan Unit Recovery
+
+As a user,
+I want to periodically see Units that aren't included in any Assembly or Context,
+So that I can decide whether to connect them or consciously let them go.
+
+**Acceptance Criteria:**
+
+**Given** Units exist that have no Context membership and no Assembly references
+**When** the Orphan Recovery feature runs (periodically or on-demand)
+**Then** orphan Units are listed in a dedicated view showing: Unit content preview, creation date, type, and lifecycle state per FR62
+**And** the user can: assign to a Context, add to the Incubation Queue, archive, or delete each orphan
+**And** bulk actions (assign all to Context, archive all) are available
+**And** orphan detection counts Units with zero Context memberships AND zero Assembly references
+**And** the orphan count is displayed as a badge in the sidebar
+
+### Story 8.4: External Knowledge Import with Connection Mode
+
+As a user,
+I want to import external knowledge (papers, web clips, book chapters) and choose how it connects to my existing thinking,
+So that outside sources enrich my graph in the way I intend.
+
+**Acceptance Criteria:**
+
+**Given** the user imports external content (via paste, URL, or file upload)
+**When** the system processes the import
+**Then** it creates a Citation Unit (source metadata) + Resource Unit (the content) per FR18
+**And** the user is prompted to select a connection mode per FR19:
+  (1) Connect to active Context — imported Units are added to the current Context with AI-proposed relations
+  (2) Start a new Context — a new Context is created with the imported content as seed
+  (3) Hold in Incubation Queue — content is saved but not connected yet
+**And** each derived Unit tracks provenance via `origin_type` and `source_span` per FR20
+**And** the import preserves the source URL, author, date, and excerpt for citation
+
+### Story 8.5: Reverse Provenance Tracking
+
+As a user,
+I want to click an external resource and see all Thought Units derived from it and all Assemblies containing those Units,
+So that I can trace the full impact of any source material on my thinking.
+
+**Acceptance Criteria:**
+
+**Given** a Resource Unit derived from external text exists
+**When** the user clicks on it
+**Then** the system queries and displays: all Thought Units derived from it (via `source_span.parent_input_id`), and all Assemblies containing those derived Units per FR21
+**And** the result is shown as a tree: Resource → [derived Unit 1, derived Unit 2, ...] → [Assembly A, Assembly B, ...]
+**And** each node in the tree is clickable and navigates to the corresponding Unit or Assembly
+**And** the reverse tracking query is available via tRPC procedure `resource.getReverseProvenance`
+
+### Story 8.6: Action Unit Completion & Result Records
+
+As a user,
+I want the system to propose creating a result record when I complete an Action Unit,
+So that my decision-making history is preserved alongside execution outcomes.
+
+**Acceptance Criteria:**
+
+**Given** an Action Unit (unit_type: "action") exists with related decision-making Units
+**When** the user marks the Action Unit as "completed"
+**Then** the system proposes creating a result record Unit connected to the original decision-making Units per FR57
+**And** the result record Unit is pre-populated with: the Action Unit's content, completion date, and suggested relation to the decision Units (derives_from, references)
+**And** the user can edit the result record content before confirming
+**And** Action Units preserve their decision-making history via relations per FR56
+**And** the result record carries `origin_type: "direct_write"` and `unit_type: "observation"` by default
+
+### Story 8.7: Unit Drift Detection from Project Purpose
+
+As a user,
+I want the system to detect when my Units are drifting away from the project's stated purpose,
+So that I can stay focused or consciously expand the scope.
+
+**Acceptance Criteria:**
+
+**Given** a Project has a defined purpose (from domain template or user description)
+**When** the Drift Detection service analyzes Units in the project
+**Then** each Unit receives a `drift_score` (0.0–1.0) measuring semantic distance from the project purpose per FR64
+**And** when a Unit's drift_score exceeds a configurable threshold (default 0.7), the user is presented with options: (1) keep in project (mark as intentional expansion), (2) move to a different Context, (3) move to Incubation Queue per FR64
+**And** the drift detection runs as a Trigger.dev background job on Unit creation/update
+**And** the Project Dashboard shows an aggregate drift indicator
+**And** the notification follows non-interrupting policy per NFR24
+
+---
+
+## Epic 9: Projects & Domain Templates
+
+**Goal:** Users can work within purpose-optimized project environments with domain-specific templates (software design, nonfiction writing, investment decisions, academic research), scaffold units with pre-planted questions, constraint levels (Strict/Guided/Open), gap detection, AI live guide, Completeness Compass, and freeform-to-formal template export.
+
+**FRs covered:** FR63, FR65, FR66, FR67, FR68, FR69, FR70, FR71
+**NFRs addressed:** NFR17
+**UX-DRs covered:** UX-DR33 (Project Dashboard enhanced)
+
+### Story 9.1: Project Data Model & Purpose-Optimized Environment
+
+As a user,
+I want to create Projects as purpose-optimized workspaces with their own UI configuration,
+So that my tools adapt to what I'm trying to accomplish.
+
+**Acceptance Criteria:**
+
+**Given** the database schema
+**When** the Project model is defined
+**Then** it includes: `id` (cuid), `name`, `description`, `purpose` (text), `user_id`, `template_id` (nullable FK to DomainTemplate), `constraint_level` (enum: strict, guided, open), `created_at`, `updated_at` per FR63
+**And** a Project contains Contexts (one-to-many) and determines the UI environment per FR63
+**And** type-specific default views are configured per project type (e.g., research projects default to Thread View, decision projects default to Graph View) per FR63
+**And** tRPC procedures `project.create`, `project.getById`, `project.list`, `project.update`, `project.delete` are available
+**And** the sidebar project selector (placeholder from Epic 3) now shows real projects
+**And** MVP starts with pre-defined project templates; custom composition is deferred per FR65
+
+### Story 9.2: Domain Template System — Three Template Types
+
+As a user,
+I want to choose from system default, freeform, or user-defined domain templates when creating a project,
+So that I get the right level of structure for my thinking purpose.
+
+**Acceptance Criteria:**
+
+**Given** the Project model supports templates
+**When** Domain Templates are defined
+**Then** three types are supported: System default (pre-built, read-only), Freeform (no constraints, user-driven), and User-defined (saved from existing projects) per FR66
+**And** each Domain Template includes: domain-specific Unit types (subsets or extensions of the 9 base types), domain-specific relation types, Scaffold Units (pre-planted questions and prompts), required context slots, recommended navigation order, available Assembly list, gap detection rules, and AI live guide prompts per FR67
+**And** 4 system default templates are seeded: software-design, nonfiction-writing, investment-decision, academic-research per architecture requirement
+**And** each template is stored as a JSON configuration in the database
+**And** the template system is extensible — users can define and save custom templates per NFR17
+
+### Story 9.3: Constraint Levels — Strict, Guided, Open
+
+As a user,
+I want to choose how strictly the template guides my workflow when starting a project,
+So that I can get strong guidance when I'm new to a domain or work freely when I'm experienced.
+
+**Acceptance Criteria:**
+
+**Given** a Project is being created with a Domain Template
+**When** the user selects a constraint level per FR68
+**Then** Strict mode: all template slots must be filled before Assemblies can be created; gap detection is enforced; AI live guide actively prompts missing elements
+**And** Guided mode: template slots are suggested but not required; gap detection provides recommendations; AI live guide suggests but doesn't block
+**And** Open mode: template structure is visible as reference only; no enforcement; AI live guide is passive (available on-demand)
+**And** the constraint level can be changed at any time during the project lifecycle
+**And** the Project Dashboard visually indicates the active constraint level
+
+### Story 9.4: Scaffold Units & Gap Detection
+
+As a user,
+I want my project to start with pre-planted questions that guide my thinking, and have the system detect what's still missing,
+So that I have a clear path forward and know what needs attention.
+
+**Acceptance Criteria:**
+
+**Given** a Project is created with a Domain Template
+**When** the project initializes
+**Then** Scaffold Units (pre-planted questions/prompts from the template) are created as draft Units within the project's default Context per FR67
+**And** Scaffold Units have `origin_type: "ai_generated"` and a special `scaffold: true` metadata flag
+**And** gap detection rules from the template continuously evaluate: which scaffold questions have been addressed (have confirmed Units connected to them), which remain open, and what structural elements are missing per FR67
+**And** gap detection results are shown in the Context Dashboard and Completeness Compass
+**And** the AI live guide uses gap detection to suggest next steps (e.g., "Your investment decision is missing a risk assessment — consider adding counterarguments")
+
+### Story 9.5: Completeness Compass
+
+As a user,
+I want a radial progress visualization showing what's confirmed, what's missing, and what outputs I can produce at what completeness,
+So that I always know where I stand and what's achievable right now.
+
+**Acceptance Criteria:**
+
+**Given** a Project with a Domain Template and gap detection
+**When** the Completeness Compass renders
+**Then** a radial progress visualization shows category breakdown (e.g., Evidence: 60%, Claims: 80%, Questions Resolved: 40%) per FR70, UX-DR14
+**And** each category includes action suggestions (e.g., "Add 2 more evidence Units to reach 80%")
+**And** the Compass reports: what has been confirmed, what is still missing, and what outputs (Assemblies) can be produced at the current completeness percentage per FR70
+**And** the Compass has two states: collapsed (small indicator in the toolbar) and expanded (popover with full details) per UX-DR14
+**And** in freeform template mode, the Compass only provides the list of "Assemblies that can be created now" without completeness conditions per FR71
+**And** the Compass auto-refreshes periodically and is invocable on-demand per NFR14
+**And** progress updates follow non-interrupting notification policy per NFR24
+
+### Story 9.6: Freeform-to-Formal Template Export
+
+As a user,
+I want to retroactively apply structure to a freeform project by having AI analyze my existing Units and propose type mappings,
+So that I can start loose and formalize later without losing work.
+
+**Acceptance Criteria:**
+
+**Given** a Project created in freeform mode with existing Units
+**When** the user selects "Export to Formal Template"
+**Then** AI analyzes the existing Units and proposes: which system template best fits the content, type mappings for each Unit (e.g., this "observation" should be "evidence" in the research template), and suggested structural gaps per FR69
+**And** the user reviews and approves/modifies each proposed mapping
+**And** upon confirmation, the project's template is updated and Unit types are adjusted per the approved mappings
+**And** existing relations are preserved — only types and template metadata change
+**And** the operation is undoable via Cmd+Z
+
+### Story 9.7: Project Dashboard Enhancement with Template Integration
+
+As a user,
+I want the Project Dashboard to show template-aware information including scaffold progress and AI live guide,
+So that my dashboard reflects the full richness of my project's domain template.
+
+**Acceptance Criteria:**
+
+**Given** a Project with an active Domain Template
+**When** the enhanced Project Dashboard renders
+**Then** it shows: project title, active template name, constraint level badge, Context card grid with Completeness Compass mini indicators per UX-DR33
+**And** a scaffold progress section shows: total scaffold questions, answered count, and unanswered list
+**And** the AI live guide panel shows context-aware suggestions based on the template, constraint level, and current gaps per FR67
+**And** the "New Context" button suggests template-recommended context names per FR67
+**And** the recommended navigation order from the template is reflected in Context card ordering per FR67
+
+---
+
+## Epic 10: External Integration & Context Export API
+
+**Goal:** Users can share their thought structures with external AI tools via the Context Export API, auto-generate structured AI prompts from selected Units, and delegate Action Unit execution to external services.
+
+**FRs covered:** FR34, FR55, FR56
+**NFRs addressed:** NFR19, NFR20, NFR21
+
+### Story 10.1: Context Export REST API
+
+As a developer or power user,
+I want a REST API endpoint that exports a Context's Unit structure in multiple formats,
+So that I can integrate my Flowmind knowledge with external AI tools and workflows.
+
+**Acceptance Criteria:**
+
+**Given** the architecture specifies a REST endpoint (not tRPC) at `GET /api/context/{contextId}/export`
+**When** the endpoint is called with valid authentication
+**Then** it returns the Context's Unit structure in the requested format per FR34:
+  `prompt_package` — structured AI prompt format with background, claims, evidence, open questions
+  `json` — full Unit graph with relations, types, metadata
+  `markdown` — human-readable markdown with Units organized by type and relation
+**And** query parameters support: `format` (required), `depth` (relation traversal depth, default 2), `types` (Unit type filter, comma-separated), `status` (lifecycle filter: draft, pending, confirmed) per FR34
+**And** authentication uses API key in the `Authorization: Bearer {key}` header per architecture requirement
+**And** API keys are manageable from user settings (create, revoke, list)
+**And** rate limiting is enforced on the endpoint per architecture requirement
+**And** the API is format-agnostic and AI-model-agnostic per NFR19
+
+### Story 10.2: AI Prompt Auto-Generation from Selected Units
+
+As a user,
+I want to select Units and have the system generate a structured prompt I can use with any AI tool,
+So that I can leverage my organized thinking as context for AI conversations.
+
+**Acceptance Criteria:**
+
+**Given** the user has selected one or more Units
+**When** they choose "Generate AI Prompt"
+**Then** the system automatically generates a structured prompt including: background (Context summary), key claims (claim-type Units), supporting evidence, constraints (assumption-type Units), and open questions (question-type Units) per FR55
+**And** the generated prompt is displayed in a copyable text area
+**And** the user can customize which sections to include before copying
+**And** the prompt format is optimized for readability by AI models (clear section headers, numbered items)
+**And** a "Copy to Clipboard" button copies the prompt with a success toast
+
+### Story 10.3: Action Unit External Service Delegation
+
+As a user,
+I want to delegate Action Unit execution to external services like Google Calendar, Todoist, or Slack,
+So that my thought-driven action items flow into my existing productivity tools.
+
+**Acceptance Criteria:**
+
+**Given** an Action Unit exists (unit_type: "action")
+**When** the user selects "Delegate to External Service"
+**Then** a dialog shows available integrations: Google Calendar (create event), Todoist (create task), Slack (send message) per FR56
+**And** each integration pre-fills relevant fields from the Action Unit's content and metadata
+**And** upon successful delegation, the Action Unit is tagged with the external service reference (URL, ID)
+**And** the delegation is logged in the Unit's metadata for traceability
+**And** integration configuration (API keys, OAuth tokens) is managed in user settings
+**And** execution management is delegatable to external services — Flowmind tracks the delegation but doesn't manage the execution per FR56
+
+### Story 10.4: Data Export & Privacy Controls
+
+As a user,
+I want to export all my data and control what information is shared externally,
+So that I own my intellectual property and can comply with my own privacy standards.
+
+**Acceptance Criteria:**
+
+**Given** the user's account contains Units, Relations, Assemblies, and Contexts
+**When** the user requests a full data export
+**Then** the system exports all Units, relations, Assemblies, Contexts, and metadata to user-owned format (JSON and/or Markdown) per NFR21
+**And** the export is downloadable as a ZIP archive
+**And** a privacy settings page specifies: what data is sent to external AI services (only on explicit export/prompt generation), local processing options (embedding generation can be toggled), and a clear statement that user data is not used for AI training per NFR20
+**And** the user can delete their account and all associated data (hard delete)
+**And** export and deletion actions require confirmation via the destructive Dialog variant
