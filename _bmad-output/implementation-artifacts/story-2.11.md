@@ -1,6 +1,6 @@
 # Story 2.11: Audio Input & Transcription-Linked Units
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
