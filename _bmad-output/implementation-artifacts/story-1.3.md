@@ -1,6 +1,6 @@
 # Story 1.3: Authentication with OAuth & Email Magic Links
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -22,33 +22,33 @@ So that I can securely access my Flowmind workspace without managing another pas
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Configure Auth.js v5 (AC: #1, #2, #3)
-  - [ ] Install and configure `next-auth@beta` (Auth.js v5)
-  - [ ] Set up Google OAuth provider with client ID/secret
-  - [ ] Set up GitHub OAuth provider with client ID/secret
-  - [ ] Set up Email provider with magic link functionality
-  - [ ] Configure SMTP or email service for magic link delivery
-- [ ] Task 2: Configure session management (AC: #4, #5)
-  - [ ] Set session strategy to JWT or database sessions
-  - [ ] Ensure cookies are secure, HTTP-only, SameSite
-  - [ ] Verify CSRF token is included in Auth.js forms
-- [ ] Task 3: Set up Prisma adapter for Auth.js (AC: #6, #7)
-  - [ ] Install `@auth/prisma-adapter`
-  - [ ] Add User, Account, Session, VerificationToken models to Prisma schema
-  - [ ] Configure account linking for same-email across providers
-  - [ ] Run migration for auth tables
-- [ ] Task 4: Implement route protection (AC: #8)
-  - [ ] Create Next.js middleware for auth route protection
-  - [ ] Define public routes (landing, sign-in) vs protected routes
-  - [ ] Redirect unauthenticated users to sign-in page
-- [ ] Task 5: Build sign-in and sign-out UI (AC: #1, #2, #3, #9)
-  - [ ] Create sign-in page with Google, GitHub, and email options
-  - [ ] Style sign-in page using design tokens from Story 1.4
-  - [ ] Implement sign-out action with session clearing and redirect
-- [ ] Task 6: Add environment variables (AC: #1, #2, #3)
-  - [ ] Document `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` in `.env.example`
-  - [ ] Document `GITHUB_ID`, `GITHUB_SECRET` in `.env.example`
-  - [ ] Document `AUTH_SECRET`, email provider credentials in `.env.example`
+- [x] Task 1: Configure Auth.js v5 (AC: #1, #2, #3)
+  - [x] Install and configure `next-auth@beta` (Auth.js v5)
+  - [x] Set up Google OAuth provider with client ID/secret
+  - [x] Set up GitHub OAuth provider with client ID/secret
+  - [x] Set up Email provider with magic link functionality (Resend)
+  - [x] Configure Resend email service for magic link delivery
+- [x] Task 2: Configure session management (AC: #4, #5)
+  - [x] Set session strategy to database sessions
+  - [x] Ensure cookies are secure, HTTP-only, SameSite (Auth.js defaults)
+  - [x] Verify CSRF token is included in Auth.js forms (built-in)
+- [x] Task 3: Set up Prisma adapter for Auth.js (AC: #6, #7)
+  - [x] Install `@auth/prisma-adapter` (already in package.json)
+  - [x] Add User, Account, Session, VerificationToken models to Prisma schema (already existed from Story 1.2)
+  - [x] Configure account linking for same-email across providers (allowDangerousEmailAccountLinking)
+  - [x] Run migration for auth tables (schema already has auth tables)
+- [x] Task 4: Implement route protection (AC: #8)
+  - [x] Create Next.js middleware for auth route protection
+  - [x] Define public routes (landing, sign-in) vs protected routes
+  - [x] Redirect unauthenticated users to sign-in page
+- [x] Task 5: Build sign-in and sign-out UI (AC: #1, #2, #3, #9)
+  - [x] Create sign-in page with Google, GitHub, and email options
+  - [x] Style sign-in page using Flowmind design tokens
+  - [x] Implement sign-out action with session clearing and redirect (via Auth.js signOut)
+- [x] Task 6: Add environment variables (AC: #1, #2, #3)
+  - [x] Document `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` in `.env.example`
+  - [x] Document `GITHUB_ID`, `GITHUB_SECRET` in `.env.example`
+  - [x] Document `AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM` in `.env.example`
 
 ## Dev Notes
 
@@ -74,10 +74,28 @@ So that I can securely access my Flowmind workspace without managing another pas
 
 ### Agent Model Used
 
-
+Claude Opus 4.6
 
 ### Debug Log References
 
+None — clean implementation, no debugging required.
+
 ### Completion Notes List
 
+- Auth.js v5 configured with Google, GitHub, and Resend (email magic link) providers
+- PrismaAdapter wired to shared db singleton (`src/lib/db.ts`)
+- Database session strategy (not JWT) for secure server-side sessions
+- `allowDangerousEmailAccountLinking: true` on OAuth providers enables same-email account linking (AC #7)
+- Middleware protects all routes except `/`, `/sign-in`, and `/api/auth/*`
+- Sign-in page uses Flowmind design tokens with Apple-like minimal aesthetic
+- tRPC context updated with `db` and `session`; `protectedProcedure` added for authenticated endpoints
+
 ### File List
+
+- `src/lib/db.ts` — Prisma client singleton
+- `src/lib/auth.ts` — Auth.js v5 configuration (providers, adapter, callbacks)
+- `src/app/api/auth/[...nextauth]/route.ts` — Auth.js route handler
+- `src/app/(auth)/sign-in/page.tsx` — Sign-in page UI
+- `src/middleware.ts` — Route protection middleware
+- `src/server/api/trpc.ts` — Updated with auth session in context + protectedProcedure
+- `.env.example` — Updated with OAuth and email provider env vars
