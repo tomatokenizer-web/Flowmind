@@ -8,6 +8,9 @@ import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { UnitTypeBadge } from "./unit-type-badge";
 import { LifecycleIndicator, type LifecycleState } from "./lifecycle-indicator";
+import { AILifecycleBadge } from "./lifecycle-badge";
+import { AIBadge } from "./ai-badge";
+import { ApproveRejectButtons } from "./approve-reject-buttons";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -31,6 +34,7 @@ export interface UnitCardProps {
   variant?: UnitCardVariant;
   selected?: boolean;
   onClick?: (unit: UnitCardUnit) => void;
+  onLifecycleAction?: (unitId: string, action: "approve" | "reject" | "reset") => void;
   className?: string;
 }
 
@@ -81,6 +85,7 @@ export function UnitCard({
   variant = "standard",
   selected = false,
   onClick,
+  onLifecycleAction,
   className,
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
@@ -150,18 +155,23 @@ export function UnitCard({
 
       {/* Card content */}
       <div className="space-y-2">
-        {/* Header: type badge + relation count */}
+        {/* Header: type badge + AI badge + relation count */}
         <div className="flex items-center justify-between gap-2">
-          <UnitTypeBadge unitType={unit.unitType} />
-          {variant !== "compact" && (unit.relationCount ?? 0) > 0 && (
-            <span
-              className="inline-flex items-center gap-1 text-xs text-text-secondary"
-              aria-label={`${unit.relationCount} relations`}
-            >
-              <Link2 className="h-3 w-3" aria-hidden="true" />
-              {unit.relationCount}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            <UnitTypeBadge unitType={unit.unitType} />
+            {isDraft && unit.originType === "ai_generated" && <AIBadge />}
+          </div>
+          <div className="flex items-center gap-2">
+            {variant !== "compact" && (unit.relationCount ?? 0) > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-xs text-text-secondary"
+                aria-label={`${unit.relationCount} relations`}
+              >
+                <Link2 className="h-3 w-3" aria-hidden="true" />
+                {unit.relationCount}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Content */}
@@ -185,8 +195,8 @@ export function UnitCard({
               {formatDistanceToNow(unit.createdAt, { addSuffix: true })}
             </span>
 
-            {/* Lifecycle badge */}
-            <LifecycleIndicator lifecycle={unit.lifecycle} />
+            {/* Lifecycle badge — new AILifecycleBadge for draft/pending/confirmed */}
+            <AILifecycleBadge lifecycle={unit.lifecycle} size="sm" />
 
             {/* Branch potential */}
             <BranchPotentialDots score={unit.branchPotential ?? 0} />
@@ -200,6 +210,27 @@ export function UnitCard({
                 {ctx}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Lifecycle action buttons — draft & pending units */}
+        {variant !== "compact" && (isDraft || isPending || unit.lifecycle === "confirmed") && onLifecycleAction && (
+          <div className="pt-1">
+            <ApproveRejectButtons
+              lifecycle={unit.lifecycle as "draft" | "pending" | "confirmed"}
+              onApprove={() =>
+                onLifecycleAction(
+                  unit.id,
+                  "approve",
+                )
+              }
+              onReject={() =>
+                onLifecycleAction(unit.id, "reject")
+              }
+              onReset={() =>
+                onLifecycleAction(unit.id, "reset")
+              }
+            />
           </div>
         )}
 

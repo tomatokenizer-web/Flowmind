@@ -1,6 +1,6 @@
 # Story 2.5: AI Lifecycle System (Draft → Pending → Confirmed)
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -20,44 +20,44 @@ So that I always know what's AI-proposed versus what I've approved.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create AILifecycleBadge component (AC: #2)
-  - [ ] Create `src/components/units/AILifecycleBadge.tsx`
-  - [ ] Implement Small variant (inline pill): icon + label, 20px height
-  - [ ] Implement Medium variant (card badge): icon + label + description, 32px height
-  - [ ] Draft styling: dashed gray border, gray-100 bg, gray-500 text
-  - [ ] Pending styling: solid yellow border, yellow-50 bg, yellow-700 text
-  - [ ] Confirmed styling: solid green border, green-50 bg, green-700 text
-- [ ] Task 2: Implement lifecycle state restrictions (AC: #1)
-  - [ ] Add service-layer validation: draft Units cannot be added to Assemblies
-  - [ ] Add service-layer validation: draft Units cannot create relations
-  - [ ] Add service-layer validation: draft Units cannot be used in Navigators
-  - [ ] Return clear error messages when restricted operations are attempted
-- [ ] Task 3: Create lifecycle transition actions (AC: #3, #4, #6)
-  - [ ] Add `unit.transitionLifecycle` tRPC procedure accepting `{ id, targetState }`
-  - [ ] Validate transitions: draft → pending, pending → confirmed, confirmed → draft (for reset)
-  - [ ] Implement optimistic UI for transitions
-  - [ ] Publish `unit.lifecycleChanged` event via event bus
-- [ ] Task 4: Add lifecycle control buttons to UnitCard (AC: #3, #4)
-  - [ ] Show "Review" button on draft Units
-  - [ ] Show "Confirm" button on pending Units
-  - [ ] Show "Reset to Draft" option on confirmed Units (in overflow menu)
-  - [ ] Buttons use appropriate colors matching the target state
-- [ ] Task 5: Implement keyboard shortcuts (AC: #5)
-  - [ ] Register D key: set selected Unit to Draft
-  - [ ] Register P key: set selected Unit to Pending
-  - [ ] Register C key: set selected Unit to Confirmed
-  - [ ] Only active when a Unit is selected (not when input is focused)
-- [ ] Task 6: Implement undo for lifecycle changes (AC: #7)
-  - [ ] Track last lifecycle change in undo stack (Zustand store)
-  - [ ] Cmd+Z reverts the most recent lifecycle transition
-  - [ ] Show toast: "Lifecycle change undone: [Unit title] → [previous state]"
-- [ ] Task 7: Write tests
-  - [ ] Test badge renders correctly for each lifecycle state and size
-  - [ ] Test draft restrictions (cannot add to assembly, create relations)
-  - [ ] Test transition flow: draft → pending → confirmed
-  - [ ] Test keyboard shortcuts D, P, C
-  - [ ] Test undo reverts lifecycle change
-  - [ ] Test optimistic UI updates
+- [x] Task 1: Create AILifecycleBadge component (AC: #2)
+  - [x] Create `src/components/units/AILifecycleBadge.tsx`
+  - [x] Implement Small variant (inline pill): icon + label, 20px height
+  - [x] Implement Medium variant (card badge): icon + label + description, 32px height
+  - [x] Draft styling: dashed gray border, gray-100 bg, gray-500 text
+  - [x] Pending styling: solid yellow border, yellow-50 bg, yellow-700 text
+  - [x] Confirmed styling: solid green border, green-50 bg, green-700 text
+- [x] Task 2: Implement lifecycle state restrictions (AC: #1)
+  - [x] Add service-layer validation: draft Units cannot be added to Assemblies
+  - [x] Add service-layer validation: draft Units cannot create relations
+  - [x] Add service-layer validation: draft Units cannot be used in Navigators
+  - [x] Return clear error messages when restricted operations are attempted
+- [x] Task 3: Create lifecycle transition actions (AC: #3, #4, #6)
+  - [x] Add `unit.transitionLifecycle` tRPC procedure accepting `{ id, targetState }`
+  - [x] Validate transitions: draft → pending, pending → confirmed, confirmed → draft (for reset)
+  - [x] Implement optimistic UI for transitions
+  - [x] Publish `unit.lifecycleChanged` event via event bus
+- [x] Task 4: Add lifecycle control buttons to UnitCard (AC: #3, #4)
+  - [x] Show "Review" button on draft Units
+  - [x] Show "Confirm" button on pending Units
+  - [x] Show "Reset to Draft" option on confirmed Units (in overflow menu)
+  - [x] Buttons use appropriate colors matching the target state
+- [x] Task 5: Implement keyboard shortcuts (AC: #5)
+  - [x] Register D key: set selected Unit to Draft
+  - [x] Register P key: set selected Unit to Pending
+  - [x] Register C key: set selected Unit to Confirmed
+  - [x] Only active when a Unit is selected (not when input is focused)
+- [x] Task 6: Implement undo for lifecycle changes (AC: #7)
+  - [x] Track last lifecycle change in undo stack (Zustand store)
+  - [x] Cmd+Z reverts the most recent lifecycle transition
+  - [x] Show toast: "Lifecycle change undone: [Unit title] → [previous state]"
+- [x] Task 7: Write tests
+  - [x] Test badge renders correctly for each lifecycle state and size
+  - [x] Test draft restrictions (cannot add to assembly, create relations)
+  - [x] Test transition flow: draft → pending → confirmed
+  - [x] Test keyboard shortcuts D, P, C
+  - [x] Test undo reverts lifecycle change
+  - [x] Test optimistic UI updates
 
 ## Dev Notes
 

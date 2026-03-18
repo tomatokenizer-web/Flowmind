@@ -2,7 +2,12 @@ import type { Unit } from "@prisma/client";
 
 // ─── Event Types ───────────────────────────────────────────────────
 
-export type UnitEventType = "unit.created" | "unit.updated" | "unit.archived" | "unit.deleted";
+export type UnitEventType =
+  | "unit.created"
+  | "unit.updated"
+  | "unit.archived"
+  | "unit.deleted"
+  | "unit.lifecycleChanged";
 
 export interface UnitEvent {
   type: UnitEventType;

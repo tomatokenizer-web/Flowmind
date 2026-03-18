@@ -144,6 +144,42 @@ export const unitRouter = createTRPCRouter({
       return unit;
     }),
 
+  lifecycleTransition: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        targetState: lifecycleEnum,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const service = createUnitService(ctx.db);
+      const result = await service.transitionLifecycle(
+        input.id,
+        input.targetState,
+        ctx.session.user.id!,
+      );
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+      return result;
+    }),
+
+  lifecycleBulkTransition: protectedProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string().uuid()).min(1).max(50),
+        targetState: lifecycleEnum,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const service = createUnitService(ctx.db);
+      return service.bulkTransitionLifecycle(
+        input.ids,
+        input.targetState,
+        ctx.session.user.id!,
+      );
+    }),
+
   archive: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

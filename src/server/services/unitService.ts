@@ -60,6 +60,13 @@ export interface ListUnitsInput {
   sortOrder?: "asc" | "desc";
 }
 
+// Valid lifecycle transitions
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  draft: ["pending", "discarded"],
+  pending: ["confirmed", "draft"],
+  confirmed: ["draft"],
+};
+
 export function createUnitService(db: PrismaClient) {
   const repo = createUnitRepository(db);
 
@@ -185,6 +192,60 @@ export function createUnitService(db: PrismaClient) {
       });
 
       return unit;
+    },
+
+    async transitionLifecycle(
+      id: string,
+      targetState: string,
+      userId: string,
+    ) {
+      const existing = await repo.findById(id);
+      if (!existing) return null;
+
+      const allowed = VALID_TRANSITIONS[existing.lifecycle];
+      if (!allowed || !allowed.includes(targetState)) {
+        throw new Error(
+          `Invalid lifecycle transition: ${existing.lifecycle} → ${targetState}`,
+        );
+      }
+
+      const unit = await repo.update(id, { lifecycle: targetState as Prisma.UnitUpdateInput["lifecycle"] });
+
+      await eventBus.emit({
+        type: "unit.lifecycleChanged",
+        payload: {
+          unitId: id,
+          userId,
+          unit,
+          changes: { lifecycle: targetState as unknown as undefined },
+        },
+        timestamp: new Date(),
+      });
+
+      return { unit, previousLifecycle: existing.lifecycle };
+    },
+
+    async bulkTransitionLifecycle(
+      ids: string[],
+      targetState: string,
+      userId: string,
+    ) {
+      const results: Array<{ id: string; success: boolean; error?: string }> = [];
+
+      for (const id of ids) {
+        try {
+          await this.transitionLifecycle(id, targetState, userId);
+          results.push({ id, success: true });
+        } catch (err) {
+          results.push({
+            id,
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      return results;
     },
 
     async archive(id: string, userId: string) {
