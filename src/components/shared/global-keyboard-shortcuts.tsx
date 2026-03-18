@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useKeyboardShortcuts } from "~/hooks/use-keyboard-shortcuts";
 import { useLayoutStore } from "~/stores/layout-store";
+import { useCaptureStore } from "~/stores/capture-store";
 import { announceToScreenReader } from "~/lib/accessibility";
 import { KeyboardShortcutsHelp } from "./keyboard-shortcuts-help";
 
@@ -13,6 +14,9 @@ import { KeyboardShortcutsHelp } from "./keyboard-shortcuts-help";
 export function GlobalKeyboardShortcuts() {
   const [helpOpen, setHelpOpen] = React.useState(false);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
+  const captureToggle = useCaptureStore((s) => s.toggle);
+  const captureToggleMode = useCaptureStore((s) => s.toggleMode);
+  const captureIsOpen = useCaptureStore((s) => s.isOpen);
 
   const shortcuts = React.useMemo(
     () => [
@@ -34,8 +38,30 @@ export function GlobalKeyboardShortcuts() {
         group: "General",
         global: true,
         action: () => {
-          announceToScreenReader("Capture mode activated");
-          // Placeholder — will be wired to capture modal in a future story
+          captureToggle();
+          announceToScreenReader(
+            captureIsOpen ? "Capture mode closed" : "Capture mode activated",
+          );
+        },
+      },
+      {
+        id: "capture-organize-toggle",
+        label: "Toggle Organize Mode",
+        keys: "mod+shift+n",
+        group: "General",
+        global: true,
+        action: () => {
+          if (!captureIsOpen) {
+            useCaptureStore.getState().open();
+            useCaptureStore.getState().setMode("organize");
+            announceToScreenReader("Organize mode activated");
+          } else {
+            captureToggleMode();
+            const newMode = useCaptureStore.getState().mode;
+            announceToScreenReader(
+              `Switched to ${newMode === "capture" ? "Capture" : "Organize"} mode`,
+            );
+          }
         },
       },
       {
@@ -100,7 +126,7 @@ export function GlobalKeyboardShortcuts() {
         },
       },
     ],
-    [setViewMode],
+    [setViewMode, captureToggle, captureToggleMode, captureIsOpen],
   );
 
   useKeyboardShortcuts(shortcuts);
