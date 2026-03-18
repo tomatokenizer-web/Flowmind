@@ -293,9 +293,9 @@ model UnitPerspective {
   id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   unitId     String     @map("unit_id") @db.Uuid
   contextId  String     @map("context_id") @db.Uuid
-  type       UnitType
+  type       UnitType?
   stance     Stance     @default(neutral)
-  importance Float      @default(0)
+  importance Float      @default(0.5)
   note       String?
   canvasX    Float?     @map("canvas_x")
   canvasY    Float?     @map("canvas_y")

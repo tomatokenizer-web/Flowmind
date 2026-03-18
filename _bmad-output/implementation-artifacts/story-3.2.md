@@ -1,6 +1,6 @@
 # Story 3.2: Perspective Layer — Per-Context Unit Views
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
