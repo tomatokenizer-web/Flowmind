@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChevronRight, Hash, Pencil, Trash2, Plus, Move } from "lucide-react";
+import { ChevronRight, Hash, Pencil, Trash2, Plus, Move, Scissors, Merge } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "~/lib/utils";
@@ -27,6 +27,8 @@ interface ContextTreeItemProps {
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onAddSubContext: (parentId: string) => void;
+  onSplit?: (id: string) => void;
+  onMerge?: (id: string) => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -41,6 +43,8 @@ export function ContextTreeItem({
   onRename,
   onDelete,
   onAddSubContext,
+  onSplit,
+  onMerge,
 }: ContextTreeItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(node.name);
@@ -254,6 +258,18 @@ export function ContextTreeItem({
           <Move className="mr-2 h-4 w-4" />
           Move
         </ContextMenuItem>
+        {onSplit && (
+          <ContextMenuItem onSelect={() => onSplit(node.id)}>
+            <Scissors className="mr-2 h-4 w-4" />
+            Split Context
+          </ContextMenuItem>
+        )}
+        {onMerge && (
+          <ContextMenuItem onSelect={() => onMerge(node.id)}>
+            <Merge className="mr-2 h-4 w-4" />
+            Merge With...
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           onSelect={() => onDelete(node.id)}

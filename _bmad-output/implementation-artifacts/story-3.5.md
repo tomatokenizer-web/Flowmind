@@ -1,6 +1,6 @@
 # Story 3.5: Context Hierarchy — Split, Merge & Cross-Reference
 
-Status: ready-for-dev
+Status: completed
 
 ## Story
 
@@ -24,7 +24,7 @@ So that my organizational structure can evolve as my thinking deepens.
   - [ ] Bidirectional: create two records (A→B and B→A) or query both directions
   - [ ] Run migration: `npx prisma migrate dev --name add-context-reference`
 
-- [ ] Task 2: Create context operations service → `src/server/services/contextOperationsService.ts` (AC: #1, #2, #3, #4)
+- [x] Task 2: Create context operations service → `src/server/services/contextOperationsService.ts` (AC: #1, #2, #3, #4)
   - [ ] `splitContext({ contextId, subContextA: { name, unitIds[] }, subContextB: { name, unitIds[] } })`:
     - Create two new sub-contexts with the original as parent
     - Move assigned units to respective sub-contexts (create `unit_context` entries)
@@ -43,7 +43,7 @@ So that my organizational structure can evolve as my thinking deepens.
   - [ ] `removeCrossReference(sourceContextId, targetContextId)`:
     - Delete both direction records
 
-- [ ] Task 3: Create tRPC procedures (AC: #1, #3, #4)
+- [x] Task 3: Create tRPC procedures (AC: #1, #3, #4)
   - [ ] `context.split` — input: `{ contextId, subContextA: { name, unitIds }, subContextB: { name, unitIds } }`
   - [ ] `context.merge` — input: `{ contextIdA, contextIdB, mergedName, conflictResolutions? }`
   - [ ] `context.getMergeConflicts` — input: `{ contextIdA, contextIdB }`, returns perspective conflicts for user review
@@ -51,14 +51,14 @@ So that my organizational structure can evolve as my thinking deepens.
   - [ ] `context.removeCrossReference` — input: `{ sourceContextId, targetContextId }`
   - [ ] `context.getCrossReferences` — input: `{ contextId }`, returns linked contexts
 
-- [ ] Task 4: Create SplitContextDialog → `src/components/context/SplitContextDialog.tsx` (AC: #1, #2)
+- [x] Task 4: Create SplitContextDialog → `src/components/context/SplitContextDialog.tsx` (AC: #1, #2)
   - [ ] Radix UI Dialog with two name inputs for sub-contexts
   - [ ] Unit assignment UI: list of units in the context with checkboxes for "Sub-Context A" / "Sub-Context B" / "Keep in Parent"
   - [ ] Default: all units unassigned (remain in parent)
   - [ ] Validate: at least one unit assigned to at least one sub-context
   - [ ] Submit calls `trpc.context.split`
 
-- [ ] Task 5: Create MergeContextDialog → `src/components/context/MergeContextDialog.tsx` (AC: #3)
+- [x] Task 5: Create MergeContextDialog → `src/components/context/MergeContextDialog.tsx` (AC: #3)
   - [ ] Radix UI Dialog showing both contexts side-by-side
   - [ ] Input for merged context name (default: "Context A + Context B")
   - [ ] If perspective conflicts exist, show a conflict resolution UI:

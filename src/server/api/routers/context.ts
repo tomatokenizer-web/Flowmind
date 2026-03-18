@@ -32,17 +32,31 @@ const unitContextSchema = z.object({
 });
 
 const splitContextSchema = z.object({
-  id: z.string().uuid(),
-  newNames: z.tuple([
-    z.string().min(1).max(100),
-    z.string().min(1).max(100),
-  ]),
+  contextId: z.string().uuid(),
+  subContextA: z.object({
+    name: z.string().min(1).max(100),
+    unitIds: z.array(z.string().uuid()),
+  }),
+  subContextB: z.object({
+    name: z.string().min(1).max(100),
+    unitIds: z.array(z.string().uuid()),
+  }),
   projectId: z.string().uuid(),
 });
 
 const mergeContextSchema = z.object({
-  sourceId: z.string().uuid(),
-  targetId: z.string().uuid(),
+  contextIdA: z.string().uuid(),
+  contextIdB: z.string().uuid(),
+  mergedName: z.string().min(1).max(100),
+  conflictResolutions: z.array(z.object({
+    unitId: z.string().uuid(),
+    keepFrom: z.enum(["A", "B"]),
+  })).optional(),
+});
+
+const mergeConflictsSchema = z.object({
+  contextIdA: z.string().uuid(),
+  contextIdB: z.string().uuid(),
 });
 
 // ─── Router ────────────────────────────────────────────────────────
@@ -98,17 +112,31 @@ export const contextRouter = createTRPCRouter({
       return service.removeUnit(input.unitId, input.contextId);
     }),
 
+  getUnitsForContext: protectedProcedure
+    .input(contextIdSchema)
+    .query(async ({ ctx, input }) => {
+      const service = createContextService(ctx.db);
+      return service.getUnitsForContext(input.id);
+    }),
+
+  getMergeConflicts: protectedProcedure
+    .input(mergeConflictsSchema)
+    .query(async ({ ctx, input }) => {
+      const service = createContextService(ctx.db);
+      return service.getMergeConflicts(input.contextIdA, input.contextIdB);
+    }),
+
   split: protectedProcedure
     .input(splitContextSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createContextService(ctx.db);
-      return service.splitContext(input.id, input.newNames, input.projectId);
+      return service.splitContext(input);
     }),
 
   merge: protectedProcedure
     .input(mergeContextSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createContextService(ctx.db);
-      return service.mergeContexts(input.sourceId, input.targetId);
+      return service.mergeContexts(input);
     }),
 });

@@ -13,6 +13,8 @@ import { useDragDrop } from "~/hooks/use-drag-drop";
 import { useContextTree } from "~/hooks/use-context-tree";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { ContextTreeItem } from "./context-tree-item";
+import { ContextSplitDialog } from "./context-split-dialog";
+import { ContextMergeDialog } from "./context-merge-dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 
@@ -48,6 +50,34 @@ export function ContextTree({
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const newInputRef = useRef<HTMLInputElement>(null);
+
+  // Split/merge dialog state
+  const [splitTargetId, setSplitTargetId] = useState<string | null>(null);
+  const [mergeSourceId, setMergeSourceId] = useState<string | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+
+  const splitTarget = splitTargetId ? flatNodes.find((n) => n.id === splitTargetId) : null;
+  const mergeSource = mergeSourceId ? flatNodes.find((n) => n.id === mergeSourceId) : null;
+  const mergeTarget = mergeTargetId ? flatNodes.find((n) => n.id === mergeTargetId) : null;
+
+  const handleSplit = useCallback((id: string) => {
+    setSplitTargetId(id);
+  }, []);
+
+  const handleMergeStart = useCallback((id: string) => {
+    // First click sets source; if source already set and different, that's the target
+    if (mergeSourceId && mergeSourceId !== id) {
+      setMergeTargetId(id);
+    } else {
+      setMergeSourceId(id);
+      setMergeTargetId(null);
+    }
+  }, [mergeSourceId]);
+
+  const handleCloseMerge = useCallback(() => {
+    setMergeSourceId(null);
+    setMergeTargetId(null);
+  }, []);
 
   // DnD setup
   const { dndContextProps, itemIds } = useDragDrop({
@@ -145,6 +175,8 @@ export function ContextTree({
             onRename={renameContext}
             onDelete={deleteContext}
             onAddSubContext={handleAddSubContext}
+            onSplit={handleSplit}
+            onMerge={handleMergeStart}
           />
         ))}
       </div>
@@ -239,6 +271,8 @@ export function ContextTree({
                   onRename={renameContext}
                   onDelete={deleteContext}
                   onAddSubContext={handleAddSubContext}
+                  onSplit={handleSplit}
+                  onMerge={handleMergeStart}
                 />
               ))}
             </SortableContext>
@@ -256,6 +290,47 @@ export function ContextTree({
           )}
         </div>
       </ScrollArea>
+
+      {/* Merge selection banner */}
+      {mergeSourceId && !mergeTargetId && (
+        <div className="border-t border-border bg-bg-surface px-space-3 py-space-2">
+          <p className="text-xs text-text-secondary">
+            Right-click another context to merge with &ldquo;{mergeSource?.name}&rdquo;
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCloseMerge}
+            className="mt-1 text-xs"
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {/* Split Dialog */}
+      {splitTarget && projectId && (
+        <ContextSplitDialog
+          open={!!splitTargetId}
+          onOpenChange={(v) => { if (!v) setSplitTargetId(null); }}
+          contextId={splitTarget.id}
+          contextName={splitTarget.name}
+          projectId={projectId}
+        />
+      )}
+
+      {/* Merge Dialog */}
+      {mergeSource && mergeTarget && projectId && (
+        <ContextMergeDialog
+          open={!!mergeTargetId}
+          onOpenChange={(v) => { if (!v) handleCloseMerge(); }}
+          contextIdA={mergeSource.id}
+          contextNameA={mergeSource.name}
+          contextIdB={mergeTarget.id}
+          contextNameB={mergeTarget.name}
+          projectId={projectId}
+        />
+      )}
     </div>
   );
 }

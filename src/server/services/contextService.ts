@@ -89,103 +89,231 @@ export function createContextService(db: PrismaClient) {
       return repo.removeUnit(unitId, contextId);
     },
 
-    async splitContext(
-      id: string,
-      newNames: [string, string],
-      projectId: string,
-    ) {
-      const existing = await repo.findById(id);
+    async getUnitsForContext(contextId: string) {
+      return repo.getUnitsForContext(contextId);
+    },
+
+    async getMergeConflicts(contextIdA: string, contextIdB: string) {
+      // Find units that exist in both contexts
+      const [unitsA, unitsB] = await Promise.all([
+        db.unitContext.findMany({ where: { contextId: contextIdA }, select: { unitId: true } }),
+        db.unitContext.findMany({ where: { contextId: contextIdB }, select: { unitId: true } }),
+      ]);
+      const unitIdsA = new Set(unitsA.map((u) => u.unitId));
+      const sharedUnitIds = unitsB.filter((u) => unitIdsA.has(u.unitId)).map((u) => u.unitId);
+
+      if (sharedUnitIds.length === 0) return [];
+
+      // Check for perspective conflicts on shared units
+      const [perspA, perspB] = await Promise.all([
+        db.unitPerspective.findMany({
+          where: { contextId: contextIdA, unitId: { in: sharedUnitIds } },
+          include: { unit: { select: { id: true, content: true, unitType: true } } },
+        }),
+        db.unitPerspective.findMany({
+          where: { contextId: contextIdB, unitId: { in: sharedUnitIds } },
+          include: { unit: { select: { id: true, content: true, unitType: true } } },
+        }),
+      ]);
+
+      const perspMapA = new Map(perspA.map((p) => [p.unitId, p]));
+      const perspMapB = new Map(perspB.map((p) => [p.unitId, p]));
+
+      const conflicts: Array<{
+        unitId: string;
+        unitContent: string;
+        unitType: string;
+        perspectiveA: { type: string | null; stance: string; importance: number } | null;
+        perspectiveB: { type: string | null; stance: string; importance: number } | null;
+      }> = [];
+
+      for (const unitId of sharedUnitIds) {
+        const pA = perspMapA.get(unitId);
+        const pB = perspMapB.get(unitId);
+        if (!pA && !pB) continue;
+
+        const hasDiff =
+          pA?.type !== pB?.type ||
+          pA?.stance !== pB?.stance ||
+          pA?.importance !== pB?.importance;
+
+        if (hasDiff) {
+          const unit = pA?.unit ?? pB?.unit;
+          conflicts.push({
+            unitId,
+            unitContent: unit?.content ?? "",
+            unitType: unit?.unitType ?? "claim",
+            perspectiveA: pA ? { type: pA.type, stance: pA.stance, importance: pA.importance } : null,
+            perspectiveB: pB ? { type: pB.type, stance: pB.stance, importance: pB.importance } : null,
+          });
+        }
+      }
+
+      return conflicts;
+    },
+
+    async splitContext(input: {
+      contextId: string;
+      subContextA: { name: string; unitIds: string[] };
+      subContextB: { name: string; unitIds: string[] };
+      projectId: string;
+    }) {
+      const existing = await repo.findById(input.contextId);
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
       }
 
-      const parentId = existing.parentId;
-      await validateUniqueName(newNames[0], projectId, parentId, id);
-      await validateUniqueName(newNames[1], projectId, parentId);
+      // Sub-contexts go under original (original becomes parent per AC#1)
+      await validateUniqueName(input.subContextA.name, input.projectId, input.contextId);
+      await validateUniqueName(input.subContextB.name, input.projectId, input.contextId);
 
       return db.$transaction(async (tx) => {
         const txRepo = createContextRepository(tx as unknown as PrismaClient);
 
         const contextA = await txRepo.create({
-          name: newNames[0],
-          description: existing.description,
-          project: { connect: { id: projectId } },
-          ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
+          name: input.subContextA.name,
+          project: { connect: { id: input.projectId } },
+          parent: { connect: { id: input.contextId } },
         });
 
         const contextB = await txRepo.create({
-          name: newNames[1],
-          project: { connect: { id: projectId } },
-          ...(parentId ? { parent: { connect: { id: parentId } } } : {}),
+          name: input.subContextB.name,
+          project: { connect: { id: input.projectId } },
+          parent: { connect: { id: input.contextId } },
         });
 
-        // Move children to contextA by default
-        await tx.context.updateMany({
-          where: { parentId: id },
-          data: { parentId: contextA.id },
-        });
+        // Assign units to sub-context A
+        for (const unitId of input.subContextA.unitIds) {
+          await tx.unitContext.upsert({
+            where: { unitId_contextId: { unitId, contextId: contextA.id } },
+            create: { unitId, contextId: contextA.id },
+            update: {},
+          });
+        }
 
-        // Move unit memberships to contextA by default
-        await tx.unitContext.updateMany({
-          where: { contextId: id },
-          data: { contextId: contextA.id },
-        });
+        // Assign units to sub-context B
+        for (const unitId of input.subContextB.unitIds) {
+          await tx.unitContext.upsert({
+            where: { unitId_contextId: { unitId, contextId: contextB.id } },
+            create: { unitId, contextId: contextB.id },
+            update: {},
+          });
+        }
 
-        // Delete original
-        await tx.context.delete({ where: { id } });
+        // Units not assigned to either remain in parent (AC#2) — no action needed
 
         return { contextA, contextB };
       });
     },
 
-    async mergeContexts(
-      sourceId: string,
-      targetId: string,
-    ) {
-      const [source, target] = await Promise.all([
-        repo.findById(sourceId),
-        repo.findById(targetId),
+    async mergeContexts(input: {
+      contextIdA: string;
+      contextIdB: string;
+      mergedName: string;
+      conflictResolutions?: Array<{ unitId: string; keepFrom: "A" | "B" }>;
+    }) {
+      const [ctxA, ctxB] = await Promise.all([
+        repo.findById(input.contextIdA),
+        repo.findById(input.contextIdB),
       ]);
 
-      if (!source) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Source context not found" });
-      }
-      if (!target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Target context not found" });
-      }
+      if (!ctxA) throw new TRPCError({ code: "NOT_FOUND", message: "Context A not found" });
+      if (!ctxB) throw new TRPCError({ code: "NOT_FOUND", message: "Context B not found" });
 
       return db.$transaction(async (tx) => {
-        // Move children of source to target
-        await tx.context.updateMany({
-          where: { parentId: sourceId },
-          data: { parentId: targetId },
+        const txRepo = createContextRepository(tx as unknown as PrismaClient);
+
+        // Create merged context
+        const merged = await txRepo.create({
+          name: input.mergedName,
+          project: { connect: { id: ctxA.projectId } },
+          ...(ctxA.parentId ? { parent: { connect: { id: ctxA.parentId } } } : {}),
         });
 
-        // Move unit memberships — skip duplicates by fetching existing
-        const sourceUnits = await tx.unitContext.findMany({
-          where: { contextId: sourceId },
-        });
-        const existingTargetUnits = await tx.unitContext.findMany({
-          where: { contextId: targetId },
-          select: { unitId: true },
-        });
-        const existingUnitIds = new Set(existingTargetUnits.map((u) => u.unitId));
+        // Gather all units from both contexts
+        const [unitsA, unitsB] = await Promise.all([
+          tx.unitContext.findMany({ where: { contextId: input.contextIdA } }),
+          tx.unitContext.findMany({ where: { contextId: input.contextIdB } }),
+        ]);
 
-        for (const su of sourceUnits) {
-          if (!existingUnitIds.has(su.unitId)) {
-            await tx.unitContext.update({
-              where: { id: su.id },
-              data: { contextId: targetId },
-            });
+        const addedUnits = new Set<string>();
+        for (const uc of [...unitsA, ...unitsB]) {
+          if (!addedUnits.has(uc.unitId)) {
+            addedUnits.add(uc.unitId);
+            await tx.unitContext.create({ data: { unitId: uc.unitId, contextId: merged.id } });
           }
         }
 
-        // Delete source context (cascade removes remaining unit_context rows)
-        await tx.context.delete({ where: { id: sourceId } });
+        // Copy perspectives, resolving conflicts
+        const resolutionMap = new Map(
+          (input.conflictResolutions ?? []).map((r) => [r.unitId, r.keepFrom]),
+        );
 
-        // Return updated target
-        const txRepo = createContextRepository(tx as unknown as PrismaClient);
-        return txRepo.findById(targetId);
+        const [perspA, perspB] = await Promise.all([
+          tx.unitPerspective.findMany({ where: { contextId: input.contextIdA } }),
+          tx.unitPerspective.findMany({ where: { contextId: input.contextIdB } }),
+        ]);
+
+        const perspMapB = new Map(perspB.map((p) => [p.unitId, p]));
+        const copiedUnits = new Set<string>();
+
+        // Process A perspectives
+        for (const p of perspA) {
+          const bConflict = perspMapB.get(p.unitId);
+          const keepFrom = resolutionMap.get(p.unitId);
+
+          if (bConflict && keepFrom === "B") continue; // skip A, will copy B
+
+          await tx.unitPerspective.create({
+            data: {
+              unitId: p.unitId,
+              contextId: merged.id,
+              type: p.type,
+              stance: p.stance,
+              importance: p.importance,
+              note: p.note,
+              canvasX: p.canvasX,
+              canvasY: p.canvasY,
+              canvasZoom: p.canvasZoom,
+            },
+          });
+          copiedUnits.add(p.unitId);
+        }
+
+        // Process B perspectives (only those not already copied)
+        for (const p of perspB) {
+          if (copiedUnits.has(p.unitId)) continue;
+
+          await tx.unitPerspective.create({
+            data: {
+              unitId: p.unitId,
+              contextId: merged.id,
+              type: p.type,
+              stance: p.stance,
+              importance: p.importance,
+              note: p.note,
+              canvasX: p.canvasX,
+              canvasY: p.canvasY,
+              canvasZoom: p.canvasZoom,
+            },
+          });
+        }
+
+        // Move children of both contexts to merged
+        await tx.context.updateMany({
+          where: { parentId: input.contextIdA },
+          data: { parentId: merged.id },
+        });
+        await tx.context.updateMany({
+          where: { parentId: input.contextIdB },
+          data: { parentId: merged.id },
+        });
+
+        // Delete originals
+        await tx.context.delete({ where: { id: input.contextIdA } });
+        await tx.context.delete({ where: { id: input.contextIdB } });
+
+        return txRepo.findById(merged.id);
       });
     },
   };
