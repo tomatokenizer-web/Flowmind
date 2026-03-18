@@ -108,6 +108,15 @@ const listUnitsSchema = z.object({
 // ─── Router ────────────────────────────────────────────────────────
 
 export const unitRouter = createTRPCRouter({
+  hasAny: protectedProcedure
+    .query(async ({ ctx }) => {
+      const unit = await ctx.db.unit.findFirst({
+        where: { userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      return { hasAny: !!unit };
+    }),
+
   create: protectedProcedure
     .input(createUnitSchema)
     .mutation(async ({ ctx, input }) => {
