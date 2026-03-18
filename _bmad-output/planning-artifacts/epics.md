@@ -1900,35 +1900,6 @@ So that I can stay focused or consciously expand the scope.
 **And** the Project Dashboard shows an aggregate drift indicator
 **And** the notification follows non-interrupting policy per NFR24
 
-### Story 8.9: Energy Level Capture & Metacognitive Feedback
-
-As a user,
-I want to tag my Thought Units with my current energy level (high/neutral/low) and receive AI-generated metacognitive insights based on accumulated patterns,
-So that I gain self-awareness about how my cognitive state affects my thinking quality.
-
-**Acceptance Criteria:**
-
-**Given** the user is creating or editing a Thought Unit
-**When** the EnergyLevelSelector is displayed (in Capture Mode toolbar and Unit Detail Panel metadata tab)
-**Then** the user can set energy_level to high, neutral, or low per PRD Appendix A-11
-**And** the default value for new Units is "neutral" (zero-friction — energy is only captured when the user actively changes it)
-**And** energy_level is stored as part of the Unit's user-defined metadata alongside domain, mood, color, icon, note, alias[]
-**And** the energy level is displayed as a 6px colored dot (green/gray/orange) on the UnitCard compact variant
-**And** the keyboard shortcut `Cmd+Shift+E` cycles through energy levels
-**And** when 30+ Units with non-neutral energy exist across 7+ days, the AI Metacognitive Insight service activates
-**And** the service correlates energy_level with unit_type, certainty, evidence_domain, and temporal patterns per PRD Appendix A-11
-**And** insights are surfaced as MetacognitiveInsightCards in the Context Dashboard ("Your Patterns" section) and as non-interrupting nudges in Capture Mode
-**And** example insight: "You tend to write uncertain observations when energy is low" per PRD
-**And** each insight card shows the contributing data ("Based on N Units over M days") and an "Explore Pattern" action that opens a filtered Search View
-**And** dismissed insights follow non-interrupting policy per NFR24 — the same pattern insight doesn't repeat once dismissed
-**And** in Graph View, nodes can optionally be tinted by energy level via a "Color by: Energy" toolbar option
-
-**Technical Notes:**
-- Energy level is a simple enum field on the Unit model — no schema migration complexity
-- Metacognitive analysis runs as a Trigger.dev background job, scheduled weekly or on-demand
-- Insight generation uses the LLM service with a structured prompt containing energy-tagged Unit statistics
-- Insights are stored as system-generated records (not Units) with dismissal tracking per user
-
 ### Story 8.10: Action Unit External Service Delegation & Result Record Flow
 
 As a user,
