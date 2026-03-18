@@ -12,6 +12,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Focus Indicators (WCAG 2.1 AA — AC #3) ── */
+
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Remove default outlines — focus-visible handles it */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Reduced Motion (WCAG 2.1 AA) ── */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -20,5 +34,6 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    transform: none !important;
   }
 }
