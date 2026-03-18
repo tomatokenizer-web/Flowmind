@@ -1,6 +1,6 @@
 # Story 2.8: Unit Detail Panel with Tabbed Layout
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -21,58 +21,58 @@ So that I have full control over every aspect of my thoughts in one place.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create UnitDetailPanel container (AC: #1, #6, #7)
-  - [ ] Create `src/components/panels/UnitDetailPanel.tsx`
-  - [ ] Implement 360px slide-in from right with 300ms ease animation
-  - [ ] Add close button (X icon) in top-right
-  - [ ] Handle Escape key to close
-  - [ ] Add backdrop overlay (semi-transparent) for tablet mode
-  - [ ] Manage open/close state via Zustand store
-- [ ] Task 2: Implement tab system (AC: #1)
-  - [ ] Create tab bar with 4 tabs: Content, Relations, Metadata, AI
-  - [ ] Use accessible tab pattern: `role="tablist"`, `role="tab"`, `role="tabpanel"`
-  - [ ] Keyboard navigation: arrow keys to switch tabs
-  - [ ] Persist active tab in panel state
-- [ ] Task 3: Implement Content tab (AC: #2)
-  - [ ] Initialize Tiptap 3.x editor with unit content
-  - [ ] Configure basic extensions: StarterKit (bold, italic, lists, headings)
-  - [ ] Auto-save on blur or after 1s debounce of inactivity
-  - [ ] Integrate UnitTypeSelector dropdown (from Story 2.2)
-  - [ ] Integrate lifecycle control buttons (Draft/Pending/Confirmed from Story 2.5)
-  - [ ] Show character count and word count
-- [ ] Task 4: Implement Metadata tab (AC: #3)
-  - [ ] Show creation date (absolute + relative)
-  - [ ] Show last modified date
-  - [ ] Show origin_type with human-readable label
-  - [ ] Show source_span details (if populated)
-  - [ ] Show version count with link to History tab (Story 2.7)
-  - [ ] Show lifecycle state badge
-  - [ ] Show ai_trust_level indicator
-  - [ ] Show any populated FR73 metadata fields
-- [ ] Task 5: Create Relations tab placeholder (AC: #4)
-  - [ ] Show empty state: "Relations will appear here when you connect this Unit to others"
-  - [ ] Include illustration or icon
-  - [ ] Add "Learn about Relations" link placeholder
-- [ ] Task 6: Create AI tab placeholder (AC: #5)
-  - [ ] Show empty state: "AI suggestions will appear here as you build your knowledge"
-  - [ ] Include illustration or icon
-  - [ ] Show branch potential placeholder (●●●○)
-- [ ] Task 7: Implement responsive behavior (AC: #8)
-  - [ ] At desktop (≥1024px): 360px slide-in panel alongside content
-  - [ ] At tablet (768px–1023px): full-screen overlay with backdrop
-  - [ ] At mobile (<768px): full-screen overlay
-  - [ ] Use CSS media queries or Tailwind responsive utilities
-- [ ] Task 8: Create Zustand store for panel state
-  - [ ] Create `src/stores/panelStore.ts`
-  - [ ] Track: `isOpen`, `selectedUnitId`, `activeTab`
-  - [ ] Actions: `openPanel(unitId)`, `closePanel()`, `setActiveTab(tab)`
-- [ ] Task 9: Write tests
-  - [ ] Test panel opens with slide-in animation
-  - [ ] Test all 4 tabs render correct content
-  - [ ] Test Tiptap editor loads and saves content
-  - [ ] Test Escape key and close button
-  - [ ] Test responsive behavior at different breakpoints
-  - [ ] Test tab keyboard navigation
+- [x] Task 1: Create UnitDetailPanel container (AC: #1, #6, #7)
+  - [x] Create `src/components/panels/UnitDetailPanel.tsx`
+  - [x] Implement 360px slide-in from right with 300ms ease animation
+  - [x] Add close button (X icon) in top-right
+  - [x] Handle Escape key to close
+  - [x] Add backdrop overlay (semi-transparent) for tablet mode
+  - [x] Manage open/close state via Zustand store
+- [x] Task 2: Implement tab system (AC: #1)
+  - [x] Create tab bar with 4 tabs: Content, Relations, Metadata, AI
+  - [x] Use accessible tab pattern: `role="tablist"`, `role="tab"`, `role="tabpanel"`
+  - [x] Keyboard navigation: arrow keys to switch tabs
+  - [x] Persist active tab in panel state
+- [x] Task 3: Implement Content tab (AC: #2)
+  - [x] Initialize Tiptap 3.x editor with unit content
+  - [x] Configure basic extensions: StarterKit (bold, italic, lists, headings)
+  - [x] Auto-save on blur or after 1s debounce of inactivity
+  - [x] Integrate UnitTypeSelector dropdown (from Story 2.2)
+  - [x] Integrate lifecycle control buttons (Draft/Pending/Confirmed from Story 2.5)
+  - [x] Show character count and word count
+- [x] Task 4: Implement Metadata tab (AC: #3)
+  - [x] Show creation date (absolute + relative)
+  - [x] Show last modified date
+  - [x] Show origin_type with human-readable label
+  - [x] Show source_span details (if populated)
+  - [x] Show version count with link to History tab (Story 2.7)
+  - [x] Show lifecycle state badge
+  - [x] Show ai_trust_level indicator
+  - [x] Show any populated FR73 metadata fields
+- [x] Task 5: Create Relations tab placeholder (AC: #4)
+  - [x] Show empty state: "Relations will appear here when you connect this Unit to others"
+  - [x] Include illustration or icon
+  - [x] Add "Learn about Relations" link placeholder
+- [x] Task 6: Create AI tab placeholder (AC: #5)
+  - [x] Show empty state: "AI suggestions will appear here as you build your knowledge"
+  - [x] Include illustration or icon
+  - [x] Show branch potential placeholder (●●●○)
+- [x] Task 7: Implement responsive behavior (AC: #8)
+  - [x] At desktop (≥1024px): 360px slide-in panel alongside content
+  - [x] At tablet (768px–1023px): full-screen overlay with backdrop
+  - [x] At mobile (<768px): full-screen overlay
+  - [x] Use CSS media queries or Tailwind responsive utilities
+- [x] Task 8: Create Zustand store for panel state
+  - [x] Create `src/stores/panelStore.ts`
+  - [x] Track: `isOpen`, `selectedUnitId`, `activeTab`
+  - [x] Actions: `openPanel(unitId)`, `closePanel()`, `setActiveTab(tab)`
+- [x] Task 9: Write tests
+  - [x] Test panel opens with slide-in animation
+  - [x] Test all 4 tabs render correct content
+  - [x] Test Tiptap editor loads and saves content
+  - [x] Test Escape key and close button
+  - [x] Test responsive behavior at different breakpoints
+  - [x] Test tab keyboard navigation
 
 ## Dev Notes
 

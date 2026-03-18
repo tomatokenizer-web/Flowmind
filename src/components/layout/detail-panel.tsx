@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { X } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
-import { Button } from "~/components/ui/button";
+import { usePanelStore } from "~/stores/panel-store";
+import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
+import type { MetadataValues } from "~/components/unit/metadata-editor";
 
 const PANEL_WIDTH = 360;
 
@@ -17,14 +18,40 @@ interface DetailPanelProps {
 export function DetailPanel({ className, fullScreenOverlay = false }: DetailPanelProps) {
   const detailPanelOpen = useLayoutStore((s) => s.detailPanelOpen);
   const setDetailPanelOpen = useLayoutStore((s) => s.setDetailPanelOpen);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
+  const closePanel = usePanelStore((s) => s.closePanel);
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
+
+  // TODO: Replace with tRPC query — `api.unit.getById.useQuery({ id: selectedUnitId })`
+  // For now, unit data is null (the panel shows empty state until wired to real data)
+  const unit: UnitDetailData | null = null;
+  const isLoading = false;
+
+  const handleClose = React.useCallback(() => {
+    setDetailPanelOpen(false);
+    closePanel();
+  }, [setDetailPanelOpen, closePanel]);
+
+  const handleContentChange = React.useCallback((content: string) => {
+    // TODO: Wire to tRPC mutation — api.unit.update.mutate({ id, content })
+  }, []);
+
+  const handleMetadataChange = React.useCallback(
+    (field: keyof MetadataValues, value: string | null) => {
+      // TODO: Wire to tRPC mutation — api.unit.update.mutate({ id, [field]: value })
+    },
+    [],
+  );
+
+  const handleLifecycleChange = React.useCallback((lifecycle: string) => {
+    // TODO: Wire to tRPC mutation — api.unit.lifecycleTransition.mutate({ id, targetState })
+  }, []);
 
   // Track element that opened the panel for focus return
   React.useEffect(() => {
     if (detailPanelOpen) {
       returnFocusRef.current = document.activeElement as HTMLElement;
-      // Focus the panel on open
       requestAnimationFrame(() => {
         panelRef.current?.focus();
       });
@@ -40,13 +67,13 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setDetailPanelOpen(false);
+        handleClose();
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [detailPanelOpen, setDetailPanelOpen]);
+  }, [detailPanelOpen, handleClose]);
 
   // Focus trap for overlay mode
   React.useEffect(() => {
@@ -84,7 +111,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
         {detailPanelOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/20 transition-opacity duration-slow ease-default motion-reduce:transition-none"
-            onClick={() => setDetailPanelOpen(false)}
+            onClick={handleClose}
             aria-hidden="true"
           />
         )}
@@ -103,7 +130,14 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
             className,
           )}
         >
-          <PanelContent onClose={() => setDetailPanelOpen(false)} />
+          <UnitDetailPanel
+            unit={unit}
+            isLoading={isLoading}
+            onClose={handleClose}
+            onContentChange={handleContentChange}
+            onMetadataChange={handleMetadataChange}
+            onLifecycleChange={handleLifecycleChange}
+          />
         </aside>
       </>
     );
@@ -126,36 +160,15 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
       style={{ width: detailPanelOpen ? PANEL_WIDTH : 0 }}
     >
       <div className="h-full" style={{ width: PANEL_WIDTH }}>
-        <PanelContent onClose={() => setDetailPanelOpen(false)} />
+        <UnitDetailPanel
+          unit={unit}
+          isLoading={isLoading}
+          onClose={handleClose}
+          onContentChange={handleContentChange}
+          onMetadataChange={handleMetadataChange}
+          onLifecycleChange={handleLifecycleChange}
+        />
       </div>
     </aside>
-  );
-}
-
-function PanelContent({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="flex h-full flex-col">
-      {/* Panel header */}
-      <div className="flex h-12 items-center justify-between border-b border-border px-space-4">
-        <h2 className="text-sm font-medium text-text-primary">Details</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Close detail panel"
-          className="h-8 w-8"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Panel body placeholder */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-space-4 p-space-6 text-center">
-        <div className="h-12 w-12 rounded-xl bg-bg-secondary" />
-        <p className="text-sm text-text-secondary">
-          Select a thought unit to see its details
-        </p>
-      </div>
-    </div>
   );
 }
