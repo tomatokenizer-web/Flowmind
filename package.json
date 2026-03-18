@@ -94,6 +94,7 @@
     "@typescript-eslint/eslint-plugin": "^8.26.0",
     "@typescript-eslint/parser": "^8.26.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
     "eslint": "^9.22.0",
     "eslint-config-next": "^15.2.3",
     "jsdom": "^29.0.0",

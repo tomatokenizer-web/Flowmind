@@ -1,0 +1,204 @@
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { createUnitRepository } from "@/server/repositories/unitRepository";
+import { eventBus } from "@/server/events/eventBus";
+
+export interface CreateUnitInput {
+  content: string;
+  projectId: string;
+  unitType?: Prisma.UnitCreateInput["unitType"];
+  originType?: Prisma.UnitCreateInput["originType"];
+  lifecycle?: Prisma.UnitCreateInput["lifecycle"];
+  quality?: Prisma.UnitCreateInput["quality"];
+  certainty?: Prisma.UnitCreateInput["certainty"];
+  completeness?: Prisma.UnitCreateInput["completeness"];
+  abstractionLevel?: Prisma.UnitCreateInput["abstractionLevel"];
+  stance?: Prisma.UnitCreateInput["stance"];
+  evidenceDomain?: Prisma.UnitCreateInput["evidenceDomain"];
+  scope?: Prisma.UnitCreateInput["scope"];
+  aiTrustLevel?: Prisma.UnitCreateInput["aiTrustLevel"];
+  energyLevel?: Prisma.UnitCreateInput["energyLevel"];
+  sourceUrl?: string;
+  sourceTitle?: string;
+  author?: string;
+  isQuote?: boolean;
+  sourceSpan?: Prisma.InputJsonValue;
+  parentInputId?: string;
+  conversationId?: string;
+  meta?: Prisma.InputJsonValue;
+}
+
+export interface UpdateUnitInput {
+  content?: string;
+  unitType?: Prisma.UnitUpdateInput["unitType"];
+  lifecycle?: Prisma.UnitUpdateInput["lifecycle"];
+  quality?: Prisma.UnitUpdateInput["quality"];
+  certainty?: Prisma.UnitUpdateInput["certainty"];
+  completeness?: Prisma.UnitUpdateInput["completeness"];
+  abstractionLevel?: Prisma.UnitUpdateInput["abstractionLevel"];
+  stance?: Prisma.UnitUpdateInput["stance"];
+  evidenceDomain?: Prisma.UnitUpdateInput["evidenceDomain"];
+  scope?: Prisma.UnitUpdateInput["scope"];
+  aiTrustLevel?: Prisma.UnitUpdateInput["aiTrustLevel"];
+  energyLevel?: Prisma.UnitUpdateInput["energyLevel"];
+  flagged?: boolean;
+  pinned?: boolean;
+  incubating?: boolean;
+  locked?: boolean;
+  actionRequired?: boolean;
+  meta?: Prisma.InputJsonValue;
+}
+
+export interface ListUnitsInput {
+  projectId: string;
+  lifecycle?: string;
+  unitType?: string;
+  contextId?: string;
+  cursor?: string;
+  limit?: number;
+  sortBy?: "createdAt" | "modifiedAt" | "importance";
+  sortOrder?: "asc" | "desc";
+}
+
+export function createUnitService(db: PrismaClient) {
+  const repo = createUnitRepository(db);
+
+  return {
+    async create(input: CreateUnitInput, userId: string) {
+      // Determine lifecycle: confirmed for user-authored, draft for AI
+      const isAiOrigin =
+        input.originType === "ai_generated" || input.originType === "ai_refined";
+      const lifecycle = input.lifecycle ?? (isAiOrigin ? "draft" : "confirmed");
+      const aiTrustLevel =
+        input.aiTrustLevel ?? (isAiOrigin ? "inferred" : "user_authored");
+
+      const unit = await repo.create({
+        content: input.content,
+        unitType: input.unitType ?? "claim",
+        originType: input.originType ?? "direct_write",
+        lifecycle,
+        quality: input.quality ?? "raw",
+        certainty: input.certainty,
+        completeness: input.completeness,
+        abstractionLevel: input.abstractionLevel,
+        stance: input.stance,
+        evidenceDomain: input.evidenceDomain,
+        scope: input.scope,
+        aiTrustLevel,
+        energyLevel: input.energyLevel,
+        sourceUrl: input.sourceUrl,
+        sourceTitle: input.sourceTitle,
+        author: input.author,
+        isQuote: input.isQuote ?? false,
+        sourceSpan: input.sourceSpan ?? undefined,
+        parentInputId: input.parentInputId,
+        conversationId: input.conversationId,
+        meta: input.meta ?? undefined,
+        user: { connect: { id: userId } },
+        project: { connect: { id: input.projectId } },
+      });
+
+      await eventBus.emit({
+        type: "unit.created",
+        payload: { unitId: unit.id, userId, unit },
+        timestamp: new Date(),
+      });
+
+      return unit;
+    },
+
+    async getById(id: string) {
+      const unit = await repo.findById(id);
+      if (!unit) return null;
+
+      // Touch lastAccessed
+      await repo.update(id, { lastAccessed: new Date() }).catch(() => {
+        // Non-critical, don't fail the read
+      });
+
+      return unit;
+    },
+
+    async list(input: ListUnitsInput) {
+      const where: Prisma.UnitWhereInput = {
+        projectId: input.projectId,
+      };
+
+      if (input.lifecycle) {
+        where.lifecycle = input.lifecycle as Prisma.EnumLifecycleFilter;
+      }
+      if (input.unitType) {
+        where.unitType = input.unitType as Prisma.EnumUnitTypeFilter;
+      }
+      if (input.contextId) {
+        where.perspectives = {
+          some: { contextId: input.contextId },
+        };
+      }
+
+      const sortField = input.sortBy ?? "createdAt";
+      const orderBy: Prisma.UnitOrderByWithRelationInput = {
+        [sortField]: input.sortOrder ?? "desc",
+      };
+
+      return repo.findMany({
+        where,
+        orderBy,
+        cursor: input.cursor,
+        take: input.limit ?? 20,
+      });
+    },
+
+    async update(id: string, input: UpdateUnitInput, userId: string) {
+      // Auto-version before edit: snapshot current state
+      const existing = await repo.findById(id);
+      if (!existing) return null;
+
+      if (input.content && input.content !== existing.content) {
+        const nextVersion = (await repo.getLatestVersionNumber(id)) + 1;
+        await repo.createVersion({
+          unit: { connect: { id } },
+          version: nextVersion,
+          content: existing.content,
+          meta: existing.meta ?? undefined,
+          changeReason: "auto-version before edit",
+        });
+      }
+
+      const unit = await repo.update(id, input);
+
+      await eventBus.emit({
+        type: "unit.updated",
+        payload: { unitId: id, userId, unit, changes: input as Partial<typeof unit> },
+        timestamp: new Date(),
+      });
+
+      return unit;
+    },
+
+    async archive(id: string, userId: string) {
+      const unit = await repo.update(id, { lifecycle: "archived" });
+
+      await eventBus.emit({
+        type: "unit.archived",
+        payload: { unitId: id, userId, unit },
+        timestamp: new Date(),
+      });
+
+      return unit;
+    },
+
+    async delete(id: string, userId: string) {
+      const unit = await repo.delete(id);
+
+      await eventBus.emit({
+        type: "unit.deleted",
+        payload: { unitId: id, userId },
+        timestamp: new Date(),
+      });
+
+      return unit;
+    },
+  };
+}
+
+export type UnitService = ReturnType<typeof createUnitService>;

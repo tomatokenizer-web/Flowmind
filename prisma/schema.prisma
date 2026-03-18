@@ -7,10 +7,110 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  extensions = [vector]
+  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
 }
 
-// ?�?�?� User & Auth ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ─── Enums (PRD Appendix A) ────────────────────────────────────────
+
+enum UnitType {
+  claim
+  question
+  evidence
+  counterargument
+  observation
+  idea
+  definition
+  assumption
+  action
+}
+
+enum OriginType {
+  direct_write
+  external_excerpt
+  external_inspiration
+  external_summary
+  ai_generated
+  ai_refined
+}
+
+enum Lifecycle {
+  draft
+  pending
+  confirmed
+  deferred
+  complete
+  archived
+  discarded
+}
+
+enum Quality {
+  raw
+  refined
+  verified
+  published
+}
+
+enum EvidenceDomain {
+  external_public
+  external_private
+  personal_event
+  personal_belief
+  personal_intuition
+  reasoned_inference
+}
+
+enum Scope {
+  universal
+  domain_general
+  domain_specific
+  situational
+  interpersonal
+  personal
+}
+
+enum AiTrustLevel {
+  user_authored
+  verified
+  inferred
+  uncertain
+}
+
+enum EnergyLevel {
+  high
+  neutral
+  low
+}
+
+enum Certainty {
+  certain
+  probable
+  hypothesis
+  uncertain
+}
+
+enum Completeness {
+  complete
+  needs_evidence
+  unaddressed_counterarg
+  exploring
+  fragment
+}
+
+enum AbstractionLevel {
+  principle
+  concept
+  case_study @map("case")
+  detail
+}
+
+enum Stance {
+  support
+  oppose
+  neutral
+  exploring
+}
+
+// ─── Models ────────────────────────────────────────────────────────
 
 model User {
   id            String    @id @default(cuid())
@@ -18,11 +118,12 @@ model User {
   email         String?   @unique
   emailVerified DateTime? @map("email_verified")
   image         String?
-  accounts      Account[]
-  sessions      Session[]
-  projects      Project[]
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
+  accounts      Account[]
+  projects      Project[]
+  sessions      Session[]
+  units         Unit[]
 
   @@map("users")
 }
@@ -33,12 +134,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -65,122 +166,151 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// ?�?�?� Projects ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Project {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name            String
-  type            String?         @db.VarChar(50)
-  templateId      String?         @map("template_id") @db.Uuid
-  constraintLevel String          @default("guided") @map("constraint_level") @db.VarChar(10)
-  branchedFrom    String?         @map("branched_from") @db.Uuid
-  branchReason    String?         @map("branch_reason")
-  userId          String          @map("user_id")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  template        DomainTemplate? @relation(fields: [templateId], references: [id])
-  parent          Project?        @relation("ProjectBranch", fields: [branchedFrom], references: [id])
-  branches        Project[]       @relation("ProjectBranch")
-  units           Unit[]
-  contexts        Context[]
-  assemblies      Assembly[]
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  type                String?              @db.VarChar(50)
+  templateId          String?              @map("template_id") @db.Uuid
+  constraintLevel     String               @default("guided") @map("constraint_level") @db.VarChar(10)
+  branchedFrom        String?              @map("branched_from") @db.Uuid
+  branchReason        String?              @map("branch_reason")
+  userId              String               @map("user_id")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  assemblies          Assembly[]
+  contexts            Context[]
   customRelationTypes CustomRelationType[]
+  parent              Project?             @relation("ProjectBranch", fields: [branchedFrom], references: [id])
+  branches            Project[]            @relation("ProjectBranch")
+  template            DomainTemplate?      @relation(fields: [templateId], references: [id])
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  units               Unit[]
 
   @@index([userId])
   @@map("projects")
 }
 
-// ?�?�?� Domain Templates ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model DomainTemplate {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String
-  slug      String   @unique @db.VarChar(100)
-  type      String   @db.VarChar(30) // system, freeform, user_defined
-  config    Json     // types, relations, scaffold_questions, gap_rules, etc.
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
+  slug      String    @unique @db.VarChar(100)
+  type      String    @db.VarChar(30)
+  config    Json
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   projects  Project[]
 
   @@map("domain_templates")
 }
 
-// ?�?�?� Units (Thought Units) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Unit {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  content      String
-  originType   String   @default("direct_write") @map("origin_type") @db.VarChar(30)
-  lifecycle    String   @default("draft") @db.VarChar(20)
-  quality      String   @default("raw") @db.VarChar(20)
-  sourceUrl    String?  @map("source_url")
-  sourceTitle  String?  @map("source_title")
-  isQuote      Boolean  @default(false) @map("is_quote")
-  aiTrustLevel String?  @map("ai_trust_level") @db.VarChar(20)
-  embedding    Unsupported("vector(3072)")?
-  meta         Json?
-  projectId    String   @map("project_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
-  modifiedAt   DateTime @updatedAt @map("modified_at")
-  lastAccessed DateTime @default(now()) @map("last_accessed")
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content           String
+  userId            String                 @map("user_id")
+  projectId         String                 @map("project_id") @db.Uuid
 
-  project      Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  perspectives UnitPerspective[]
-  versions     UnitVersion[]
-  assemblyItems AssemblyItem[]
-  relationsAsSource Relation[]   @relation("SourceUnit")
-  relationsAsTarget Relation[]   @relation("TargetUnit")
+  // A-1: Cognitive Classification
+  unitType          UnitType               @default(claim) @map("unit_type")
+  certainty         Certainty?
+  completeness      Completeness?
+  abstractionLevel  AbstractionLevel?      @map("abstraction_level")
+  stance            Stance?
 
+  // A-3: Status
+  lifecycle         Lifecycle              @default(draft)
+  quality           Quality                @default(raw)
+  actionRequired    Boolean                @default(false) @map("action_required")
+  flagged           Boolean                @default(false)
+  pinned            Boolean                @default(false)
+  incubating        Boolean                @default(false)
+  locked            Boolean                @default(false)
+
+  // A-4: Temporal
+  createdAt         DateTime               @default(now()) @map("created_at")
+  modifiedAt        DateTime               @updatedAt @map("modified_at")
+  lastAccessed      DateTime               @default(now()) @map("last_accessed")
+  capturedAt        DateTime?              @map("captured_at")
+  validUntil        DateTime?              @map("valid_until")
+  temporalContext   String?                @map("temporal_context")
+  recurrence        String?
+
+  // A-5: Provenance
+  originType        OriginType             @default(direct_write) @map("origin_type")
+  sourceUrl         String?                @map("source_url")
+  sourceTitle       String?                @map("source_title")
+  author            String?
+  isQuote           Boolean                @default(false) @map("is_quote")
+  aiTrustLevel      AiTrustLevel?          @map("ai_trust_level")
+  conversationId    String?                @map("conversation_id")
+  parentInputId     String?                @map("parent_input_id")
+  sourceSpan        Json?                  @map("source_span")
+
+  // A-6: Evidence Character
+  evidenceDomain    EvidenceDomain?        @map("evidence_domain")
+  scope             Scope?
+
+  // A-9: AI Analysis
+  embedding         Unsupported("vector")?
+  importance        Float                  @default(0)
+  branchPotential   Float                  @default(0) @map("branch_potential")
+  driftScore        Float                  @default(0) @map("drift_score")
+
+  // A-11: User-defined
+  energyLevel       EnergyLevel?           @map("energy_level")
+  meta              Json?
+
+  // Relations
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project           Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assemblyItems     AssemblyItem[]
+  relationsAsSource Relation[]             @relation("SourceUnit")
+  relationsAsTarget Relation[]             @relation("TargetUnit")
+  perspectives      UnitPerspective[]
+  versions          UnitVersion[]
+
+  @@index([userId])
   @@index([projectId])
   @@index([lifecycle])
+  @@index([unitType])
   @@index([createdAt])
   @@map("units")
 }
 
-// ?�?�?� Perspectives (Context-specific interpretation) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model UnitPerspective {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId     String  @map("unit_id") @db.Uuid
-  contextId  String  @map("context_id") @db.Uuid
-  type       String  @db.VarChar(50) // claim, question, evidence, etc.
-  stance     String  @default("neutral") @db.VarChar(20)
-  importance Float   @default(0)
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId     String     @map("unit_id") @db.Uuid
+  contextId  String     @map("context_id") @db.Uuid
+  type       UnitType
+  stance     Stance     @default(neutral)
+  importance Float      @default(0)
   note       String?
-  canvasX    Float?  @map("canvas_x")
-  canvasY    Float?  @map("canvas_y")
-  canvasZoom Float?  @map("canvas_zoom")
-
-  unit       Unit    @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  context    Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  canvasX    Float?     @map("canvas_x")
+  canvasY    Float?     @map("canvas_y")
+  canvasZoom Float?     @map("canvas_zoom")
   relations  Relation[]
+  context    Context    @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  unit       Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@unique([unitId, contextId])
   @@index([contextId])
   @@map("unit_perspectives")
 }
 
-// ?�?�?� Relations (Directed edges between Units) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Relation {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sourceUnitId  String   @map("source_unit_id") @db.Uuid
-  targetUnitId  String   @map("target_unit_id") @db.Uuid
-  perspectiveId String?  @map("perspective_id") @db.Uuid
-  type          String   @db.VarChar(50)
-  strength      Float    @default(0.5)
-  direction     String   @default("one_way") @db.VarChar(15)
-  purpose       String[] @default([]) // navigation, argument, context, reference
-  isCustom      Boolean  @default(false) @map("is_custom")
-  customName    String?  @map("custom_name")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  sourceUnit    Unit            @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
-  targetUnit    Unit            @relation("TargetUnit", fields: [targetUnitId], references: [id], onDelete: Cascade)
-  perspective   UnitPerspective? @relation(fields: [perspectiveId], references: [id], onDelete: SetNull)
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceUnitId  String           @map("source_unit_id") @db.Uuid
+  targetUnitId  String           @map("target_unit_id") @db.Uuid
+  perspectiveId String?          @map("perspective_id") @db.Uuid
+  type          String           @db.VarChar(50)
+  strength      Float            @default(0.5)
+  direction     String           @default("one_way") @db.VarChar(15)
+  purpose       String[]         @default([])
+  isCustom      Boolean          @default(false) @map("is_custom")
+  customName    String?          @map("custom_name")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  perspective   UnitPerspective? @relation(fields: [perspectiveId], references: [id])
+  sourceUnit    Unit             @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
+  targetUnit    Unit             @relation("TargetUnit", fields: [targetUnitId], references: [id], onDelete: Cascade)
 
   @@index([sourceUnitId])
   @@index([targetUnitId])
@@ -188,19 +318,15 @@ model Relation {
   @@map("relations")
 }
 
-// ?�?�?� System Relation Types (Reference table) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model SystemRelationType {
   id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String @unique @db.VarChar(50)
-  category    String @db.VarChar(50) // argument, creative_research, structure
+  category    String @db.VarChar(50)
   description String
   sortOrder   Int    @map("sort_order")
 
   @@map("system_relation_types")
 }
-
-// ?�?�?� Custom Relation Types (User-defined) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
 
 model CustomRelationType {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -209,37 +335,31 @@ model CustomRelationType {
   scope     String   @default("private") @db.VarChar(10)
   reusable  Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
-
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("custom_relation_types")
 }
 
-// ?�?�?� Contexts (Exploration spaces) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Context {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name           String
-  projectId      String   @map("project_id") @db.Uuid
-  parentId       String?  @map("parent_id") @db.Uuid
+  projectId      String            @map("project_id") @db.Uuid
+  parentId       String?           @map("parent_id") @db.Uuid
   snapshot       Json?
-  openQuestions   Json?    @map("open_questions")
+  openQuestions  Json?             @map("open_questions")
   contradictions Json?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
   parent         Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
   children       Context[]         @relation("ContextHierarchy")
-  perspectives   UnitPerspective[]
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   navigators     Navigator[]
+  perspectives   UnitPerspective[]
 
   @@index([projectId])
   @@map("contexts")
 }
-
-// ?�?�?� Unit Versions (Change history) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
 
 model UnitVersion {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -250,7 +370,6 @@ model UnitVersion {
   changeReason String?  @map("change_reason")
   diffSummary  String?  @map("diff_summary")
   createdAt    DateTime @default(now()) @map("created_at")
-
   unit         Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@unique([unitId, version])
@@ -258,17 +377,14 @@ model UnitVersion {
   @@map("unit_versions")
 }
 
-// ?�?�?� Assemblies (Output documents) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Assembly {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
-  projectId    String   @map("project_id") @db.Uuid
-  templateType String?  @map("template_type") @db.VarChar(50)
-  sourceMap    Json?    @map("source_map")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
+  projectId    String         @map("project_id") @db.Uuid
+  templateType String?        @map("template_type") @db.VarChar(50)
+  sourceMap    Json?          @map("source_map")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
   project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   items        AssemblyItem[]
 
@@ -277,29 +393,25 @@ model Assembly {
 }
 
 model AssemblyItem {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  assemblyId String  @map("assembly_id") @db.Uuid
-  unitId     String? @map("unit_id") @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assemblyId String   @map("assembly_id") @db.Uuid
+  unitId     String?  @map("unit_id") @db.Uuid
   position   Int
-  bridgeText String? @map("bridge_text")
-
+  bridgeText String?  @map("bridge_text")
   assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  unit       Unit?    @relation(fields: [unitId], references: [id])
 
   @@index([assemblyId])
   @@map("assembly_items")
 }
 
-// ?�?�?� Navigators (Ordered exploration paths) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-
 model Navigator {
-  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String
-  purpose   String? @db.VarChar(30) // argument, creative, chronological, explore
-  contextId String  @map("context_id") @db.Uuid
-  path      String[] @default([]) @db.Uuid // ordered Unit IDs
-
-  context   Context @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  purpose   String?  @db.VarChar(30)
+  contextId String   @map("context_id") @db.Uuid
+  path      String[] @default([]) @db.Uuid
+  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
 
   @@index([contextId])
   @@map("navigators")
