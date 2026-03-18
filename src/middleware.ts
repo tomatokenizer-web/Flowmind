@@ -1,26 +1,39 @@
-import { auth } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 const publicRoutes = new Set(["/", "/sign-in"]);
 
-export default auth((req) => {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public routes and auth API
   if (publicRoutes.has(pathname) || pathname.startsWith("/api/auth")) {
-    return;
+    return NextResponse.next();
   }
 
-  // Redirect unauthenticated users to sign-in
-  if (!req.auth) {
+  // Allow dev routes
+  if (pathname.startsWith("/dev")) {
+    return NextResponse.next();
+  }
+
+  // Check session token (works on Edge runtime)
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
+
+  if (!token) {
     const signInUrl = new URL("/sign-in", req.url);
     signInUrl.searchParams.set("callbackUrl", pathname);
-    return Response.redirect(signInUrl);
+    return NextResponse.redirect(signInUrl);
   }
-});
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
-    // Match all routes except static files and Next.js internals
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
