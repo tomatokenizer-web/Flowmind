@@ -1,6 +1,6 @@
 # Story 1.5: Radix UI Component Library with Flowmind Styling
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -24,52 +24,52 @@ So that all UI components share consistent interaction patterns, accessibility, 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Install Radix UI primitives (AC: #1–#9)
-  - [ ] Install `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-tooltip`, `@radix-ui/react-popover`, `@radix-ui/react-tabs`, `@radix-ui/react-scroll-area`, `@radix-ui/react-context-menu`, `@radix-ui/react-toggle`
-  - [ ] Install `framer-motion` for Dialog entrance animation
-- [ ] Task 2: Build Dialog component (AC: #1)
-  - [ ] Wrap `@radix-ui/react-dialog` with Flowmind styling
-  - [ ] Apply Level 3 shadow, 12px border-radius
-  - [ ] Add Framer Motion 300ms entrance/exit animation
-  - [ ] Implement focus trap
-  - [ ] Create destructive confirmation variant (red accent, confirm/cancel buttons)
-- [ ] Task 3: Build DropdownMenu component (AC: #2)
-  - [ ] Wrap `@radix-ui/react-dropdown-menu`
-  - [ ] Add type-colored indicators, keyboard shortcut hints, separators
-  - [ ] Apply Level 2 shadow
-- [ ] Task 4: Build Tooltip component (AC: #3)
-  - [ ] Wrap `@radix-ui/react-tooltip`
-  - [ ] Set 300ms delay, Level 2 shadow, --text-sm font size
-- [ ] Task 5: Build Popover component (AC: #4)
-  - [ ] Wrap `@radix-ui/react-popover`
-  - [ ] Apply Level 2 shadow, 12px border-radius
-- [ ] Task 6: Build Tabs component (AC: #5)
-  - [ ] Wrap `@radix-ui/react-tabs`
-  - [ ] Style active tab with 2px accent underline
-  - [ ] Add 300ms cross-fade transition between panels
-- [ ] Task 7: Build ScrollArea component (AC: #6)
-  - [ ] Wrap `@radix-ui/react-scroll-area`
-  - [ ] Style 4px scrollbar, visible only on hover/scroll
-- [ ] Task 8: Build ContextMenu component (AC: #7)
-  - [ ] Wrap `@radix-ui/react-context-menu`
-  - [ ] Apply same visual treatment as DropdownMenu
-- [ ] Task 9: Build CommandPalette component (AC: #8)
-  - [ ] Use cmdk as the base
-  - [ ] Implement Cmd+K global trigger via event listener
-  - [ ] Add fuzzy search across actions/units/contexts/projects
-  - [ ] Display recent actions by default
-  - [ ] Apply Level 3 shadow, keyboard navigation
-- [ ] Task 10: Build Toggle component (AC: #9)
-  - [ ] Wrap `@radix-ui/react-toggle`
-  - [ ] Style accent-primary active fill, bg-surface inactive
-- [ ] Task 11: Accessibility verification (AC: #10)
-  - [ ] Run axe-core checks on all components
-  - [ ] Verify keyboard navigation for each component
-  - [ ] Ensure proper ARIA attributes
-- [ ] Task 12: Create component showcase page (AC: #11)
-  - [ ] Build dev-only route `/dev/components`
-  - [ ] Display interactive examples of each component
-  - [ ] Guard route to development environment only
+- [x] Task 1: Install Radix UI primitives (AC: #1–#9)
+  - [x] Install `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-tooltip`, `@radix-ui/react-popover`, `@radix-ui/react-tabs`, `@radix-ui/react-scroll-area`, `@radix-ui/react-context-menu`, `@radix-ui/react-toggle`
+  - [x] Install `framer-motion` for Dialog entrance animation
+- [x] Task 2: Build Dialog component (AC: #1)
+  - [x] Wrap `@radix-ui/react-dialog` with Flowmind styling
+  - [x] Apply Level 3 shadow, 12px border-radius
+  - [x] Add Framer Motion 300ms entrance/exit animation
+  - [x] Implement focus trap
+  - [x] Create destructive confirmation variant (red accent, confirm/cancel buttons)
+- [x] Task 3: Build DropdownMenu component (AC: #2)
+  - [x] Wrap `@radix-ui/react-dropdown-menu`
+  - [x] Add type-colored indicators, keyboard shortcut hints, separators
+  - [x] Apply Level 2 shadow
+- [x] Task 4: Build Tooltip component (AC: #3)
+  - [x] Wrap `@radix-ui/react-tooltip`
+  - [x] Set 300ms delay, Level 2 shadow, --text-sm font size
+- [x] Task 5: Build Popover component (AC: #4)
+  - [x] Wrap `@radix-ui/react-popover`
+  - [x] Apply Level 2 shadow, 12px border-radius
+- [x] Task 6: Build Tabs component (AC: #5)
+  - [x] Wrap `@radix-ui/react-tabs`
+  - [x] Style active tab with 2px accent underline
+  - [x] Add 300ms cross-fade transition between panels
+- [x] Task 7: Build ScrollArea component (AC: #6)
+  - [x] Wrap `@radix-ui/react-scroll-area`
+  - [x] Style 4px scrollbar, visible only on hover/scroll
+- [x] Task 8: Build ContextMenu component (AC: #7)
+  - [x] Wrap `@radix-ui/react-context-menu`
+  - [x] Apply same visual treatment as DropdownMenu
+- [x] Task 9: Build CommandPalette component (AC: #8)
+  - [x] Use cmdk as the base
+  - [x] Implement Cmd+K global trigger via event listener
+  - [x] Add fuzzy search across actions/units/contexts/projects
+  - [x] Display recent actions by default
+  - [x] Apply Level 3 shadow, keyboard navigation
+- [x] Task 10: Build Toggle component (AC: #9)
+  - [x] Wrap `@radix-ui/react-toggle`
+  - [x] Style accent-primary active fill, bg-surface inactive
+- [x] Task 11: Accessibility verification (AC: #10)
+  - [x] Run axe-core checks on all components
+  - [x] Verify keyboard navigation for each component
+  - [x] Ensure proper ARIA attributes
+- [x] Task 12: Create component showcase page (AC: #11)
+  - [x] Build dev-only route `/dev/components`
+  - [x] Display interactive examples of each component
+  - [x] Guard route to development environment only
 
 ## Dev Notes
 
@@ -101,10 +101,37 @@ So that all UI components share consistent interaction patterns, accessibility, 
 
 ### Agent Model Used
 
-
+Claude Opus 4.6
 
 ### Debug Log References
 
+- tsconfig.json: added `~/*` path alias (was only `@/*`)
+- tailwind.config.ts: added `tailwindcss-animate` plugin for Radix animation classes
+
 ### Completion Notes List
 
+- All 10 Radix UI components wrapped with Flowmind design tokens
+- All use CSS custom properties via Tailwind theme extensions (no hardcoded colors)
+- Dialog uses Framer Motion for 300ms entrance/exit with AnimatePresence
+- DestructiveDialog variant provides confirm/cancel pattern with red accent
+- DropdownMenu supports type-colored indicators and keyboard shortcut hints
+- CommandPalette uses cmdk with global Cmd+K/Ctrl+K listener
+- All components use focus-visible rings with accent-primary
+- All include motion-reduce media query support where applicable
+- Showcase page at /dev/components demonstrates all components interactively
+
 ### File List
+
+- `src/components/ui/button.tsx` — Button with primary/secondary/ghost/destructive/outline variants
+- `src/components/ui/dialog.tsx` — Dialog with Framer Motion, focus trap, DestructiveDialog variant
+- `src/components/ui/dropdown-menu.tsx` — DropdownMenu with type-colored indicators, shortcut hints
+- `src/components/ui/tooltip.tsx` — Tooltip with 300ms delay, SimpleTooltip convenience wrapper
+- `src/components/ui/popover.tsx` — Popover with Level 2 shadow, 12px radius
+- `src/components/ui/tabs.tsx` — Tabs with 2px accent underline, 300ms cross-fade
+- `src/components/ui/scroll-area.tsx` — ScrollArea with 4px scrollbar on hover
+- `src/components/ui/context-menu.tsx` — ContextMenu matching dropdown visual treatment
+- `src/components/ui/toggle.tsx` — Toggle with accent-primary active fill
+- `src/components/ui/command.tsx` — CommandPalette with Cmd+K trigger, fuzzy search
+- `src/app/dev/components/page.tsx` — Interactive component showcase page
+- `tailwind.config.ts` — Added tailwindcss-animate plugin
+- `tsconfig.json` — Added ~/* path alias
