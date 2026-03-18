@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createUnitRepository } from "@/server/repositories/unitRepository";
 import { eventBus } from "@/server/events/eventBus";
+import { suggestUnitType } from "@/server/services/typeHeuristicService";
 
 export interface CreateUnitInput {
   content: string;
@@ -67,13 +68,24 @@ export function createUnitService(db: PrismaClient) {
       // Determine lifecycle: confirmed for user-authored, draft for AI
       const isAiOrigin =
         input.originType === "ai_generated" || input.originType === "ai_refined";
-      const lifecycle = input.lifecycle ?? (isAiOrigin ? "draft" : "confirmed");
+
+      // Auto-assign unit type via heuristics when not explicitly provided
+      const typeExplicitlyProvided = input.unitType !== undefined;
+      const unitType = typeExplicitlyProvided
+        ? input.unitType!
+        : suggestUnitType(input.content).unitType;
+
+      // Auto-assigned types get lifecycle=draft so the user must confirm (AC #2)
+      const lifecycle =
+        input.lifecycle ??
+        (isAiOrigin || !typeExplicitlyProvided ? "draft" : "confirmed");
+
       const aiTrustLevel =
         input.aiTrustLevel ?? (isAiOrigin ? "inferred" : "user_authored");
 
       const unit = await repo.create({
         content: input.content,
-        unitType: input.unitType ?? "claim",
+        unitType,
         originType: input.originType ?? "direct_write",
         lifecycle,
         quality: input.quality ?? "raw",
