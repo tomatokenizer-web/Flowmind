@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createUnitService } from "@/server/services/unitService";
 import { TRPCError } from "@trpc/server";
@@ -111,7 +112,14 @@ export const unitRouter = createTRPCRouter({
     .input(createUnitSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createUnitService(ctx.db);
-      return service.create(input, ctx.session.user.id!);
+      return service.create(
+        {
+          ...input,
+          sourceSpan: input.sourceSpan as Prisma.InputJsonValue | undefined,
+          meta: input.meta as Prisma.InputJsonValue | undefined,
+        },
+        ctx.session.user.id!,
+      );
     }),
 
   getById: protectedProcedure
@@ -137,7 +145,11 @@ export const unitRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       const service = createUnitService(ctx.db);
-      const unit = await service.update(id, data, ctx.session.user.id!);
+      const unit = await service.update(
+        id,
+        { ...data, meta: data.meta as Prisma.InputJsonValue | undefined },
+        ctx.session.user.id!,
+      );
       if (!unit) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
       }

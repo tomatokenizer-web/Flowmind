@@ -1,6 +1,6 @@
 # Story 2.7: Unit Versioning & History
 
-Status: ready-for-dev
+Status: completed
 
 ## Story
 
@@ -19,49 +19,49 @@ So that I can track my intellectual development and recover earlier formulations
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Define Prisma schema for Unit Versions (AC: #1)
-  - [ ] Create `UnitVersion` model with: `id`, `unit_id` (FK), `version_number`, `content`, `changed_at`, `change_reason`, `diff_summary`, `origin_type`, `source_span`
-  - [ ] Add relation: Unit hasMany UnitVersion
-  - [ ] Add index on `unit_id` + `version_number` for efficient lookup
-  - [ ] Run `prisma migrate dev`
-- [ ] Task 2: Create version repository (AC: #1)
-  - [ ] Create `server/repositories/versionRepository.ts`
-  - [ ] Implement `create`, `findByUnitId` (sorted by version_number desc), `findByVersion`
-- [ ] Task 3: Implement versioning in unit service (AC: #1, #4, #5)
-  - [ ] Modify `unitService.update()`: before updating, snapshot current content as a new version
-  - [ ] Auto-increment `version_number` based on existing version count
-  - [ ] Generate `diff_summary` by comparing old and new content (simple character/word diff)
-  - [ ] Preserve `origin_type` and `source_span` in the version record
-  - [ ] Implement `unitService.restoreVersion(unitId, versionNumber)`: creates new version with `change_reason: "Restored from v{N}"`
-- [ ] Task 4: Add version tRPC procedures (AC: #1, #4)
-  - [ ] Add `unit.getVersionHistory` procedure: returns all versions for a unit
-  - [ ] Add `unit.getVersionDiff` procedure: returns diff between two versions
-  - [ ] Add `unit.restoreVersion` procedure: restores a specific version
-- [ ] Task 5: Create VersionHistory component (AC: #2, #3)
-  - [ ] Create `src/components/units/VersionHistory.tsx`
-  - [ ] List versions in reverse chronological order
-  - [ ] Show version number, changed_at (relative date), change_reason, diff_summary
-  - [ ] Clicking a version expands inline diff view
-- [ ] Task 6: Create DiffView component (AC: #3)
-  - [ ] Create `src/components/units/DiffView.tsx`
-  - [ ] Highlight additions (green background) and deletions (red background)
-  - [ ] Show line-by-line or word-by-word diff (simple approach: split by words, compare)
-  - [ ] Show "Restore this version" button below diff
-- [ ] Task 7: Integrate with Unit Detail Panel (AC: #2)
-  - [ ] Add "History" tab to Unit Detail Panel (Story 2.8)
-  - [ ] Show version count badge on the tab
-  - [ ] Load version history lazily when tab is activated
-- [ ] Task 8: Ensure Assembly/Navigator reflection (AC: #6)
-  - [ ] Publish `unit.contentChanged` event when content updates
-  - [ ] Verify that Assemblies/Navigators reference units by ID (not by content copy)
-  - [ ] Add integration test confirming content changes propagate
-- [ ] Task 9: Write tests
-  - [ ] Test version creation on unit content edit
-  - [ ] Test version_number auto-increment
-  - [ ] Test diff generation between versions
-  - [ ] Test version restoration creates new version (non-destructive)
-  - [ ] Test provenance metadata preservation
-  - [ ] Test version history retrieval (sorted correctly)
+- [x] Task 1: Define Prisma schema for Unit Versions (AC: #1)
+  - [x] Create `UnitVersion` model with: `id`, `unit_id` (FK), `version_number`, `content`, `changed_at`, `change_reason`, `diff_summary`, `origin_type`, `source_span`
+  - [x] Add relation: Unit hasMany UnitVersion
+  - [x] Add index on `unit_id` + `version_number` for efficient lookup
+  - [x] Run `prisma migrate dev`
+- [x] Task 2: Create version repository (AC: #1)
+  - [x] Create `server/repositories/versionRepository.ts`
+  - [x] Implement `create`, `findByUnitId` (sorted by version_number desc), `findByVersion`
+- [x] Task 3: Implement versioning in unit service (AC: #1, #4, #5)
+  - [x] Modify `unitService.update()`: before updating, snapshot current content as a new version
+  - [x] Auto-increment `version_number` based on existing version count
+  - [x] Generate `diff_summary` by comparing old and new content (simple character/word diff)
+  - [x] Preserve `origin_type` and `source_span` in the version record
+  - [x] Implement `unitService.restoreVersion(unitId, versionNumber)`: creates new version with `change_reason: "Restored from v{N}"`
+- [x] Task 4: Add version tRPC procedures (AC: #1, #4)
+  - [x] Add `unit.getVersionHistory` procedure: returns all versions for a unit
+  - [x] Add `unit.getVersionDiff` procedure: returns diff between two versions
+  - [x] Add `unit.restoreVersion` procedure: restores a specific version
+- [x] Task 5: Create VersionHistory component (AC: #2, #3)
+  - [x] Create `src/components/units/VersionHistory.tsx`
+  - [x] List versions in reverse chronological order
+  - [x] Show version number, changed_at (relative date), change_reason, diff_summary
+  - [x] Clicking a version expands inline diff view
+- [x] Task 6: Create DiffView component (AC: #3)
+  - [x] Create `src/components/units/DiffView.tsx`
+  - [x] Highlight additions (green background) and deletions (red background)
+  - [x] Show line-by-line or word-by-word diff (simple approach: split by words, compare)
+  - [x] Show "Restore this version" button below diff
+- [x] Task 7: Integrate with Unit Detail Panel (AC: #2)
+  - [x] Add "History" tab to Unit Detail Panel (Story 2.8)
+  - [x] Show version count badge on the tab
+  - [x] Load version history lazily when tab is activated
+- [x] Task 8: Ensure Assembly/Navigator reflection (AC: #6)
+  - [x] Publish `unit.contentChanged` event when content updates
+  - [x] Verify that Assemblies/Navigators reference units by ID (not by content copy)
+  - [x] Add integration test confirming content changes propagate
+- [x] Task 9: Write tests
+  - [x] Test version creation on unit content edit
+  - [x] Test version_number auto-increment
+  - [x] Test diff generation between versions
+  - [x] Test version restoration creates new version (non-destructive)
+  - [x] Test provenance metadata preservation
+  - [x] Test version history retrieval (sorted correctly)
 
 ## Dev Notes
 
