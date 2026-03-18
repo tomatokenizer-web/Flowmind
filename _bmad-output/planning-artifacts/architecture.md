@@ -398,6 +398,24 @@ custom_relation_types
 - Canvas rendering for Global View (performance with 1000+ nodes), SVG for Local View
 - Rationale: D3.js is the most flexible graph rendering library. Canvas rendering handles large node counts. The two-layer Graph View design (global dot view vs. local card array) requires different rendering approaches.
 
+**Context-switch Graph Re-render:**
+
+When the active Context changes, the Graph View must reload and re-render with a transition. The pipeline:
+
+1. **Data reload trigger:** User selects a new Context → `useContextStore.setActiveContext(contextId)` updates Zustand store → subscribed `useGraphData` hook invalidates and refetches via tRPC (`relation.getContextGraph`).
+2. **Perspective-filtered query:** The backend query filters relations to those where BOTH source and target Units are members of the new Context, then overlays Perspective-specific relation overrides from `unit_perspectives` (a relation may have different `type` or `strength` per Context's Perspective).
+3. **State management flow:**
+   ```
+   Zustand activeContextId change
+     → tRPC query invalidation (relation.getContextGraph, unit.getContextUnits)
+     → React Query refetch (stale-while-revalidate: show old graph during fetch)
+     → New data arrives → useGraphLayout recalculates D3-force simulation
+     → D3 transition: nodes morph positions (800ms ease-in-out), exiting nodes fade out, entering nodes fade in
+   ```
+4. **Debounce strategy for rapid Context switching:** Context switches within a 300ms window are debounced — only the final Context triggers a data fetch. Implemented via `useDebouncedValue(activeContextId, 300)` in `useGraphData`. During debounce, the graph shows a subtle loading shimmer on the current view without clearing it.
+5. **Cached graph layouts:** `graphLayoutCache` (Map<contextId, SimulationState>) stores the last D3 node positions per Context. When returning to a previously viewed Context, the graph restores cached positions instantly instead of re-running force simulation from scratch. Cache eviction: LRU with max 10 entries.
+6. **Edge-only reload optimization:** On Context switch, the Zustand store update triggers a Perspective-specific relation filter. Nodes (Units) are retained in the D3 simulation — only edges are reloaded and diffed against the current edge set. Entering edges animate in, exiting edges fade out over a 300ms CSS transition. This avoids costly full-graph re-layout on every Context change and preserves spatial memory for the user. The `useGraphData` hook computes edge deltas via `Set` difference on `relation.id` before passing to the D3 renderer.
+
 **Drag-and-Drop: dnd-kit**
 - Assembly View: Reorder Units within an Assembly
 - Unit splitting: Drag to define split boundaries
@@ -1655,6 +1673,70 @@ suggestConnectionContext: protectedProcedure
 - For option A: embedded context picker + preview of AI-suggested relations
 - Triggered by the Capture Engine when `origin_type` is external
 
+#### 2b. Proactive External Knowledge Scanner
+
+**PRD Reference:** Section 10 — Knowledge Connection interaction; Section 18 (Feedback Loop) — system proactively surfaces relevant external knowledge. This extends Knowledge Connection from a reactive (user-triggered) to a proactive (system-initiated) feature.
+
+**Background Job (`server/jobs/externalKnowledgeScanJob.ts`):**
+
+```typescript
+triggerDev.defineJob({
+  id: "external-knowledge-scan",
+  // Frequency: runs every 6 hours for active projects (projects with activity in last 48h)
+  run: async (payload: { projectId: string, userId: string }) => {
+    // 1. Get all Contexts in project with >= 3 Confirmed Units
+    const contexts = await getActiveContexts(payload.projectId, { minConfirmedUnits: 3 });
+
+    // 2. Per-context cooldown: skip contexts scanned within last 24 hours
+    const eligibleContexts = contexts.filter(c =>
+      !c.meta?.lastExternalScan || hoursSince(c.meta.lastExternalScan) > 24
+    );
+
+    for (const ctx of eligibleContexts) {
+      // 3. Generate a composite query embedding from the context's snapshot + top-5 ThoughtRank units
+      const queryEmbedding = await generateContextQueryEmbedding(ctx);
+
+      // 4. Search external knowledge sources via embeddings:
+      //    - Other Contexts in the same project (cross-pollination)
+      //    - Resource Units not yet linked to this Context
+      //    - (Future: external APIs, research databases)
+      const suggestions = await searchExternalKnowledge(queryEmbedding, ctx.id);
+
+      // 5. Filter: only surface suggestions with similarity > 0.70 and not already connected
+      const novel = suggestions.filter(s => s.score > 0.70 && !isAlreadyConnected(s, ctx.id));
+
+      // 6. Anti-spam: max 3 suggestions per Context per scan cycle
+      const capped = novel.slice(0, 3);
+
+      if (capped.length > 0) {
+        // 7. Push to client via SSE channel: 'knowledge-suggestion' event
+        await pushSSE(payload.userId, {
+          type: 'knowledge-suggestion',
+          contextId: ctx.id,
+          suggestions: capped.map(s => ({
+            sourceType: s.type, // 'other_context' | 'resource_unit'
+            sourceId: s.id,
+            relevanceScore: s.score,
+            reason: s.explanation, // AI-generated 1-line explanation
+          })),
+        });
+      }
+
+      // 8. Update cooldown timestamp
+      await updateContextMeta(ctx.id, { lastExternalScan: new Date() });
+    }
+  },
+});
+```
+
+**Anti-spam safeguards:**
+- Per-Context cooldown: 24 hours between scans.
+- Max 3 suggestions per Context per scan cycle.
+- User can dismiss suggestions — dismissed source+context pairs are stored in `contexts.meta.dismissed_suggestions[]` and excluded from future scans.
+- If user dismisses 3+ suggestions in a row for a Context, the scanner pauses for that Context for 7 days.
+
+**SSE Push:** Uses the existing tRPC subscription channel. Client-side `useKnowledgeSuggestions` hook listens for `knowledge-suggestion` events and shows a non-intrusive toast in the Context Dashboard. Suggestions persist in a sidebar widget until acted on or dismissed.
+
 ---
 
 ### 3. Scope Jump Warning
@@ -1880,6 +1962,74 @@ triggerDev.defineJob({
 
 **Frontend:** `features/ai/components/IncubationSidebar.tsx` — a sidebar widget showing surfaced units with connect/dismiss/snooze actions. Also accessible from Context Dashboard.
 
+#### 5b. Proactive External Knowledge Scanner
+
+**Purpose:** Automatically discovers relevant external knowledge for active Contexts by scanning external knowledge bases (Exa/Perplexity API) and surfacing high-relevance results to the user.
+
+**Background Job (`server/jobs/externalKnowledgeScanJob.ts`):**
+
+```typescript
+triggerDev.defineJob({
+  id: "external-knowledge-scan",
+  // Runs every 6 hours per active Context (Contexts accessed within last 7 days)
+  run: async (payload: { contextId: string, userId: string }) => {
+    // 1. Cooldown check: skip if this Context+topic was scanned within 24 hours
+    const lastScan = await getLastScanTimestamp(payload.contextId);
+    if (lastScan && Date.now() - lastScan.getTime() < 24 * 60 * 60 * 1000) {
+      return { skipped: true, reason: 'cooldown' };
+    }
+
+    // 2. Embed all Confirmed Units in this Context
+    const confirmedUnits = await getContextUnits(payload.contextId, { lifecycle: 'confirmed' });
+    const contextEmbedding = averageEmbeddings(confirmedUnits.map(u => u.embedding));
+
+    // 3. Generate search queries from Context snapshot + top Unit content
+    const searchQueries = await llm.generateSearchQueries(
+      await getContextSnapshot(payload.contextId),
+      confirmedUnits.slice(0, 10),
+    );
+
+    // 4. Search external knowledge base (Exa API primary, Perplexity fallback)
+    const externalResults = await exaClient.search(searchQueries, { numResults: 20 });
+
+    // 5. Score relevance: cosine similarity between result embeddings and contextEmbedding
+    const scoredResults = await Promise.all(
+      externalResults.map(async (result) => {
+        const resultEmbedding = await embedText(result.snippet);
+        const score = cosineSimilarity(contextEmbedding, resultEmbedding);
+        return { ...result, relevanceScore: score };
+      })
+    );
+
+    // 6. Filter: only surface results with relevanceScore > 0.7
+    const relevant = scoredResults.filter(r => r.relevanceScore > 0.7);
+
+    // 7. Deduplicate against existing Resource Units (by URL or content similarity > 0.95)
+    const novel = await deduplicateAgainstExisting(relevant, payload.contextId);
+
+    // 8. Store results and notify via SSE
+    for (const result of novel) {
+      await createExternalKnowledgeSuggestion(payload.contextId, result);
+      await sseEmit(payload.userId, 'external-knowledge-found', {
+        contextId: payload.contextId,
+        title: result.title,
+        url: result.url,
+        relevanceScore: result.relevanceScore,
+      });
+    }
+
+    // 9. Update last scan timestamp (24h cooldown per Context per topic cluster)
+    await setLastScanTimestamp(payload.contextId);
+
+    return { found: novel.length, scanned: externalResults.length };
+  },
+});
+```
+
+**Scheduling:** A cron job enumerates active Contexts (accessed within 7 days) and enqueues one `external-knowledge-scan` job per Context every 6 hours. Rate-limited to 50 Exa API calls per hour per user.
+
+**Frontend:** Suggestions appear as a notification badge on the Context Dashboard. Users can: import as Resource Unit, dismiss, or snooze (extends cooldown to 72h for that topic cluster).
+
 ---
 
 ### 6. Drift Detection Algorithm
@@ -2090,6 +2240,48 @@ getBranchPotential: protectedProcedure
   .input(z.object({ unitId: z.string().uuid() }))
   .query(/* Returns branch potential score + suggested exploration directions */),
 ```
+
+#### 7b. Contains Relation Hierarchical Rendering Engine
+
+**PRD Reference:** Section 4 — `contains` is structurally different from other relations: "when A contains B as a component, this is handled not by merging but with a contains relation. B exists independently while also being part of A." Section 8 — `contains` is a structure/containment relation type where a higher concept includes a lower one.
+
+**Rendering difference:** While all other relation types render as directed lines/edges between nodes, `contains` relations render as **nested card groups** — the parent Unit visually encloses its children.
+
+**Detection and rendering pipeline:**
+
+```typescript
+// features/graph/hooks/useContainmentGroups.ts
+
+interface ContainmentGroup {
+  parentId: string;
+  childIds: string[];
+  depth: number;        // 0 = top-level, max 3
+  nestedGroups: ContainmentGroup[];  // children that are themselves parents
+}
+
+function buildContainmentTree(relations: Relation[]): ContainmentGroup[] {
+  // 1. Filter to only 'contains' relations
+  const containsRels = relations.filter(r => r.type === 'contains');
+
+  // 2. Build parent → children map
+  // 3. Detect roots (parents that are not children of any other contains relation)
+  // 4. Recursively build tree, capping at depth 3
+  // 5. Units at depth > 3 render as flat children of their depth-3 ancestor
+  //    with a "+N deeper" indicator
+}
+```
+
+**D3 force simulation adjustments:**
+- Contained nodes are excluded from the global force simulation. Instead, they use a **local sub-layout** within the parent's bounding box.
+- Parent nodes have expanded collision radii proportional to their child count: `radius = baseRadius + (childCount * 20) + (nestedGroupCount * 40)`.
+- A custom `forceContainment()` force keeps child nodes within parent bounds, applied after the main simulation tick.
+- **Cluster layout for parent-child:** The D3 force simulation uses `d3.forceCluster()` to group contained children around their parent node. Each `ContainmentGroup` acts as a cluster center. Children are attracted to their parent's position with a cluster strength of 0.6, while inter-cluster repulsion prevents overlap. This produces a visual nesting effect in Layer 2 (Structure) where `contains` relations appear as nested card groups rather than edge lines. The frontend detects containment via `relation.type === 'contains'` and routes these relations to the cluster renderer instead of the edge renderer.
+- In Canvas Global View: containment groups render as rounded rectangles with a subtle fill. Children render as dots inside.
+- In SVG Local View: containment groups render as card-in-card layouts with the parent's content as a header and children as indented cards below.
+
+**Depth limit:** Max 3 levels of nesting for readability. The rendering becomes unreadable beyond this. If data exceeds 3 levels, levels 4+ collapse into a flat list within the level-3 container with a "Show deeper structure" expand toggle.
+
+---
 
 **Branch Project (from Drift Detection):**
 
@@ -2472,6 +2664,68 @@ triggerDev.defineJob({
 // Triggered by: context.entered event (if stale > 1 hour) and unit.created/updated in context
 ```
 
+**Snapshot Update Event System — Trigger Definitions:**
+
+The snapshot job above needs precise trigger conditions. The following events cause snapshot recalculation, managed via the event bus pattern (`server/events/eventBus.ts`):
+
+| Event | Trigger Condition | Debounce | Priority |
+|---|---|---|---|
+| `unit.confirmed` | A Unit's lifecycle transitions to `confirmed` within this Context | 30s window | High |
+| `unit.created` | A new Unit is created directly in this Context (not Draft → only Confirmed) | 30s window | High |
+| `relation.created` | A relation is formed where both source and target are members of this Context | 30s window | Medium |
+| `context.idle` | No user activity in Context for 5 minutes (client sends heartbeat, server detects gap) | None | Low |
+| `context.manualRefresh` | User clicks "Refresh Snapshot" button on Context Dashboard | None | Immediate |
+
+**Debounce implementation:**
+
+```typescript
+// server/events/handlers/snapshotTrigger.ts
+
+const pendingSnapshots = new Map<string, NodeJS.Timeout>();
+
+function scheduleSnapshotUpdate(contextId: string, priority: 'high' | 'medium' | 'low') {
+  const DEBOUNCE_WINDOW = 30_000; // 30 seconds
+
+  // If a snapshot is already pending for this context, reset the timer
+  // (coalesces rapid changes like bulk unit creation into one snapshot)
+  if (pendingSnapshots.has(contextId)) {
+    clearTimeout(pendingSnapshots.get(contextId)!);
+  }
+
+  pendingSnapshots.set(contextId, setTimeout(async () => {
+    pendingSnapshots.delete(contextId);
+    await triggerDev.trigger("context-snapshot-update", { contextId });
+  }, priority === 'low' ? 0 : DEBOUNCE_WINDOW));
+  // 'low' priority (idle timer) fires immediately since the debounce already happened via inactivity
+}
+
+// Event bus subscriptions
+eventBus.on('unit.confirmed', (e) => scheduleSnapshotUpdate(e.contextId, 'high'));
+eventBus.on('unit.created', (e) => {
+  if (e.lifecycle === 'confirmed') scheduleSnapshotUpdate(e.contextId, 'high');
+});
+eventBus.on('relation.created', (e) => {
+  if (e.sourceContextId === e.targetContextId) {
+    scheduleSnapshotUpdate(e.sourceContextId, 'medium');
+  }
+});
+eventBus.on('context.idle', (e) => scheduleSnapshotUpdate(e.contextId, 'low'));
+// Manual refresh bypasses debounce entirely
+eventBus.on('context.manualRefresh', (e) => {
+  pendingSnapshots.delete(e.contextId);
+  triggerDev.trigger("context-snapshot-update", { contextId: e.contextId });
+});
+```
+
+**BullMQ snapshot-queue (Scale phase):** At scale, the `context-snapshot-update` job migrates from Trigger.dev to a dedicated BullMQ queue (`snapshot-queue`) with the following configuration:
+- **Concurrency:** 3 workers (snapshot generation is LLM-bound, not CPU-bound)
+- **Rate limit:** Max 10 snapshots per minute per user (prevents runaway cost from rapid-fire events)
+- **Job deduplication:** If a `snapshot-queue` job already exists for a given `contextId`, the new job replaces it (effectively extending the debounce into the queue layer)
+- **Retry:** 2 attempts with exponential backoff (5s, 30s) — LLM API transient failures
+- **TTL:** Jobs older than 5 minutes are discarded (stale by definition — a newer trigger will follow)
+
+**LLM summary generation:** The `context-snapshot-update` job (defined above) calls `llm.summarizeContext()` which is a background-only operation — it does NOT block the user. The client polls for snapshot freshness via `context.getSnapshot` tRPC query (stale-while-revalidate pattern: shows previous snapshot with a "Updating..." indicator until the new one arrives).
+
 #### 10f. Action Unit External Service Integration
 
 **PRD Reference:** Section 17 — Action Units link to Calendar, Todoist, etc. Appendix A-13 — `action_status`, `linked_calendar_event`, `linked_task`, `deadline`, `decision_log`.
@@ -2569,6 +2823,90 @@ Custom relation types use their `purpose[]` tags to determine which navigation m
 
 ---
 
+### 11. Template-to-Navigator Auto-Generation
+
+**PRD Reference:** Section 22 — "Recommended navigation order: For software design, 'understand problem → define user → decide core features → technical decisions → detailed spec' is the natural order. This flow is pre-set as the recommended Navigator." Section 15 — Navigator paths are ordered Unit references with a navigation purpose.
+
+**Trigger:** When a Domain Template is applied to a project (via `project.applyTemplate` mutation), the system auto-generates a default Navigator from the template's `config.recommended_nav_order` field.
+
+**Algorithm (`server/services/templateNavigatorService.ts`):**
+
+```typescript
+async function generateNavigatorFromTemplate(
+  projectId: string,
+  contextId: string,
+  template: DomainTemplate
+): Promise<string> { // returns navigatorId
+  const navOrder = template.config.recommended_nav_order;
+  // navOrder example (from template config JSONB):
+  // [
+  //   { step: "Understand Problem", unitType: "question", scaffoldMatch: "core_problem" },
+  //   { step: "Define Users", unitType: "question", scaffoldMatch: "primary_users" },
+  //   { step: "Core Features", unitType: "decision", scaffoldMatch: null },
+  //   { step: "Technical Decisions", unitType: "decision", scaffoldMatch: null },
+  //   { step: "Detailed Spec", unitType: "claim", scaffoldMatch: null }
+  // ]
+
+  // 1. Get scaffold Units created by template application (already in Context)
+  const scaffoldUnits = await getScaffoldUnits(contextId);
+
+  // 2. Map each nav step to existing Units by type matching
+  const navigatorPath: string[] = [];
+  for (const step of navOrder) {
+    // Priority: match by scaffoldMatch key first, then by unitType
+    const matched = step.scaffoldMatch
+      ? scaffoldUnits.find(u => u.meta?.scaffold_key === step.scaffoldMatch)
+      : scaffoldUnits.find(u => u.type === step.unitType && !navigatorPath.includes(u.id));
+
+    if (matched) {
+      navigatorPath.push(matched.id);
+    }
+    // Unmatched steps are skipped — Navigator will have gaps the user fills as they work
+  }
+
+  // 3. Create NavigatorItems in template-recommended order
+  const navigatorItems: NavigatorItem[] = navigatorPath.map((unitId, index) => ({
+    unitId,
+    position: index,
+    isAutoGenerated: true,  // distinguishes template-generated items from user-added ones
+    sourceStep: navOrder[index]?.step ?? null,
+  }));
+
+  // 4. Create Navigator with template-generated flag
+  const navigator = await createNavigator({
+    name: `${template.name} — Recommended Path`,
+    purpose: 'explore', // default purpose for template navigators
+    contextId,
+    path: navigatorPath,
+    items: navigatorItems,
+    meta: {
+      template_generated: true,    // marks as auto-generated (editable by user)
+      isAutoGenerated: true,       // navigator-level flag for UI rendering
+      source_template_id: template.id,
+      original_step_count: navOrder.length,
+      matched_step_count: navigatorPath.length,
+    },
+  });
+
+  // User can edit freely after generation — any manual edit clears isAutoGenerated on that item
+  return navigator.id;
+}
+```
+
+**tRPC Route (addition to `templateRouter`):**
+
+```typescript
+generateNavigator: protectedProcedure
+  .input(z.object({ projectId: z.string().uuid(), contextId: z.string().uuid() }))
+  .mutation(/* Calls generateNavigatorFromTemplate, returns navigator with match stats */),
+```
+
+**User editability:** The generated Navigator is fully editable — users can reorder steps, add new Units, remove steps. The `meta.template_generated` flag shows a subtle "Generated from template" badge in the Navigator UI. Editing removes the badge.
+
+**Auto-trigger:** Called automatically when `project.applyTemplate` mutation completes and the project's first Context exists. If no Context exists yet, deferred to `context.created` event for that project.
+
+---
+
 ### Project Structure Additions
 
 The following new files should be added to the project structure:
@@ -2595,6 +2933,10 @@ src/
     jobs/
       incubationSurfacingJob.ts   # Periodic incubation resurfacing
       tensionDetectionJob.ts      # Context tension scanning
+      externalKnowledgeScanJob.ts # Proactive external knowledge scanner
+      snapshotTrigger.ts          # Snapshot update event debounce handler
+    services/
+      templateNavigatorService.ts # Template-to-Navigator auto-generation
 
   features/
     ai/
@@ -2604,6 +2946,11 @@ src/
     contexts/
       components/
         TensionAlert.tsx               # Contradiction detection display
+        KnowledgeSuggestionToast.tsx   # Proactive knowledge suggestion widget
+    graph/
+      hooks/
+        useContainmentGroups.ts        # Contains relation nested rendering
+        useGraphLayoutCache.ts         # Per-context graph layout caching
     reasoning/                         # New feature module
       components/
         ReasoningChainView.tsx         # Visual chain display

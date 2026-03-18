@@ -748,6 +748,72 @@ flowchart TD
 **Interactions**: Drag units into/between slots, click bridge text to edit, toggle preview
 **Technology**: @dnd-kit for accessible drag-and-drop
 
+**Template Auto-Mapping Flow:**
+
+When a user creates an Assembly from a template (e.g., "PRD" → Problem + UserStories + Requirements + Metrics), AI scans existing Units in the current Context and proposes which Unit fits which slot. This eliminates the cold-start problem of staring at empty slots.
+
+- **Trigger:** User clicks "New Assembly" → selects a template → AI auto-mapping begins immediately
+- **Processing State:** Each template slot shows a shimmer animation (skeleton loading pattern) while AI evaluates matches. Header displays: "Mapping your Units to template slots..." with a subtle progress indicator.
+
+- **Proposed Mapping UI:**
+  ```
+  ┌─────────────────────────────────────────────────┐
+  │ PRD Assembly — AI Mapping Proposal               │
+  │─────────────────────────────────────────────────│
+  │                                                  │
+  │ Problem Statement                    ✓ Matched   │
+  │ ┌─────────────────────────────────────────────┐ │
+  │ │ 🔵 "Users lose context when switching..."   │ │
+  │ │                          [Accept] [Swap] [✕] │ │
+  │ └─────────────────────────────────────────────┘ │
+  │                                                  │
+  │ User Stories                        ✓ 3 Matched  │
+  │ ┌─────────────────────────────────────────────┐ │
+  │ │ 🟡 "As a researcher, I want..."             │ │
+  │ │ 🟡 "As a writer, I want..."                 │ │
+  │ │ 🟡 "As a student, I want..."                │ │
+  │ │                    [Accept All] [Review] [✕] │ │
+  │ └─────────────────────────────────────────────┘ │
+  │                                                  │
+  │ Requirements                     ○ No match      │
+  │ ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ │
+  │ │  No Units matched this slot                  │ │
+  │ │           [Search Units] [Create New] [Skip]  │ │
+  │ └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ │
+  │                                                  │
+  │ Metrics                          ✓ 1 Matched     │
+  │ ┌─────────────────────────────────────────────┐ │
+  │ │ 🟢 "Activation rate > 60% in first week"    │ │
+  │ │                          [Accept] [Swap] [✕] │ │
+  │ └─────────────────────────────────────────────┘ │
+  │                                                  │
+  │        [Accept All Matches]    [Start Empty]     │
+  └─────────────────────────────────────────────────┘
+  ```
+
+- **Per-Slot Actions:**
+  - **Accept**: Confirms the AI's proposed Unit for this slot. Card border changes from dashed (proposed) to solid (confirmed).
+  - **Swap**: Opens a search popover showing alternative Units ranked by relevance. User selects a replacement. The displaced Unit returns to the "available" pool.
+  - **✕ (Clear)**: Removes the proposed Unit, leaving the slot empty (dashed border, "+" icon).
+  - **Search Units** (on empty slots): Opens filtered search scoped to the current Context.
+  - **Create New** (on empty slots): Opens inline Unit creation within the slot.
+  - **Skip**: Leaves the slot explicitly empty; Assembly will note it as a gap.
+
+- **Bulk Actions:**
+  - "Accept All Matches" — accepts every AI-proposed mapping at once; empty slots remain empty
+  - "Start Empty" — dismisses all proposals, begins with a clean template
+
+- **Match Confidence Indicator:**
+  - Each proposed mapping shows a subtle confidence bar (thin 2px line below the Unit card):
+    - Green (`--success`): high confidence (>80%)
+    - Amber (`--warning`): moderate confidence (50–80%)
+    - No bar: low confidence (<50%, shown but flagged with "Low confidence match" tooltip)
+
+- **Post-Mapping Transition:**
+  - After user confirms (Accept All or per-slot), the mapping view smoothly transitions (400ms) to the standard AssemblyBoard editing view
+  - Accepted Units appear as solid cards in their slots; empty slots show "+" icons
+  - Bridge text zones between slots activate for user editing
+
 #### CompletenessCompass
 **Purpose**: Ambient progress indicator for thought-landscape completeness
 **Anatomy**: Radial progress visualization + category breakdown + action suggestions
@@ -764,6 +830,49 @@ flowchart TD
 **Purpose**: Re-entry briefing panel shown when returning to a Context
 **Anatomy**: Summary section + open questions list + suggestions + "Continue" / "Start fresh" buttons
 **States**: Active (on Context entry), Dismissed (after user action)
+
+**Context Snapshot Update States:**
+
+The Context Snapshot — the AI-generated summary of a Context's current state — updates automatically on specific triggers. The update process must be visible but non-intrusive, giving users confidence that their briefing is current.
+
+- **Update Triggers:**
+
+  | Trigger | Behavior | Delay |
+  |---------|----------|-------|
+  | New Unit added to Context | Auto-update queued | 5-second debounce (batches rapid additions) |
+  | Relation formed or removed | Auto-update queued | 5-second debounce |
+  | 5+ minutes idle in Context | Background update | Immediate on idle detection |
+  | User clicks "Refresh" | On-demand update | Immediate |
+  | Context re-entry | Update if stale (>5 min since last) | Before briefing displays |
+
+- **Update Loading State:**
+  - In the Context Dashboard header, the snapshot summary area shows a subtle inline loading indicator:
+    ```
+    ┌─────────────────────────────────────────────┐
+    │ Context Summary                    ↻ Updating│
+    │─────────────────────────────────────────────│
+    │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  ← shimmer overlay on existing text
+    │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+    └─────────────────────────────────────────────┘
+    ```
+  - The existing summary text remains visible beneath a 15% opacity shimmer overlay — users can still read the previous snapshot while the update processes
+  - The "↻ Updating" label appears in `--text-tertiary`, 11px, top-right of the summary section
+  - Duration: typically 1–3 seconds; for large Contexts (100+ Units), up to 8 seconds
+
+- **Last Updated Timestamp:**
+  - Below the snapshot summary, a timestamp line displays: "Last updated: 2 min ago" in `--text-tertiary`, 11px
+  - Relative time format (e.g., "just now", "2 min ago", "1 hour ago", "yesterday at 3:42 PM")
+  - Hovering the timestamp shows the absolute datetime in a tooltip
+
+- **Manual Refresh Button:**
+  - A small circular refresh icon (↻) appears to the right of the "Last updated" timestamp
+  - Default state: `--text-quaternary` (very subtle); hover state: `--text-secondary` with 180° rotation animation
+  - Click triggers an immediate snapshot update regardless of staleness
+  - During update, the icon spins continuously (360°/s linear rotation)
+
+- **Staleness Indicator:**
+  - If the snapshot is >30 minutes old and the Context has been modified since, the timestamp text turns `--warning` (amber) and a small dot appears next to "Last updated"
+  - This nudges users to refresh without being alarming
 
 #### AILifecycleBadge
 **Purpose**: Visual indicator for unit lifecycle state (Draft/Pending/Confirmed)
@@ -1076,6 +1185,67 @@ The following sections cover UI specifications for features defined in the PRD t
 - `Cmd+Shift+A` — Open attachment picker for focused UnitCard
 - `Tab` into attachment strip → arrow keys to navigate thumbnails → `Enter` to preview → `Esc` to close
 
+**Audio Input & Transcription Flow:**
+
+Audio is a first-class input method in Capture Mode, enabling users to dictate thoughts when typing is inconvenient or when the spoken word better captures the thinking flow.
+
+- **Recording UI:**
+  - Activated via microphone icon in the Capture Mode toolbar or `Cmd+Shift+R` shortcut
+  - Recording state replaces the text input area with a dedicated recording panel:
+    ```
+    ┌─────────────────────────────────────────────────┐
+    │                                                  │
+    │        ● Recording                    02:34      │
+    │                                                  │
+    │   ▁▃▅▇▅▃▁▂▅▇▆▃▁▂▄▆▇▅▃▁▂▃▅▇▅▃▁▂▄▆▇▅▃▁        │
+    │                                                  │
+    │            [ ■ Stop ]    [ ⏸ Pause ]              │
+    │                                                  │
+    └─────────────────────────────────────────────────┘
+    ```
+  - Red pulsing dot (●) indicates active recording — uses `--error` color with a 1.5s ease-in-out opacity pulse
+  - Real-time waveform visualization: horizontal waveform bar rendered with `--accent-primary` color, scrolling left as audio progresses. Height variations reflect amplitude.
+  - Timer: elapsed time in `HH:MM:SS` format (or `MM:SS` for recordings under 1 hour), `--text-secondary`, monospace font
+  - "Stop" button (■, filled square): ends recording and triggers transcription. Primary action style.
+  - "Pause" button (⏸): pauses recording; waveform freezes, timer stops, dot stops pulsing. Button label changes to "Resume" (▶). Paused segments are seamless in the final audio.
+
+- **Transcription Processing State:**
+  - After stopping, the recording panel transitions (300ms crossfade) to a processing state:
+    ```
+    ┌─────────────────────────────────────────────────┐
+    │                                                  │
+    │   ◌ Transcribing audio...              02:34     │
+    │   ████████████░░░░░░░░░░░░░░░           38%      │
+    │                                                  │
+    └─────────────────────────────────────────────────┘
+    ```
+  - Animated spinner (◌) with progress bar showing transcription completion
+  - Estimated time remaining shown for recordings over 2 minutes
+  - "Cancel" link available — discards both audio and partial transcript
+
+- **Transcript Review & Unit Generation:**
+  - Completed transcription appears in the standard text input area, pre-filled and editable
+  - A small audio badge appears above the text: `🎙 02:34 audio` — clicking opens the audio player
+  - User can edit the transcript before triggering decomposition (Organize Mode)
+  - When AI decomposes the transcript into Units, each generated Unit carries a `source_audio_timestamp` metadata field linking to the moment in the recording where that thought originated
+
+- **Audio Playback While Reviewing Units:**
+  - Each Unit generated from audio shows a small timestamp badge (e.g., `🎙 1:12`) in the card footer
+  - Clicking the timestamp badge opens an inline audio player pinned to the bottom of the workspace:
+    ```
+    ┌─────────────────────────────────────────────────┐
+    │ ▶ 1:12 / 2:34   ▁▃▅▇▅▃▁▂▅▇▆▃▁   🔊  [✕]      │
+    └─────────────────────────────────────────────────┘
+    ```
+  - Playback starts at the linked timestamp; the waveform shows the full recording with the current segment highlighted in `--accent-primary`
+  - As audio plays, Units generated from the currently-playing segment are highlighted with a subtle pulse border (`--accent-primary` at 20% opacity)
+  - Scrubbing the waveform scrolls Thread View to the corresponding Unit (and vice versa — clicking a Unit during playback jumps audio to that timestamp)
+
+- **Audio Resource Persistence:**
+  - The original audio file is stored as a Resource Unit attached to the first generated Thought Unit
+  - Other Units from the same recording reference the same Resource Unit (multi-reference, shown as `×N` badge)
+  - Audio Resource thumbnail in the attachment strip shows a static waveform preview
+
 ---
 
 ### NavigatorUI
@@ -1131,6 +1301,47 @@ The following sections cover UI specifications for features defined in the PRD t
 - `H` — Toggle horizontal branch panel
 - `Esc` — Exit Navigator, return to previous view
 - `1-9` — Jump to Navigator step by number (if ≤ 9 steps)
+
+**Domain Template Navigator Integration:**
+
+When a user applies a Domain Template (e.g., "Software Design") to a Context, the template's recommended navigation order (as defined in the PRD — e.g., "understand problem → define user → decide core features → technical decisions → detailed spec") automatically generates a Navigator path.
+
+- **Auto-Navigator Generation:**
+  - Triggered immediately when a Domain Template is applied to a Context that already contains Units
+  - AI maps existing Units to template navigation steps and creates a Navigator with the template's recommended order
+  - A toast notification appears: "Navigator created from [Template Name] template" with an "Open" action button
+
+- **Auto-Navigator Appearance:**
+  - In the Navigator list (opened via `N`), the auto-generated Navigator appears with a distinctive template badge:
+    ```
+    ┌─────────────────────────────────────────────┐
+    │ Navigators                                   │
+    │─────────────────────────────────────────────│
+    │ 📐 Software Design Flow      (from template) │  ← template-generated
+    │    5 / 8 steps populated                     │
+    │                                              │
+    │ 📝 My argument path                          │  ← user-created
+    │    12 steps                                  │
+    └─────────────────────────────────────────────┘
+    ```
+  - Template-generated Navigators use a ruler icon (📐) instead of the standard compass icon, and display a `(from template)` suffix badge in `--text-tertiary`
+  - Step count shows "X / Y steps populated" — where Y is the total template steps and X is how many have matching Units
+
+- **Navigator Step Mapping:**
+  - Each template step appears in the Navigator even if no Unit has been mapped to it yet
+  - Populated steps: standard step dot (filled) with the mapped Unit
+  - Empty steps: hollow dot with the template step label in italic (e.g., *"Technical constraints — no Units yet"*)
+  - Empty steps serve as prompts — clicking one offers: "Create a Unit for this step" or "Search existing Units"
+
+- **User Modification:**
+  - Users can freely reorder, add, or remove steps from a template-generated Navigator — it becomes a regular Navigator once modified
+  - A confirmation appears on first edit: "This will customize the template Navigator. The original template order is preserved in the Domain Template settings."
+  - Reordering uses the same drag-and-drop as manual Navigators
+  - Adding a Unit to an empty template step: drag a Unit onto the hollow step dot, or use the step's "+" button
+
+- **Template Update Behavior:**
+  - If new Units are added to the Context that match an unpopulated template step, the Navigator auto-updates with a subtle badge: "1 new step populated"
+  - The user is never forced to follow the template order — it is a suggestion, not a constraint
 
 ---
 
@@ -1374,6 +1585,52 @@ The following sections cover UI specifications for features defined in the PRD t
   - Click: "AI found external knowledge that may relate to your claim: [claim preview]"
   - Actions: "Connect" / "Dismiss" / "Save for later"
 
+**Proactive External Knowledge Push:**
+
+Unlike the user-initiated Knowledge Connection flow above, this feature has the AI **proactively scanning** the current Context and surfacing relevant external knowledge the user never asked for. The design must clearly distinguish proactive suggestions from user-initiated imports.
+
+- **Notification Placement:**
+  - A floating suggestion card appears in the bottom-right corner of the workspace (above the Completeness Compass if expanded), anchored 24px from edges
+  - Card dimensions: 320px wide, auto-height (max 160px before scroll)
+  - Entrance animation: slide-up from below viewport edge + fade-in, 300ms ease-out
+  - Auto-dismiss after 30 seconds if not interacted with (fade-out, 200ms)
+  - Maximum 1 proactive suggestion visible at a time; subsequent suggestions queue and appear after dismissal
+
+- **Suggestion Card Anatomy:**
+  ```
+  ┌──────────────────────────────────────┐
+  │ 💡 External knowledge found          │  ← header, --text-tertiary, 11px
+  │                                       │
+  │ "A 2024 study on variable reward     │  ← source preview, --text-primary, 13px
+  │  schedules contradicts your claim     │
+  │  about habituation rates"            │
+  │                                       │
+  │ Related to: "Users habituate after   │  ← linked claim, --accent-primary, 12px
+  │  3 weeks" (your claim)               │
+  │                                       │
+  │ [Connect]  [Save for later]  [✕]     │  ← actions
+  └──────────────────────────────────────┘
+  ```
+  - Header uses a lightbulb icon (not the search magnifier) to visually distinguish from user-initiated search
+  - The linked claim is clickable — navigates to that Unit in the current view
+  - "Connect" opens the standard Knowledge Connection flow (Option ①) with the suggested source pre-loaded
+  - "Save for later" sends to Incubation Queue with the association noted
+  - "✕" dismisses without action; AI de-prioritizes similar suggestions for this Context
+
+- **Difference from User-Initiated Search:**
+
+  | Aspect | User-initiated | Proactive push |
+  |--------|---------------|----------------|
+  | Trigger | User pastes/imports content | AI background scan |
+  | Location | Connection Dialog (center modal) | Bottom-right floating card |
+  | Icon | `link.badge.plus` | `lightbulb` |
+  | Urgency | Blocking (requires choice) | Non-blocking (auto-dismisses) |
+  | Frequency | On every import | Max 1 per 10-minute interval |
+
+- **Settings Control:**
+  - Users can disable proactive suggestions entirely in Settings → AI Behavior → "Proactive knowledge suggestions" toggle
+  - Frequency control: "Suggest at most every [5 / 10 / 30] minutes" dropdown
+
 **States:**
 
 | State | Visual | Behavior |
@@ -1482,6 +1739,81 @@ The following sections cover UI specifications for features defined in the PRD t
 - `Cmd+B` — Create branch from focused Unit
 - `[` / `]` — Switch to previous / next sibling branch
 - `Cmd+↑` — Navigate to branch parent
+
+**Context-Switching in Graph View:**
+
+When the user switches the active Context (via sidebar or command palette) while in Graph View, the graph responds with a coordinated 300ms transition:
+
+1. **Fade-out phase (0–150ms)**: Relation edges that do not exist in the incoming Context's Perspective fade to 0% opacity. Nodes that belong only to the outgoing Context shrink to 50% scale and reduce to 15% opacity (ghost nodes — still visible as spatial anchors but clearly inactive).
+2. **Fade-in phase (150–300ms)**: New relation edges from the incoming Perspective draw themselves in (animated stroke from source to target). Nodes unique to the new Context scale up from 50% to 100% with a subtle spring easing. Shared nodes remain stationary — they are the visual anchors that maintain spatial orientation during the switch.
+3. **Active Context indicator**: A pill badge in the top-left of the Graph Canvas displays the active Context name with the Context's accent color as a left border. During transition, the pill crossfades between old and new Context names. If a Perspective changes a Unit's type, the node's type-color dot smoothly transitions to the new color (e.g., blue "claim" → purple "idea").
+4. **Edge legend update**: The relation legend panel (bottom-right) updates to show only relation types present in the active Perspective, with counts.
+
+This transition reinforces the mental model that the graph is the same territory viewed through different lenses — nodes don't teleport; only their interpretive layer (relations, types, importance) changes.
+
+**Contains Relation Hierarchical Rendering:**
+
+The `contains` relation renders differently from all other relation types to convey hierarchical ownership rather than lateral connection.
+
+- **In Graph View (Layer 1 — Global Overview):** Parent nodes that have `contains` relations render as slightly larger circles with a subtle inner ring (2px, `--border-secondary`). Child nodes cluster tightly inside the parent's gravitational radius in the force-directed layout, creating a visual "bubble" effect. The contains edges themselves are not drawn as lines — instead, the spatial nesting implies the relationship. Hovering the parent node reveals a faint translucent bubble boundary (rounded rect, `--bg-tertiary` at 8% opacity) encompassing all contained children.
+
+- **In Layer 2 (Local Card Array):** Contains renders as **nested cards**. The parent Unit appears as a full-width card with its contained children indented inside it as sub-cards:
+  ```
+  ┌─────────────────────────────────────────┐
+  │ 🔵 Lean Startup Methodology             │
+  │ ┌─────────────────────────────────────┐ │
+  │ │ 🔵 Build-Measure-Learn Loop         │ │
+  │ └─────────────────────────────────────┘ │
+  │ ┌─────────────────────────────────────┐ │
+  │ │ 🔵 MVP Concept                      │ │
+  │ └─────────────────────────────────────┘ │
+  └─────────────────────────────────────────┘
+  ```
+  - Parent card has a subtle left border in the parent's type color and a collapse/expand chevron (▾/▸) at the top-right
+  - Child cards are inset with 16px left padding and rendered at 95% scale
+  - Clicking a child card opens its Unit Detail; the parent context remains visible as a breadcrumb
+  - Maximum nesting depth displayed: 3 levels (deeper levels show a "+N deeper" link)
+
+- **In Thread View:** Contains relations render as indented child cards beneath the parent, with a thin vertical connector line (`--border-tertiary`, 1px) running along the left margin from parent to last child, similar to comment threading in discussion interfaces.
+
+---
+
+### ChunkVisualLanguage
+
+**Purpose**: Define the visual treatment for Chunks — computed intermediate groupings between individual Units and full Contexts — so users can perceive meaningful boundaries while navigating Thread View.
+
+**Visual Design:**
+
+Chunks are not stored entities but computed clusters based on semantic proximity and navigation purpose. Their boundaries must feel organic, not rigid.
+
+- **Chunk Divider in Thread View:**
+  - A horizontal separator between chunks, visually heavier than the gap between individual Unit cards (which is 8px whitespace) but lighter than a Context boundary
+  - Anatomy: 1px line in `--border-secondary` with a centered label pill
+  - Label pill: rounded-full, `--bg-tertiary` background, `--text-tertiary` text, 11px font size
+  - Label content: AI-generated chunk summary (e.g., "Market analysis arguments" or "Technical constraints") — max 40 characters, truncated with ellipsis
+  - Spacing: 24px above the divider, 24px below (vs. 8px between Units within a chunk)
+
+- **Chunk Boundary vs. Context Boundary:**
+
+  | Element | Visual Weight | Spacing | Label |
+  |---------|--------------|---------|-------|
+  | Unit gap (within chunk) | 8px whitespace only | 8px | None |
+  | Chunk divider | 1px line + label pill | 24px above/below | AI-generated summary |
+  | Context boundary | 2px line + full-width banner | 40px above/below | Context name + icon + unit count |
+
+- **Chunk Crossing Indicator:**
+  - When scrolling through Thread View, a subtle top-bar indicator shows the current chunk label (similar to sticky section headers in iOS)
+  - Format: slim bar (28px height) pinned below the Navigator Bar (if active), `--bg-primary` with bottom shadow
+  - Text: chunk label in `--text-secondary`, 12px, left-aligned
+  - Transitions: crossfade (200ms) when scrolling past a chunk boundary
+
+- **In Graph View:**
+  - Chunk boundaries are not drawn explicitly. Instead, the force-directed layout naturally clusters Units within the same chunk via stronger internal attraction forces. The visual result is recognizable clusters without hard borders.
+  - When a Navigator is active with a specific purpose mode, chunk composition may change (e.g., "Argument" purpose creates different clusters than "Creative" purpose). The graph re-clusters with a 400ms animated transition.
+
+**Keyboard Shortcuts:**
+- `Shift+↓` / `Shift+↑` — Jump to next / previous chunk boundary in Thread View
+- `Cmd+Shift+C` — Show chunk overview panel (list of all chunks in current Context with unit counts)
 
 ---
 

@@ -883,6 +883,30 @@ So that I can freely experiment with my thought organization without fear of los
 **And** undo triggers a toast showing the action name (e.g., "Unit creation undone") per UX-DR41
 **And** destructive operations (delete) show a confirmation dialog before executing per UX-DR41
 
+### Story 2.11: Audio Input & Transcription-Linked Units
+
+As a user,
+I want to record audio thoughts and have them transcribed into Thought Units that link back to specific audio timestamps,
+So that I can capture ideas verbally when typing is impractical and later navigate between text and the original spoken context.
+
+**Acceptance Criteria:**
+
+**Given** the user is in Capture Mode or any Unit creation context
+**When** the user taps the record button (microphone icon in the input toolbar)
+**Then** a real-time waveform visualizer appears showing audio levels during recording
+**And** the recording state is clearly indicated with a pulsing red dot and elapsed time counter
+**And** the user can stop recording via the stop button or by pressing Escape
+**Given** a recording has been stopped
+**When** the audio is submitted for processing
+**Then** a processing state indicator shows "Transcribing…" with a progress animation
+**And** the transcribed text is fed through the standard Unit creation pipeline (including AI decomposition if enabled)
+**And** the original audio file is stored as a Resource Unit (type: audio) linked to the generated Thought Units
+**Given** Units have been created from an audio recording
+**When** the user views any such Unit in UnitCard or Unit Detail Panel
+**Then** each Unit displays an audio timestamp badge (e.g., "🔊 1:23") indicating the position in the source audio
+**And** clicking the timestamp badge opens an inline audio player and plays from that exact position
+**And** the audio Resource Unit's detail view shows the full waveform with clickable timestamp markers for each derived Unit
+
 ---
 
 ## Epic 3: Context Organization & Perspectives
@@ -1458,6 +1482,28 @@ So that imported knowledge is personalized to my cognitive context rather than p
 **And** proactive suggestions include: the external source, which Unit it relates to, and the proposed relation type
 **And** the Knowledge Connection prompt respects the Unit's type and Context for relevance per FR33
 
+### Story 5.15: Proactive External Knowledge Push
+
+As a user,
+I want the AI to proactively scan my active Context and suggest relevant external knowledge I haven't asked for,
+So that I discover supporting or refuting evidence without manually searching, enriching my thinking with perspectives I might have missed.
+
+**Acceptance Criteria:**
+
+**Given** a Context has 3 or more Units and the user has been actively working in it
+**When** the background knowledge scanner detects relevant external knowledge for the user's claims, questions, or assumptions
+**Then** a non-interrupting notification appears in the sidebar under an "Insights" section with the label "External knowledge found for this context"
+**And** the notification badge shows the count of pending suggestions
+**Given** the user clicks the notification
+**When** the suggestions panel opens
+**Then** each suggestion shows: the external source summary, which existing Unit it relates to, the proposed relation type (supports/refutes/extends), and a relevance confidence score
+**And** the user can perform one of three actions per suggestion: (1) "Add" — creates a Resource Unit and proposes a relation to the matched Unit, (2) "View" — opens a preview of the external content without importing, (3) "Dismiss" — removes the suggestion permanently
+**Given** a suggestion has been dismissed or added
+**When** 24 hours have not yet elapsed since the last suggestion batch for this Context
+**Then** the scanner does not generate new suggestions for the same Context (24-hour cooldown)
+**And** the cooldown resets when the user adds significant new content (3+ new Units) to the Context
+**And** all proactive suggestions follow the AI Intervention Intensity level set by the user per Story 5.6
+
 ---
 
 ## Epic 6: Navigation, Search & Discovery
@@ -1774,6 +1820,28 @@ So that I can evaluate the logical structure of my arguments and identify gaps i
 **And** AI can auto-generate Reasoning Chains by analyzing the relation graph within a Context per Feature Reference
 **And** the user can manually create or edit Reasoning Chains by selecting Units and assigning roles
 **And** Reasoning Chains are viewable from both Context detail and Assembly detail views
+
+### Story 7.10: Template Auto-Mapping for Assembly Creation
+
+As a user,
+I want the AI to automatically propose which of my existing Units fit into each slot when I create an Assembly from a template,
+So that I can quickly populate structured documents without manually dragging every Unit into place.
+
+**Acceptance Criteria:**
+
+**Given** the user creates a new Assembly by selecting a template (e.g., Research Paper, Decision Brief, Essay)
+**When** the template is applied and the Assembly view loads
+**Then** the AI analyzes all Units in the current Context (or user-selected scope) and generates a mapping proposal for each template slot
+**And** each slot displays: the slot name/description, the proposed Unit(s) with a match confidence indicator (high/medium/low), and action buttons
+**Given** a mapping proposal is shown for a slot
+**When** the user reviews it
+**Then** the user can perform one of three actions per slot: (1) "Accept" — confirms the proposed Unit mapping, (2) "Swap" — opens a Unit picker to choose a different Unit for this slot, (3) "Skip" — leaves the slot empty for manual filling later
+**And** slots with no matching Units are visually flagged as "Empty — no matching Units found" with a prompt to create or search for content
+**Given** the user has reviewed all slot proposals
+**When** the user confirms the overall mapping (via "Apply Mappings" button)
+**Then** all accepted and swapped mappings populate the Assembly with the selected Units in their designated positions
+**And** the Assembly enters its normal editing state with all mapped Units in place
+**And** the mapping operation is recorded in the undo history so the user can revert to the empty template state
 
 ---
 
