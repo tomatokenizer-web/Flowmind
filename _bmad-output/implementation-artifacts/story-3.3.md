@@ -1,6 +1,6 @@
 # Story 3.3: Context Sidebar with Hierarchical Tree Navigation
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 

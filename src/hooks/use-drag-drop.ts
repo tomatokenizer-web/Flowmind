@@ -49,7 +49,7 @@ const announcements = {
     }
     return `Unit ${active.id} was dropped.`;
   },
-  onDragCancel({ active }: DragStartEvent) {
+  onDragCancel({ active }: { active: { id: string | number } }) {
     return `Dragging was cancelled. Unit ${active.id} was returned to its original position.`;
   },
 };
