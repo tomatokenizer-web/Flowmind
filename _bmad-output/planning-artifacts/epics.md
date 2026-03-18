@@ -494,7 +494,7 @@ Users can compose documents by arranging Units into Assembly slots using drag-an
 **UX-DRs covered:** UX-DR13 (AssemblyBoard), UX-DR30 (Assembly View screen)
 
 ### Epic 8: Feedback Loop & Thought Evolution
-Users can evolve their thinking over time through an Incubation Queue (surfacing incomplete thoughts), Compression (extracting common cores from similar claims), Orphan Unit Recovery (finding unused thoughts), external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, and unit drift detection from project purpose.
+Users can evolve their thinking over time through an Incubation Queue (surfacing incomplete thoughts), Compression (extracting common cores from similar claims), Orphan Unit Recovery (finding unused thoughts), external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, unit drift detection from project purpose, and Branch Project creation from drifted thinking.
 **FRs covered:** FR19, FR21, FR57, FR58, FR59, FR62, FR64
 **NFRs addressed:** NFR13, NFR14, NFR24
 **UX-DRs covered:** UX-DR14 (CompletenessCompass)
@@ -1438,6 +1438,26 @@ So that I can process AI proposals efficiently and enrich my thinking with outsi
 **And** search results respect the current Context and Unit type for relevance ranking per FR33
 **And** ARIA live regions announce new suggestions politely per UX-DR55
 
+### Story 5.14: Knowledge Connection Interaction — "What Does This Mean to You?"
+
+As a user,
+I want the system to ask me what role external knowledge plays in my thinking when I import it, and to proactively suggest relevant external knowledge for my existing claims,
+So that imported knowledge is personalized to my cognitive context rather than passively stored.
+
+**Acceptance Criteria:**
+
+**Given** the user imports external content (papers, Wikipedia, web clips, book chapters, company manuals)
+**When** the import is detected
+**Then** the system presents a Knowledge Connection prompt asking "In what context did you bring this?" with three options per PRD Section 9:
+  (1) Connect to an actively explored Context — adds as evidence or background to the active Context, AI auto-proposes relations to existing Units
+  (2) As the starting point of a new exploration — creates a new Context seeded with this knowledge
+  (3) Hold for now (connect later) — places in Incubation Queue with notification when a relevant Context appears
+**And** when the user selects option (1), AI automatically proposes relations to existing Units in the current Context, transforming general knowledge into personalized evidence per PRD Section 9
+**And** AI also works in reverse: analyzing the user's Context and proactively suggesting "There is external knowledge that could support or refute this claim" per PRD Section 9
+**And** the proactive suggestions follow the non-interrupting notification policy per NFR24
+**And** proactive suggestions include: the external source, which Unit it relates to, and the proposed relation type
+**And** the Knowledge Connection prompt respects the Unit's type and Context for relevance per FR33
+
 ---
 
 ## Epic 6: Navigation, Search & Discovery
@@ -1719,28 +1739,47 @@ So that I can create targeted outputs and know what's changed since my last expo
 **And** when Units have changed since the last export, a notification badge appears on the Assembly with "N units changed since last export" per FR54
 **And** the user can view export history and re-export with the same or updated settings
 
-### Story 7.8: Assembly Source Map & Reasoning Chains
+### Story 7.8: Assembly Source Map
 
 As a user,
-I want to see which external resources contributed to my Assembly and trace reasoning chains from evidence to conclusion,
-So that I can verify the provenance and logical structure of my compositions.
+I want to see which external resources contributed to my Assembly and at what ratio,
+So that I can verify the provenance and intellectual composition of my documents.
 
 **Acceptance Criteria:**
 
 **Given** an Assembly contains Units with provenance data (origin_type, source_span)
 **When** the user views the Assembly Source Map
 **Then** it auto-generates a visualization showing which external resources contributed to the Assembly and at what ratio per FR75
+**And** each source entry shows: `resource_unit_id` (or "directly written" for user-authored Units), `contributing_units` list, and `contribution_ratio` per PRD Appendix A-14
+**And** source entries are grouped by origin: external resources vs. directly written content
 **And** each source shows: resource name/URL, number of Units derived from it, and percentage of Assembly coverage
-**When** the user views Reasoning Chains
-**Then** explicit structures show the path from evidence through inference to conclusion per FR76
-**And** the chain visualization highlights the relation types connecting each step (e.g., Evidence →[supports]→ Claim →[derives_from]→ Conclusion)
-**And** gaps in the reasoning chain are highlighted (e.g., "This conclusion has no supporting evidence path")
+**And** the source map data is stored as a `source_map[]` array on the Assembly model per PRD Appendix A-14
+**And** a reference list is auto-generated when the Assembly is exported
+**And** the Source Map is accessible from the Assembly detail view as a dedicated tab or panel
+
+### Story 7.9: Reasoning Chain Visualization
+
+As a user,
+I want to trace the explicit reasoning path from evidence through inference to conclusion within a Context,
+So that I can evaluate the logical structure of my arguments and identify gaps in reasoning.
+
+**Acceptance Criteria:**
+
+**Given** Units exist within a Context with relation chains connecting evidence to conclusions
+**When** the user requests a Reasoning Chain view
+**Then** the system constructs a ReasoningChain structure with: `id`, `goal` (the conclusion being reasoned toward), and `steps[]` array per FR76, PRD Appendix B
+**And** each step includes: `unit_id`, `role` (foundation / motivation / validation / inference / conclusion), `evidence_domain`, `scope`, and `transition` (logic for moving to the next step) per PRD Appendix B
+**And** the chain visualization displays steps sequentially with relation types connecting each step (e.g., Evidence →[supports]→ Claim →[derives_from]→ Conclusion)
+**And** gaps in the reasoning chain are highlighted (e.g., "This conclusion has no supporting evidence path", "Scope jump: personal evidence supports domain-general claim")
+**And** AI can auto-generate Reasoning Chains by analyzing the relation graph within a Context per Feature Reference
+**And** the user can manually create or edit Reasoning Chains by selecting Units and assigning roles
+**And** Reasoning Chains are viewable from both Context detail and Assembly detail views
 
 ---
 
 ## Epic 8: Feedback Loop & Thought Evolution
 
-**Goal:** Users can evolve their thinking over time through an Incubation Queue, Compression, Orphan Unit Recovery, external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, and unit drift detection from project purpose.
+**Goal:** Users can evolve their thinking over time through an Incubation Queue, Compression, Orphan Unit Recovery, external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, unit drift detection from project purpose, and Branch Project creation from drifted thinking.
 
 **FRs covered:** FR19, FR21, FR57, FR58, FR59, FR62, FR64
 **NFRs addressed:** NFR13, NFR14, NFR24
@@ -1856,10 +1895,29 @@ So that I can stay focused or consciously expand the scope.
 **Given** a Project has a defined purpose (from domain template or user description)
 **When** the Drift Detection service analyzes Units in the project
 **Then** each Unit receives a `drift_score` (0.0–1.0) measuring semantic distance from the project purpose per FR64
-**And** when a Unit's drift_score exceeds a configurable threshold (default 0.7), the user is presented with options: (1) keep in project (mark as intentional expansion), (2) move to a different Context, (3) move to Incubation Queue per FR64
+**And** when a Unit's drift_score exceeds a configurable threshold (default 0.7), the user is presented with options: (1) keep in project (mark as intentional expansion), (2) move to a different Context, (3) split into a sub-context (keep connection but create separate exploration space), (4) branch into a new project (see Story 8.8) per FR64, PRD Section 19
 **And** the drift detection runs as a Trigger.dev background job on Unit creation/update
 **And** the Project Dashboard shows an aggregate drift indicator
 **And** the notification follows non-interrupting policy per NFR24
+
+### Story 8.8: Branch Project from Drift Detection
+
+As a user,
+I want to branch drifted Units into a new independent project while maintaining a reference relation with the original project,
+So that valuable tangential explorations become their own focused workspace without losing the connection to where they originated.
+
+**Acceptance Criteria:**
+
+**Given** a Unit or group of Units has been flagged by Drift Detection with a drift_score above threshold
+**When** the user selects the "Branch into new project" option
+**Then** a new Project is created with fields: `branched_from` (original project ID), `branch_reason` (user-provided or AI-suggested description of why it branched), and `shared_units[]` (list of Units shared between both projects) per PRD Section 19
+**And** the selected drifted Units are moved to the new project's initial Context
+**And** a `references` relation is maintained between the original project and the branched project
+**And** shared Units appear in both projects simultaneously (not duplicated) per PRD Branch Project structure
+**And** the original project's drift indicator updates to reflect the resolved drift
+**And** the branched project inherits the original project's template (if any) or can be assigned a different template
+**And** a creation dialog allows the user to name the new project, provide a purpose statement, and confirm which Units to include
+**And** the Branch Project is accessible from the original project's sidebar with a visual branch indicator
 
 ---
 

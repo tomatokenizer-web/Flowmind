@@ -1514,3 +1514,1115 @@ pnpm create t3-app@latest flowmind --CI --tailwind --trpc --prisma --appRouter -
 ```
 
 Then: Prisma schema → Auth.js → Unit CRUD → Perspective Layer → Relations → AI pipeline
+
+---
+
+## Supplemental Architecture: Feature-Specific Deep Designs
+
+_The following sections address PRD features that require detailed architectural specification beyond what was covered in the core architecture above. Each section adds data model changes, API endpoints, algorithm descriptions, and background job definitions._
+
+### 1. Reasoning Chain
+
+**PRD Reference:** Appendix B — A structure representing the path through which Units with different `evidence_domain` and `scope` values connect to reach a final conclusion.
+
+**Data Model Additions:**
+
+```
+reasoning_chains
+  id              UUID PRIMARY KEY
+  project_id      UUID REFERENCES projects(id) ON DELETE CASCADE
+  context_id      UUID REFERENCES contexts(id) ON DELETE SET NULL
+  goal            TEXT NOT NULL          -- the conclusion this chain aims toward
+  created_at      TIMESTAMPTZ
+  modified_at     TIMESTAMPTZ
+  created_by      UUID REFERENCES users(id)
+  status          VARCHAR(20) DEFAULT 'draft'  -- draft, complete, archived
+
+reasoning_chain_steps
+  id              UUID PRIMARY KEY
+  chain_id        UUID REFERENCES reasoning_chains(id) ON DELETE CASCADE
+  unit_id         UUID REFERENCES units(id) ON DELETE CASCADE
+  position        INT NOT NULL           -- ordering within the chain
+  role            VARCHAR(20) NOT NULL   -- foundation, motivation, validation, inference, conclusion
+  evidence_domain VARCHAR(30)            -- copied from unit at chain-creation time for snapshot
+  scope           VARCHAR(20)            -- copied from unit at chain-creation time for snapshot
+  transition      TEXT                   -- logic description for moving to the next step
+  UNIQUE(chain_id, position)
+```
+
+**tRPC Routes (`server/api/routers/reasoningChain.ts`):**
+
+```typescript
+reasoningChainRouter = createTRPCRouter({
+  create:          protectedProcedure.input(createReasoningChainSchema).mutation(/* ... */),
+  getById:         protectedProcedure.input(z.object({ id: z.string().uuid() })).query(/* ... */),
+  listByContext:   protectedProcedure.input(z.object({ contextId: z.string().uuid() })).query(/* ... */),
+  addStep:         protectedProcedure.input(addStepSchema).mutation(/* ... */),
+  removeStep:      protectedProcedure.input(z.object({ stepId: z.string().uuid() })).mutation(/* ... */),
+  reorderSteps:    protectedProcedure.input(reorderStepsSchema).mutation(/* ... */),
+  updateTransition: protectedProcedure.input(updateTransitionSchema).mutation(/* ... */),
+  generateFromUnits: protectedProcedure.input(generateChainSchema).mutation(/* ... */),
+    // AI-powered: given a set of unit IDs and a goal, proposes step ordering and roles
+  validateChain:   protectedProcedure.input(z.object({ chainId: z.string().uuid() })).query(/* ... */),
+    // Returns scope-jump warnings and evidence-domain gap analysis for the chain
+  delete:          protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(/* ... */),
+});
+```
+
+**AI Logic (`server/ai/reasoningChainGenerator.ts`):**
+
+The `generateFromUnits` procedure delegates to AI to:
+1. Analyze the `evidence_domain` and `scope` of each provided Unit.
+2. Propose a step ordering that forms a coherent argument path toward the stated `goal`.
+3. Assign `role` to each step (foundation → motivation → validation → inference → conclusion).
+4. Generate `transition` text explaining the logical bridge between consecutive steps.
+5. Flag scope jumps (e.g., personal-scope evidence supporting a universal-scope conclusion).
+
+Results are returned as a draft chain. User confirms/edits before saving.
+
+**`validateChain` Logic:**
+- Walk the chain steps in order.
+- For each consecutive pair (stepN, stepN+1), check if `scope` narrows or widens unexpectedly.
+- Flag any step where `evidence_domain` is `personal_intuition` or `personal_belief` but `role` is `validation`.
+- Return `{ valid: boolean, warnings: ScopeJumpWarning[], gaps: string[] }`.
+
+**Integration:**
+- Reasoning Chains appear in the Assembly feature — a chain can be exported as a structured argument document.
+- The Completeness Compass can reference chains: "This chain has no validation step with external_public evidence."
+
+---
+
+### 2. Knowledge Connection Interaction
+
+**PRD Reference:** Section 9 — When importing external knowledge, Flowmind asks "what does this mean to you?" before filing it.
+
+**Interaction Flow:**
+
+```
+User pastes/imports external content
+  → Capture Engine detects origin_type: external_excerpt | external_inspiration | external_summary
+  → Client shows KnowledgeConnectionDialog (modal)
+    → Option A: "Connect to existing Context" — shows context picker + AI-suggested relations
+    → Option B: "Start new exploration" — creates new Context with this as seed
+    → Option C: "Hold for now" — sends to Incubation Queue
+  → On selection:
+    A → createUnit + auto-propose relations to existing Units in that Context
+    B → createContext + createUnit as seed
+    C → createUnit with incubating: true
+```
+
+**tRPC Routes (additions to existing `unitRouter` and `contextRouter`):**
+
+```typescript
+// In unitRouter:
+importExternal: protectedProcedure
+  .input(importExternalSchema)
+  // schema: { content, sourceUrl?, sourceTitle?, connectionMode: 'connect' | 'new_context' | 'incubate',
+  //           targetContextId?: string, originType: string }
+  .mutation(async ({ ctx, input }) => {
+    // 1. Create Resource Unit for the source (if URL provided)
+    // 2. Run AI decomposition on content → proposed Units
+    // 3. Based on connectionMode:
+    //    'connect': create Units in targetContext, run relation inference against existing Units
+    //    'new_context': create new Context, create Units within it
+    //    'incubate': create Units with incubating: true, no context assignment
+    // 4. Return { units: DraftUnit[], suggestedRelations?: DraftRelation[], contextId?: string }
+  }),
+
+suggestConnectionContext: protectedProcedure
+  .input(z.object({ content: z.string(), projectId: z.string().uuid() }))
+  .query(/* AI analyzes content, returns ranked list of existing Contexts that are relevant */),
+```
+
+**AI Logic (`server/ai/knowledgeConnector.ts`):**
+
+```typescript
+// suggestConnectionContext:
+// 1. Generate embedding for the incoming content
+// 2. Cosine similarity against all Context snapshots in the project
+// 3. Also keyword-match against Context names and open_questions
+// 4. Return top 3 contexts with relevance scores and explanation
+
+// When connectionMode === 'connect':
+// 1. Decompose external content into Units (via decomposer.ts)
+// 2. For each new Unit, run relation inference against Units in targetContext
+// 3. Propose relations with evidence_domain auto-set based on source type
+// 4. All proposed Units start as lifecycle: 'draft'
+```
+
+**Frontend Component:** `features/ai/components/KnowledgeConnectionDialog.tsx`
+- Shows the 3 options (connect / new exploration / incubate)
+- For option A: embedded context picker + preview of AI-suggested relations
+- Triggered by the Capture Engine when `origin_type` is external
+
+---
+
+### 3. Scope Jump Warning
+
+**PRD Reference:** Appendix A-6, A-9 — `scope_jump_flag`. If personal-scope evidence supports a universal-scope claim, AI warns.
+
+**Detection Algorithm:**
+
+```typescript
+// server/ai/scopeJumpDetector.ts
+
+const SCOPE_HIERARCHY = ['universal', 'domain_general', 'domain_specific', 'situational', 'interpersonal', 'personal'];
+
+function detectScopeJump(sourceUnit: Unit, targetUnit: Unit, relationType: string): ScopeJumpWarning | null {
+  // Only check for 'supports', 'validates', 'exemplifies' relations
+  if (!['supports', 'validates', 'exemplifies'].includes(relationType)) return null;
+
+  const sourceScope = sourceUnit.scope;  // evidence unit
+  const targetScope = targetUnit.scope;  // claim unit
+
+  const sourceScopeIndex = SCOPE_HIERARCHY.indexOf(sourceScope);
+  const targetScopeIndex = SCOPE_HIERARCHY.indexOf(targetScope);
+
+  // Warning when evidence scope is narrower (higher index) than claim scope
+  const gapSize = sourceScopeIndex - targetScopeIndex;
+  if (gapSize >= 2) {
+    return {
+      type: 'scope_jump',
+      severity: gapSize >= 3 ? 'high' : 'medium',
+      sourceUnitId: sourceUnit.id,
+      targetUnitId: targetUnit.id,
+      sourceScope,
+      targetScope,
+      message: `${sourceScope}-scope evidence supporting a ${targetScope}-scope claim. Consider adding broader evidence.`
+    };
+  }
+  return null;
+}
+```
+
+**Trigger Points:**
+1. **On relation creation** — `onRelationCreated` event handler checks scope jump and sets `scope_jump_flag` on the source unit's meta JSONB.
+2. **On Reasoning Chain validation** — `validateChain` checks consecutive steps for scope jumps.
+3. **Completeness Compass** — includes scope jump warnings in gap analysis.
+
+**tRPC Route (addition to `aiRouter`):**
+
+```typescript
+checkScopeJumps: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid() }))
+  .query(/* Scans all 'supports'/'validates' relations in context, returns ScopeJumpWarning[] */),
+```
+
+**Data Model:** No new table. Uses existing `meta` JSONB on `units` table:
+```json
+{ "scope_jump_flag": true, "scope_jump_details": { "targetUnitId": "...", "targetScope": "universal" } }
+```
+
+---
+
+### 4. Tension Detection
+
+**PRD Reference:** Section 18 (Feedback Loop) — AI detects mutually contradictory claims within the same Context. Appendix A-9 — `tension_flags[]`.
+
+**Algorithm (`server/ai/tensionDetector.ts`):**
+
+```typescript
+async function detectTensions(contextId: string): Promise<TensionResult[]> {
+  // Step 1: Get all confirmed claim/assumption Units in the context
+  const claims = await getClaimUnitsInContext(contextId);
+
+  // Step 2: Pairwise semantic comparison using embeddings
+  //   - For N claims, compute cosine similarity for all pairs
+  //   - Filter pairs with high similarity (> 0.7) — these discuss the same topic
+  const topicPairs = findHighSimilarityPairs(claims, 0.7);
+
+  // Step 3: For each topic pair, use LLM to determine if they contradict
+  //   - Prompt: "Do these two statements contradict each other? If so, explain the tension."
+  //   - Batch LLM calls for efficiency (group into batches of 5 pairs)
+  const tensions: TensionResult[] = [];
+  for (const batch of chunk(topicPairs, 5)) {
+    const results = await llm.batchAnalyzeTension(batch);
+    tensions.push(...results.filter(r => r.isContradiction));
+  }
+
+  // Step 4: Check for existing 'contradicts' relations — skip already-known tensions
+  const knownContradictions = await getExistingContradictions(contextId);
+  const newTensions = tensions.filter(t => !isAlreadyKnown(t, knownContradictions));
+
+  return newTensions;
+}
+```
+
+**Background Job (`server/jobs/tensionDetectionJob.ts`):**
+
+```typescript
+// Trigger: event 'context.tensionScanRequested' OR periodic (every time context is entered after 5+ new units added)
+// Also runs when Completeness Compass is invoked.
+
+triggerDev.defineJob({
+  id: "tension-detection",
+  run: async (payload: { contextId: string }) => {
+    const tensions = await detectTensions(payload.contextId);
+    // Update context.contradictions JSONB
+    await updateContextContradictions(payload.contextId, tensions);
+    // Set tension_flags[] on affected units' meta JSONB
+    for (const t of tensions) {
+      await setTensionFlag(t.unitAId, { contradictsWith: t.unitBId, description: t.description });
+      await setTensionFlag(t.unitBId, { contradictsWith: t.unitAId, description: t.description });
+    }
+  },
+});
+```
+
+**tRPC Routes (addition to `contextRouter`):**
+
+```typescript
+getTensions: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid() }))
+  .query(/* Returns current contradictions from context.contradictions JSONB */),
+
+requestTensionScan: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid() }))
+  .mutation(/* Enqueues tension-detection background job, returns jobId */),
+
+resolveTension: protectedProcedure
+  .input(z.object({ tensionId: z.string(), resolution: z.enum(['create_contradicts_relation', 'dismiss', 'revise_unit']) }))
+  .mutation(/* Handles user's decision about detected tension */),
+```
+
+**Data Model:** No new table. Uses:
+- `contexts.contradictions` JSONB — already in schema. Structure: `[{ id, unitAId, unitBId, description, detectedAt, status: 'new'|'acknowledged'|'resolved' }]`
+- `units.meta` JSONB — `tension_flags` array: `[{ contradictsWith, description, detectedAt }]`
+
+**Frontend:** `features/contexts/components/TensionAlert.tsx` — displayed on Context Dashboard, shows detected contradictions with options to create a `contradicts` relation, dismiss, or revise one of the units.
+
+---
+
+### 5. Incubation Queue
+
+**PRD Reference:** Section 18 (Feedback Loop) — Stores incomplete but valuable Units and periodically surfaces them. Appendix A-3 — `incubating: true/false`. Appendix A-4 — `recurrence` field for re-surfacing interval.
+
+**Data Model Additions:**
+
+The existing `units` table already supports incubation via:
+- `meta.incubating: boolean` — whether the unit is in incubation
+- `meta.recurrence: string` — re-surfacing interval (e.g., `'7d'`, `'30d'`, `'on_relevant_context'`)
+
+Add a dedicated table for tracking surfacing events:
+
+```
+incubation_events
+  id              UUID PRIMARY KEY
+  unit_id         UUID REFERENCES units(id) ON DELETE CASCADE
+  user_id         UUID REFERENCES users(id)
+  surfaced_at     TIMESTAMPTZ NOT NULL
+  reason          VARCHAR(30) NOT NULL   -- 'scheduled', 'context_match', 'manual'
+  matched_context_id  UUID REFERENCES contexts(id) ON DELETE SET NULL
+  action_taken    VARCHAR(20)            -- 'connected', 'dismissed', 'snoozed', 'still_incubating'
+  action_at       TIMESTAMPTZ
+```
+
+**tRPC Routes (`server/api/routers/incubation.ts`):**
+
+```typescript
+incubationRouter = createTRPCRouter({
+  getQueue: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid().optional() }))
+    .query(/* Returns all incubating units, sorted by next surfacing time */),
+
+  incubateUnit: protectedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      recurrence: z.enum(['7d', '14d', '30d', '90d', 'on_relevant_context']),
+    }))
+    .mutation(/* Sets incubating: true, recurrence on unit meta */),
+
+  getSurfacedToday: protectedProcedure
+    .query(/* Returns units due for surfacing based on recurrence schedule */),
+
+  handleSurfaced: protectedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      action: z.enum(['connect_to_context', 'dismiss', 'snooze', 'keep_incubating']),
+      contextId: z.string().uuid().optional(),
+    }))
+    .mutation(/* Records action, optionally removes from incubation */),
+
+  deincubate: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid() }))
+    .mutation(/* Removes incubating flag */),
+});
+```
+
+**Background Job (`server/jobs/incubationSurfacingJob.ts`):**
+
+```typescript
+// Runs daily (or on app session start)
+triggerDev.defineJob({
+  id: "incubation-surfacing",
+  run: async (payload: { userId: string }) => {
+    // 1. Time-based surfacing: find units where last surfaced + recurrence <= now
+    const timeDue = await findTimeDueIncubatingUnits(payload.userId);
+
+    // 2. Context-match surfacing: for units with recurrence='on_relevant_context',
+    //    compare their embeddings against recently active contexts
+    const contextMatch = await findContextMatchIncubatingUnits(payload.userId);
+
+    // 3. Create incubation_events for each surfaced unit
+    for (const unit of [...timeDue, ...contextMatch]) {
+      await createIncubationEvent(unit.id, payload.userId, unit.matchReason, unit.matchedContextId);
+    }
+
+    // 4. Return surfaced units (client will show via notification/dashboard widget)
+  },
+});
+```
+
+**Context-match surfacing logic:**
+- For each `on_relevant_context` incubating unit, compute cosine similarity between the unit's embedding and the snapshot embeddings of recently active contexts (last 7 days).
+- If similarity > 0.75, surface the unit with `reason: 'context_match'` and `matched_context_id`.
+- This is the PRD's "notify when a relevant Context appears" feature from Knowledge Connection option ③.
+
+**Frontend:** `features/ai/components/IncubationSidebar.tsx` — a sidebar widget showing surfaced units with connect/dismiss/snooze actions. Also accessible from Context Dashboard.
+
+---
+
+### 6. Drift Detection Algorithm
+
+**PRD Reference:** Section 19 — Drift Score (0.0–1.0) measures semantic distance from project purpose. When threshold exceeded, AI proposes sub-context, branch project, or ignore.
+
+**Algorithm (`server/ai/driftDetector.ts`):**
+
+```typescript
+async function calculateDriftScore(unitId: string, projectId: string): Promise<number> {
+  // 1. Get the project's "purpose embedding" — computed from:
+  //    a. Project name + description
+  //    b. Average embedding of the first 10 confirmed units in the project (the "seed")
+  //    c. The project's domain template description (if any)
+  //    Cached in projects.meta JSONB as 'purpose_embedding'
+  const purposeEmbedding = await getProjectPurposeEmbedding(projectId);
+
+  // 2. Get the unit's embedding
+  const unitEmbedding = await getUnitEmbedding(unitId);
+
+  // 3. Compute cosine distance (not similarity — we want distance)
+  const cosineSimilarity = dotProduct(purposeEmbedding, unitEmbedding)
+    / (magnitude(purposeEmbedding) * magnitude(unitEmbedding));
+  const rawDistance = 1 - cosineSimilarity;  // 0 = identical, 2 = opposite
+
+  // 4. Normalize to 0.0-1.0 scale
+  //    Use sigmoid-like mapping: scores below 0.3 distance → near 0 drift
+  //    scores above 0.7 distance → near 1.0 drift
+  const driftScore = sigmoid(rawDistance, midpoint: 0.5, steepness: 8);
+
+  // 5. Context adjustment: if the unit belongs to a context that has many
+  //    non-drifting units, reduce drift score (it's part of an established sub-topic)
+  const contextAdjustment = await getContextDriftAdjustment(unitId, projectId);
+  const adjustedDrift = Math.max(0, driftScore - contextAdjustment);
+
+  return Math.min(1.0, adjustedDrift);
+}
+
+// Project purpose embedding recomputation
+async function recomputeProjectPurposeEmbedding(projectId: string): Promise<void> {
+  // Weighted average: 40% project description, 60% seed units
+  // Triggered when project description changes or on first 10 units
+}
+```
+
+**Background Job (`server/jobs/driftDetectionJob.ts`):**
+
+```typescript
+// Already listed in the core architecture. This specifies its internals:
+triggerDev.defineJob({
+  id: "drift-detection",
+  run: async (payload: { unitId: string, projectId: string }) => {
+    const driftScore = await calculateDriftScore(payload.unitId, payload.projectId);
+
+    // Store on unit
+    await updateUnitMeta(payload.unitId, {
+      drift_score: driftScore,
+      drift_from: payload.projectId,
+    });
+
+    // If exceeds threshold (default 0.7, configurable per project)
+    const project = await getProject(payload.projectId);
+    const threshold = project.meta?.drift_threshold ?? 0.7;
+
+    if (driftScore >= threshold) {
+      await eventBus.emit('unit.driftDetected', {
+        entityId: payload.unitId,
+        projectId: payload.projectId,
+        driftScore,
+      });
+    }
+  },
+});
+```
+
+**Trigger:** `onUnitCreated` event handler enqueues drift-detection job for every new unit.
+
+**tRPC Routes (additions to `projectRouter`):**
+
+```typescript
+getDriftReport: protectedProcedure
+  .input(z.object({ projectId: z.string().uuid() }))
+  .query(/* Returns all units with drift_score > 0.5, grouped by potential sub-topics */),
+
+handleDrift: protectedProcedure
+  .input(z.object({
+    unitIds: z.array(z.string().uuid()),
+    action: z.enum(['split_context', 'branch_project', 'ignore']),
+    newContextName: z.string().optional(),
+    newProjectName: z.string().optional(),
+  }))
+  .mutation(/* Executes the chosen drift resolution */),
+
+setDriftThreshold: protectedProcedure
+  .input(z.object({ projectId: z.string().uuid(), threshold: z.number().min(0).max(1) }))
+  .mutation(/* Updates project drift threshold */),
+```
+
+**Frontend:** `features/projects/components/DriftDetectionAlert.tsx` — already listed in core architecture. Shows the 3 options from PRD (sub-context / branch project / ignore).
+
+---
+
+### 7. Branch Graph Data Model
+
+**PRD Reference:** Section 8 — Branches grow independently while maintaining connection to common starting point. Loopback marking for cycles. Appendix A-8 — `depth_in_branch` field.
+
+**Conceptual Model:**
+
+Branches are NOT a separate entity — they are an emergent property of the relation graph. A branch is defined as a set of units connected via derivational relations (`derives_from`, `expands`, `transforms_into`) emanating from a common branching point.
+
+**Data Model:** No new table. Branch information is computed from existing `relations` table and stored as cached metadata:
+
+```
+-- Additions to units.meta JSONB:
+{
+  "depth_in_branch": 3,          -- distance from branch root (root = 0)
+  "branch_root_id": "uuid",      -- the unit where this branch starts
+  "branch_potential": 0.75,       -- AI-calculated derivation potential (displayed as ●●●○)
+  "is_branch_point": true,        -- this unit has 2+ outgoing derivational relations
+  "loopback_targets": ["uuid"]    -- units this connects back to (cycle detection)
+}
+```
+
+**Branch Detection Algorithm (`server/services/branchService.ts`):**
+
+```typescript
+async function detectBranches(contextId: string): Promise<Branch[]> {
+  // 1. Query all derivational relations in context
+  //    Types: derives_from, expands, transforms_into
+  const derivationalRelations = await getDerivationalRelations(contextId);
+
+  // 2. Build adjacency list (directed graph)
+  const graph = buildAdjacencyList(derivationalRelations);
+
+  // 3. Find branch points: nodes with out-degree >= 2 in derivational relations
+  const branchPoints = findBranchPoints(graph);
+
+  // 4. For each branch point, trace each outgoing path
+  //    Use DFS with visited-node tracking for cycle detection
+  const branches: Branch[] = [];
+  for (const bp of branchPoints) {
+    const outgoing = graph.getOutgoing(bp);
+    for (const direction of outgoing) {
+      const { path, loopbacks } = traceBranch(graph, direction, new Set());
+      branches.push({
+        branchPointId: bp,
+        units: path,
+        depth: path.length,
+        loopbacks,
+      });
+    }
+  }
+
+  // 5. Update depth_in_branch and branch metadata on units
+  for (const branch of branches) {
+    for (let i = 0; i < branch.units.length; i++) {
+      await updateUnitMeta(branch.units[i], {
+        depth_in_branch: i,
+        branch_root_id: branch.branchPointId,
+      });
+    }
+  }
+
+  return branches;
+}
+```
+
+**Loopback Detection:**
+- During DFS traversal, if a node is already in the visited set, mark the edge as a loopback.
+- Loopback edges are stored in `units.meta.loopback_targets[]` and rendered differently in Graph View (dashed line, different color).
+- Users only traverse loopbacks by conscious choice (PRD requirement).
+
+**Branch Potential Score (`server/ai/branchPotentialScorer.ts`):**
+
+```typescript
+async function calculateBranchPotential(unitId: string): Promise<number> {
+  // 5 factors (each 0.0-1.0, combined as weighted average):
+  // 1. Type openness (0.3): questions and ideas score higher than definitions
+  // 2. Completeness gap (0.25): units with completeness='exploring' or 'needs_evidence' score higher
+  // 3. Relation sparsity (0.15): fewer existing relations = more room to branch
+  // 4. Semantic richness (0.15): longer, more concept-dense content scores higher
+  // 5. Suggested next types count (0.15): more AI-suggested follow-up types = higher potential
+
+  const unit = await getUnit(unitId);
+  const typeScore = TYPE_OPENNESS_MAP[unit.type] ?? 0.5;
+  const completenessScore = COMPLETENESS_GAP_MAP[unit.completeness] ?? 0.3;
+  const relationCount = await getRelationCount(unitId);
+  const sparsityScore = Math.max(0, 1 - (relationCount / 10));
+  const richness = Math.min(1, unit.content.split(/\s+/).length / 100);
+  const nextTypes = unit.meta?.suggested_next_types?.length ?? 0;
+  const nextTypeScore = Math.min(1, nextTypes / 5);
+
+  return typeScore * 0.3 + completenessScore * 0.25 + sparsityScore * 0.15
+       + richness * 0.15 + nextTypeScore * 0.15;
+}
+```
+
+**UI Display:** Branch potential is shown as `●●●○` (4 dots) on UnitCard, mapping: 0-0.25 → ●○○○, 0.25-0.5 → ●●○○, 0.5-0.75 → ●●●○, 0.75-1.0 → ●●●●. Clicking reveals AI-suggested exploration directions.
+
+**tRPC Routes (additions to `relationRouter`):**
+
+```typescript
+getBranches: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid() }))
+  .query(/* Returns detected branches with branch points, depths, loopbacks */),
+
+getBranchPotential: protectedProcedure
+  .input(z.object({ unitId: z.string().uuid() }))
+  .query(/* Returns branch potential score + suggested exploration directions */),
+```
+
+**Branch Project (from Drift Detection):**
+
+When drift detection triggers a "branch project" action:
+
+```typescript
+// In projectRouter.handleDrift:
+// action === 'branch_project':
+// 1. Create new project with branched_from = originalProjectId, branch_reason = user input
+// 2. Move drifting units to new project (update project_id)
+// 3. Create 'references' relations between shared boundary units
+// 4. shared_units[] stored in new project meta JSONB
+```
+
+Data model for branch projects uses existing `projects` table fields:
+- `branched_from UUID REFERENCES projects(id)` — already in schema
+- `branch_reason TEXT` — already in schema
+- `meta.shared_units[]` — list of unit IDs that exist in both projects
+
+---
+
+### 8. Epistemic Humility Mode
+
+**PRD Reference:** Section 11 — Controversial Topic Detection. When a topic without social consensus is detected, AI confirms exploration purpose first. On controversial topics, AI asks questions instead of providing answers. Section 22 — "Turning taste questions into arguments" detection. Appendix A-9 — `controversial_flag`.
+
+**Detection Algorithm (`server/ai/epistemicHumility.ts`):**
+
+```typescript
+// Two detection layers:
+
+// Layer 1: Topic-level detection — runs on unit creation/modification
+async function detectControversialTopic(content: string, contextSnapshot: string): Promise<ControversialDetection> {
+  // LLM-based detection with structured output
+  const prompt = `Analyze whether this content touches on a topic without social consensus.
+    Categories: political, religious, ethical, cultural identity, taste/preference, scientific controversy.
+    Content: "${content}"
+    Context: "${contextSnapshot}"
+    Return: { isControversial: boolean, category: string, confidence: number, reason: string }`;
+
+  const result = await llm.structuredOutput(prompt, controversialDetectionSchema);
+  return result;
+}
+
+// Layer 2: Pattern detection — runs during AI generation requests
+async function detectArgumentFromPreference(units: Unit[]): Promise<boolean> {
+  // Check if user is building an argument structure (supports/contradicts relations)
+  // around a topic that is fundamentally a preference/taste question
+  // Uses LLM to assess: "Is this a matter of right/wrong or a matter of preference?"
+  const prompt = buildPreferenceDetectionPrompt(units);
+  return await llm.classify(prompt);
+}
+```
+
+**Behavioral Changes When Active:**
+
+When `controversial_flag: true` on a unit or context:
+1. **AI generation mode shifts**: Instead of generating claims or arguments, AI generates questions.
+   - "What must you give up to take this position?"
+   - "What would change your mind about this?"
+   - "Who would disagree and why?"
+2. **Branch generation disabled**: No auto-generated branch drafts on controversial topics.
+3. **Socratic questioning mode**: AI intervention level auto-switches to "Exploratory" (asks Socratic questions).
+4. **UI indicator**: `EpistemicHumilityBanner.tsx` shows a subtle banner explaining that AI is in question mode.
+
+**tRPC Routes (additions to `aiRouter`):**
+
+```typescript
+checkControversial: protectedProcedure
+  .input(z.object({ content: z.string(), contextId: z.string().uuid().optional() }))
+  .query(/* Returns ControversialDetection result */),
+
+confirmExplorationPurpose: protectedProcedure
+  .input(z.object({
+    unitId: z.string().uuid(),
+    purpose: z.enum(['understand_perspectives', 'form_opinion', 'academic_analysis', 'creative_use']),
+  }))
+  .mutation(/* Records exploration purpose, adjusts AI behavior accordingly */),
+```
+
+**Integration Points:**
+- `server/ai/safetyGuard.ts` — checks `controversial_flag` before allowing AI generation; switches to question mode.
+- `server/ai/decomposer.ts` — when processing text on controversial topics, flags resulting units.
+- `onUnitCreated` event handler — runs controversial detection asynchronously, updates unit meta.
+- Context Dashboard — shows count of controversial-flagged units with a note about AI behavior adjustment.
+
+**Data Model:** Uses existing `units.meta` JSONB:
+```json
+{
+  "controversial_flag": true,
+  "controversial_category": "ethical",
+  "controversial_confidence": 0.85,
+  "exploration_purpose": "understand_perspectives"
+}
+```
+
+---
+
+### 9. ThoughtRank Detailed Algorithm
+
+**PRD Reference:** Section 15 — Importance calculated by combining 5 factors: referencing units count, assembly appearances, context diversity, recency, and hub role. Weights differ by navigation purpose.
+
+**Algorithm (`server/services/thoughtRankService.ts`):**
+
+```typescript
+interface ThoughtRankFactors {
+  referenceScore: number;    // 0.0-1.0
+  assemblyScore: number;     // 0.0-1.0
+  contextDiversity: number;  // 0.0-1.0
+  recencyScore: number;      // 0.0-1.0
+  hubScore: number;          // 0.0-1.0
+}
+
+// Base weights (navigation purpose 'explore')
+const BASE_WEIGHTS = {
+  referenceScore: 0.30,
+  assemblyScore: 0.20,
+  contextDiversity: 0.15,
+  recencyScore: 0.15,
+  hubScore: 0.20,
+};
+
+// Purpose-specific weight overrides
+const PURPOSE_WEIGHTS: Record<string, Partial<typeof BASE_WEIGHTS>> = {
+  argument:      { referenceScore: 0.35, hubScore: 0.25, assemblyScore: 0.15, recencyScore: 0.10, contextDiversity: 0.15 },
+  creative:      { referenceScore: 0.20, hubScore: 0.15, assemblyScore: 0.15, recencyScore: 0.25, contextDiversity: 0.25 },
+  chronological: { referenceScore: 0.15, hubScore: 0.10, assemblyScore: 0.10, recencyScore: 0.50, contextDiversity: 0.15 },
+  explore:       BASE_WEIGHTS,
+};
+
+async function calculateThoughtRank(unitId: string, purpose: string = 'explore'): Promise<number> {
+  const factors = await computeFactors(unitId);
+  const weights = { ...BASE_WEIGHTS, ...(PURPOSE_WEIGHTS[purpose] ?? {}) };
+
+  return factors.referenceScore * weights.referenceScore
+       + factors.assemblyScore * weights.assemblyScore
+       + factors.contextDiversity * weights.contextDiversity
+       + factors.recencyScore * weights.recencyScore
+       + factors.hubScore * weights.hubScore;
+}
+
+async function computeFactors(unitId: string): Promise<ThoughtRankFactors> {
+  // 1. Reference Score — how many other units reference this one
+  const incomingRelations = await countIncomingRelations(unitId);
+  // Logarithmic normalization: log(1 + count) / log(1 + MAX_EXPECTED)
+  const referenceScore = Math.log(1 + incomingRelations) / Math.log(1 + 50);
+
+  // 2. Assembly Score — how many assemblies include this unit
+  const assemblyCount = await countAssemblyMemberships(unitId);
+  const assemblyScore = Math.log(1 + assemblyCount) / Math.log(1 + 10);
+
+  // 3. Context Diversity — number of distinct contexts this unit belongs to
+  const contextCount = await countContextMemberships(unitId);
+  const contextDiversity = Math.log(1 + contextCount) / Math.log(1 + 10);
+
+  // 4. Recency Score — time decay
+  const lastAccessed = await getLastAccessed(unitId);
+  const daysSinceAccess = (Date.now() - lastAccessed.getTime()) / (1000 * 60 * 60 * 24);
+  // Exponential decay: e^(-daysSinceAccess / halfLifeDays)
+  const recencyScore = Math.exp(-daysSinceAccess / 30); // 30-day half-life
+
+  // 5. Hub Score — betweenness centrality approximation
+  //    Full betweenness is O(VE), too expensive for real-time.
+  //    Approximation: (in-degree * out-degree) / max(in-degree * out-degree in context)
+  const inDegree = incomingRelations;
+  const outDegree = await countOutgoingRelations(unitId);
+  const maxDegreeProduct = await getMaxDegreeProduct(unitId); // cached per context
+  const hubScore = maxDegreeProduct > 0 ? (inDegree * outDegree) / maxDegreeProduct : 0;
+
+  return {
+    referenceScore: Math.min(1, referenceScore),
+    assemblyScore: Math.min(1, assemblyScore),
+    contextDiversity: Math.min(1, contextDiversity),
+    recencyScore: Math.min(1, recencyScore),
+    hubScore: Math.min(1, hubScore),
+  };
+}
+```
+
+**Recalculation Strategy:**
+
+```typescript
+// Batch recalculation (background job):
+// - Triggered by: unit.created, unit.updated, relation.created, relation.deleted events
+// - Debounced: waits 5 seconds after last event before running
+// - Scope: recalculates only affected units (the unit + its 1-hop neighbors)
+// - Full recalculation: runs nightly for all units in active projects
+
+// Real-time approximation (in request):
+// - For search results and navigation, use cached ThoughtRank from last batch run
+// - Store cached scores in unit_perspectives.importance (per-context ThoughtRank)
+// - Global ThoughtRank stored in units.meta.importance
+```
+
+**Background Job (`server/jobs/thoughtRankJob.ts`):**
+
+```typescript
+triggerDev.defineJob({
+  id: "thoughtrank-recalculate",
+  run: async (payload: { unitIds: string[], purpose?: string }) => {
+    for (const unitId of payload.unitIds) {
+      // Calculate for all purposes and cache
+      for (const purpose of ['explore', 'argument', 'creative', 'chronological']) {
+        const score = await calculateThoughtRank(unitId, purpose);
+        await cacheThoughtRank(unitId, purpose, score);
+      }
+      // Store default (explore) score in units.meta.importance
+      const defaultScore = await calculateThoughtRank(unitId, 'explore');
+      await updateUnitMeta(unitId, { importance: defaultScore });
+    }
+  },
+});
+```
+
+**tRPC Route (addition to `searchRouter`):**
+
+```typescript
+getThoughtRank: protectedProcedure
+  .input(z.object({ unitId: z.string().uuid(), purpose: z.string().optional() }))
+  .query(/* Returns cached ThoughtRank + factor breakdown */),
+```
+
+**Caching:**
+- Per-purpose ThoughtRank scores cached in Redis (scale) or in-memory Map (MVP).
+- Cache key: `thoughtrank:${unitId}:${purpose}`
+- TTL: 1 hour (recalculated by background job more frequently for active contexts).
+- Invalidated on: relation create/delete, unit create/update, assembly membership change.
+
+---
+
+### 10. PRD Black Spot Analysis — Architecturally Unaddressed Features
+
+The following PRD features are mentioned but have NO or INSUFFICIENT architectural specification in the core document. Each is addressed below.
+
+#### 10a. Compression (Similar Claim Merging)
+
+**PRD Reference:** Section 18 — "Detects variations of similar claims and proposes extracting the common core."
+
+**Algorithm:**
+1. Within a context, compute pairwise cosine similarity of all claim-type units.
+2. Pairs with similarity > 0.85 are candidates for compression.
+3. LLM extracts the "common core" claim from each candidate pair.
+4. User presented with: original pair + proposed merged claim + option to create `contains` relations instead.
+
+**tRPC Route (addition to `aiRouter`):**
+
+```typescript
+detectCompressible: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid() }))
+  .query(/* Returns CompressiblePair[] with proposed merged text */),
+
+compressUnits: protectedProcedure
+  .input(z.object({
+    unitIds: z.array(z.string().uuid()).min(2),
+    mergedContent: z.string(),
+    mode: z.enum(['merge', 'extract_common']),
+    // merge: combine into one unit, re-attribute relations
+    // extract_common: create new unit with 'contains' relations to originals
+  }))
+  .mutation(/* ... */),
+```
+
+**Background Job:** Runs as part of the Completeness Compass analysis — not a standalone job.
+
+#### 10b. Orphan Unit Recovery
+
+**PRD Reference:** Section 18 — "Periodically shows Units not included in any Assembly."
+
+**Implementation:**
+- Query: `SELECT * FROM units WHERE NOT EXISTS (SELECT 1 FROM assembly_items WHERE assembly_items.unit_id = units.id) AND units.lifecycle = 'confirmed'`
+- Also check `meta.orphan: true` flag (set by background job).
+- Surface in Context Dashboard under "Unused Thoughts" section.
+
+**tRPC Route (addition to `unitRouter`):**
+
+```typescript
+getOrphans: protectedProcedure
+  .input(z.object({ projectId: z.string().uuid() }))
+  .query(/* Returns units not in any assembly, sorted by ThoughtRank */),
+```
+
+**Background Job:** Part of nightly `thoughtRankJob` — sets `meta.orphan` flag.
+
+#### 10c. AI Intervention Intensity Levels
+
+**PRD Reference:** Section 10 — Four levels: Minimal, Moderate, Exploratory, Generative.
+
+**Data Model:** Stored per-context in `contexts.meta` JSONB:
+```json
+{ "ai_intervention_level": "moderate" }
+```
+
+**Implementation:**
+- `server/ai/safetyGuard.ts` checks intervention level before each AI action.
+- Minimal: only `gap_detection` alerts.
+- Moderate: + suggested exploration directions.
+- Exploratory: + Socratic questions.
+- Generative: + auto-generated branch drafts.
+- Default: `guided` (from project constraint level mapping).
+
+**tRPC Route (addition to `contextRouter`):**
+
+```typescript
+setAIInterventionLevel: protectedProcedure
+  .input(z.object({
+    contextId: z.string().uuid(),
+    level: z.enum(['minimal', 'moderate', 'exploratory', 'generative']),
+  }))
+  .mutation(/* Updates context meta */),
+```
+
+#### 10d. Chunk Computation
+
+**PRD Reference:** Section 6 — Chunks are NOT stored but computed. They change based on navigation purpose.
+
+**Algorithm (`server/services/chunkService.ts`):**
+
+```typescript
+async function computeChunks(contextId: string, purpose: string): Promise<Chunk[]> {
+  // 1. Get all units in context, ordered by navigation purpose
+  const units = await getContextUnits(contextId);
+
+  // 2. Build clustering based on purpose:
+  //    - 'argument': cluster by supports/contradicts relation chains
+  //    - 'creative': cluster by inspires/echoes/transforms_into chains
+  //    - 'chronological': cluster by temporal proximity (created_at within 1 hour)
+  //    - 'explore': cluster by embedding similarity (k-means, k = sqrt(N/2))
+
+  // 3. Each cluster becomes a Chunk
+  // 4. A single unit can belong to multiple chunks
+  return clusters.map(c => ({
+    id: generateDeterministicId(c.unitIds, purpose), // consistent across recalculations
+    unitIds: c.unitIds,
+    label: generateChunkLabel(c), // AI-generated short label
+    purpose,
+  }));
+}
+```
+
+**tRPC Route (addition to `contextRouter`):**
+
+```typescript
+getChunks: protectedProcedure
+  .input(z.object({ contextId: z.string().uuid(), purpose: z.string() }))
+  .query(/* Returns computed chunks */),
+```
+
+**Note:** Chunks are ephemeral — cached in-memory for the session duration only. No database table.
+
+#### 10e. Context Snapshot Auto-Management
+
+**PRD Reference:** Section 7 — Each Context auto-manages an AI summary, unresolved questions list, and internal contradictions list.
+
+**Background Job (`server/jobs/snapshotJob.ts` — already listed, specifying internals):**
+
+```typescript
+triggerDev.defineJob({
+  id: "context-snapshot-update",
+  run: async (payload: { contextId: string }) => {
+    const units = await getContextUnits(payload.contextId);
+    const relations = await getContextRelations(payload.contextId);
+
+    // 1. AI Summary — LLM summarizes current state of thinking in this context
+    const snapshot = await llm.summarizeContext(units, relations);
+
+    // 2. Open Questions — find all question-type units with lifecycle != 'complete'
+    const openQuestions = units
+      .filter(u => u.type === 'question' && u.lifecycle !== 'complete')
+      .map(u => ({ unitId: u.id, content: u.content }));
+
+    // 3. Contradictions — pulled from tension detection results
+    const contradictions = await getContextContradictions(payload.contextId);
+
+    await updateContext(payload.contextId, {
+      snapshot: { summary: snapshot, generatedAt: new Date() },
+      open_questions: openQuestions,
+      contradictions: contradictions,
+    });
+  },
+});
+// Triggered by: context.entered event (if stale > 1 hour) and unit.created/updated in context
+```
+
+#### 10f. Action Unit External Service Integration
+
+**PRD Reference:** Section 17 — Action Units link to Calendar, Todoist, etc. Appendix A-13 — `action_status`, `linked_calendar_event`, `linked_task`, `deadline`, `decision_log`.
+
+**Data Model:** Uses `units.meta` JSONB for execution-specific fields:
+```json
+{
+  "action_status": "pending",
+  "linked_calendar_event": { "service": "google_calendar", "eventId": "...", "url": "..." },
+  "linked_task": { "service": "todoist", "taskId": "...", "url": "..." },
+  "deadline": "2026-04-01T00:00:00Z",
+  "decision_log": [{ "unitId": "...", "summary": "decided because..." }]
+}
+```
+
+**Note:** External service integrations are deferred to post-MVP (as noted in core architecture). The data model supports them; the actual API integration (Google Calendar OAuth, Todoist API) is future work. MVP stores these as metadata without live sync.
+
+#### 10g. Assembly Source Map & Contribution Tracking
+
+**PRD Reference:** Appendix A-14 — `source_map` on assemblies tracking which external sources contributed.
+
+**Implementation:** Already in schema (`assemblies.source_map JSONB`). The computation logic:
+
+```typescript
+// server/services/assemblyService.ts
+async function computeSourceMap(assemblyId: string): Promise<SourceMapEntry[]> {
+  const items = await getAssemblyItems(assemblyId);
+  const sourceGroups = new Map<string, { unitIds: string[], totalUnits: number }>();
+
+  for (const item of items) {
+    const unit = await getUnit(item.unitId);
+    const sourceKey = unit.origin_type === 'direct_write'
+      ? 'directly_written'
+      : unit.meta?.parent_input_id ?? unit.source_url ?? 'unknown';
+
+    if (!sourceGroups.has(sourceKey)) {
+      sourceGroups.set(sourceKey, { unitIds: [], totalUnits: items.length });
+    }
+    sourceGroups.get(sourceKey)!.unitIds.push(unit.id);
+  }
+
+  return Array.from(sourceGroups.entries()).map(([key, value]) => ({
+    source: key,
+    contributingUnits: value.unitIds,
+    contributionRatio: value.unitIds.length / value.totalUnits,
+  }));
+}
+```
+
+**tRPC Route (addition to `assemblyRouter`):**
+
+```typescript
+getSourceMap: protectedProcedure
+  .input(z.object({ assemblyId: z.string().uuid() }))
+  .query(/* Returns computed source map */),
+```
+
+#### 10h. Navigation Purpose Weight System
+
+**PRD Reference:** Section 14 — Relation rendering weights change based on navigation purpose.
+
+**Implementation:** Already referenced in core architecture (`useNavigationWeights.ts`). Specifying the weight tables:
+
+```typescript
+// features/graph/constants.ts
+export const NAVIGATION_WEIGHTS: Record<string, Record<string, number>> = {
+  argument: {
+    supports: 1.0, contradicts: 1.0, derives_from: 0.8, questions: 0.9,
+    defines: 0.7, references: 0.5, expands: 0.7, exemplifies: 0.8,
+    inspires: 0.2, echoes: 0.2, transforms_into: 0.3, foreshadows: 0.1,
+    parallels: 0.3, contextualizes: 0.5, operationalizes: 0.4,
+    contains: 0.6, presupposes: 0.8, defined_by: 0.7, grounded_in: 0.5, instantiates: 0.4,
+  },
+  creative: {
+    supports: 0.3, contradicts: 0.3, derives_from: 0.5, questions: 0.4,
+    defines: 0.3, references: 0.3, expands: 0.5, exemplifies: 0.4,
+    inspires: 1.0, echoes: 1.0, transforms_into: 0.9, foreshadows: 1.0,
+    parallels: 0.8, contextualizes: 0.6, operationalizes: 0.3,
+    contains: 0.4, presupposes: 0.3, defined_by: 0.3, grounded_in: 0.4, instantiates: 0.5,
+  },
+  chronological: {
+    // All types weighted by recency of created_at, base weight 0.5
+    // Dynamically adjusted: more recent relations get weight boost
+    _default: 0.5,
+    _recencyMultiplier: true,
+  },
+  explore: {
+    // All types equal weight — pure graph structure exploration
+    _default: 0.7,
+  },
+};
+```
+
+Custom relation types use their `purpose[]` tags to determine which navigation mode highlights them.
+
+---
+
+### Project Structure Additions
+
+The following new files should be added to the project structure:
+
+```
+src/
+  server/
+    api/
+      routers/
+        reasoningChain.ts    # Reasoning Chain CRUD + AI generation
+        incubation.ts        # Incubation Queue management
+    services/
+      branchService.ts       # Branch detection, depth calculation
+      chunkService.ts        # Chunk computation (ephemeral)
+      assemblyService.ts     # Source map computation (addition)
+    ai/
+      reasoningChainGenerator.ts  # AI reasoning chain construction
+      knowledgeConnector.ts       # External knowledge connection AI
+      scopeJumpDetector.ts        # Scope jump warning detection
+      tensionDetector.ts          # Contradiction detection between units
+      epistemicHumility.ts        # Controversial topic detection
+      driftDetector.ts            # Drift score calculation
+      branchPotentialScorer.ts    # Branch potential scoring
+    jobs/
+      incubationSurfacingJob.ts   # Periodic incubation resurfacing
+      tensionDetectionJob.ts      # Context tension scanning
+
+  features/
+    ai/
+      components/
+        KnowledgeConnectionDialog.tsx  # External knowledge import modal
+        IncubationSidebar.tsx          # Surfaced incubation units widget
+    contexts/
+      components/
+        TensionAlert.tsx               # Contradiction detection display
+    reasoning/                         # New feature module
+      components/
+        ReasoningChainView.tsx         # Visual chain display
+        ReasoningChainBuilder.tsx      # Build/edit chain steps
+      hooks/
+        useReasoningChain.ts
+      types.ts
+      schemas.ts
+      index.ts
+
+  stores/
+    incubationStore.ts                 # Surfaced units state
+```
+
+**Root Router Addition (`server/api/root.ts`):**
+```typescript
+export const appRouter = createTRPCRouter({
+  // ... existing routers
+  reasoningChain: reasoningChainRouter,
+  incubation: incubationRouter,
+});
+```

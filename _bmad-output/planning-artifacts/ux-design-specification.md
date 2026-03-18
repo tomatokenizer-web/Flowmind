@@ -1023,3 +1023,633 @@ flowchart TD
 8. All functionality must work with keyboard alone
 9. Dynamic content updates must use ARIA live regions
 10. Animations must respect `prefers-reduced-motion`
+
+---
+
+## Extended Feature UX Specifications
+
+The following sections cover UI specifications for features defined in the PRD that were not covered in the initial UX design pass.
+
+---
+
+### ResourceAttachment
+
+**Purpose**: Attach non-text resources (images, audio, code, tables, links, diagrams) to Thought Units as first-class Resource Units.
+
+**Component Anatomy:**
+- Attachment strip below UnitCard content area — horizontal row of resource thumbnails (max 4 visible, "+N more" overflow)
+- Each resource thumbnail: 48×48px rounded-8px tile with format icon overlay (bottom-right corner)
+- Attachment drop zone: appears on drag-over or via `+` button at strip end
+
+**Format Icons (SF Symbols style, monoline):**
+
+| Format | Icon | Thumbnail behavior |
+|--------|------|-------------------|
+| Image | `photo` | Actual image thumbnail, cropped center |
+| Audio | `waveform` | Waveform mini-preview (static) |
+| Code | `chevron.left.forwardslash.chevron.right` | First 2 lines of code, monospace, syntax-colored |
+| Table | `tablecells` | Mini grid preview (rows × cols count) |
+| Link | `link` | Favicon + domain text |
+| Diagram | `circle.grid.cross` | Diagram thumbnail |
+| Video | `play.rectangle` | First-frame thumbnail with duration badge |
+
+**Interaction Patterns:**
+- **Attach**: Click `+` button → file picker or paste URL; drag file from OS onto UnitCard → auto-detect format
+- **Preview**: Click thumbnail → inline expand below the card (image: lightbox; audio: embedded player; code: syntax-highlighted block; table: scrollable table; link: Open Graph preview)
+- **Detach**: Right-click thumbnail → "Remove attachment" (resource persists as independent Resource Unit, only the reference is removed)
+- **Reuse**: Same Resource Unit can appear on multiple UnitCards; a small "×N" badge indicates multi-reference count
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Empty | No attachment strip shown | `+` appears on hover at card bottom |
+| Uploading | Pulsing placeholder tile with progress ring | Cancel button on hover |
+| Loaded | Thumbnail tiles in strip | Click to preview |
+| Error | Red-tinted tile with `!` icon | Tooltip shows error; click to retry |
+
+**Perspective Layer Integration:**
+- Resource role badge (top-left of thumbnail): "Evidence", "Inspiration", "Reference" — context-dependent
+- Role changes when viewed in a different Context (same resource, different badge)
+
+**Keyboard Shortcuts:**
+- `Cmd+Shift+A` — Open attachment picker for focused UnitCard
+- `Tab` into attachment strip → arrow keys to navigate thumbnails → `Enter` to preview → `Esc` to close
+
+---
+
+### NavigatorUI
+
+**Purpose**: Define and traverse reading paths through Units for a specific purpose, with simultaneous vertical (depth) and horizontal (breadth) navigation.
+
+**Component Anatomy:**
+- **Navigator Bar** — sticky horizontal bar at the top of Thread View when a Navigator is active
+  - Left: Navigator name (editable inline) + purpose badge (Argument / Creative / Chronological / Custom)
+  - Center: breadcrumb-style step indicator (dot per Unit, current dot filled, completed dots checked)
+  - Right: step counter ("3 / 12") + exit button (`×`)
+- **Step Card** — the currently displayed UnitCard, enlarged to Standard or Expanded variant, centered in the reading pane
+- **Navigation Arrows** — large translucent chevrons at left/right edges of the reading pane
+  - Left arrow: previous step (vertical/depth — backward)
+  - Right arrow: next step (vertical/depth — forward)
+- **Horizontal Branch Panel** — slide-in panel from the right edge, showing semantically related Units ranked by ThoughtRank
+  - Appears on `→` swipe gesture or `H` key
+  - Each card shows relation type badge + ThoughtRank score + context membership
+  - Click to "detour" into that Unit; a "Return to path" button appears to resume
+
+**Navigator Creation:**
+- From Context Dashboard: "Create Navigator" button → AI proposes path based on navigation purpose → user reviews/reorders in a drag-and-drop list
+- Manual: Cmd+click Units in any view to add to a new Navigator; drag to reorder
+- AI auto-generate: "Suggest reading path for [purpose]" in command palette
+
+**Navigation Purpose Modes:**
+
+| Mode | Highlighted relations | Dimmed relations | Visual accent |
+|------|----------------------|------------------|---------------|
+| Argument | supports, contradicts, derives_from | inspires, echoes | Blue tones |
+| Creative | inspires, echoes, foreshadows | supports, contradicts | Purple tones |
+| Chronological | All — sorted by created_at | — | Warm gray timeline |
+| Explore | All equally weighted | — | Neutral |
+
+**Relation Line Rendering in Graph View:**
+- Active Navigator highlights the path edges with a glowing animated stroke
+- Line thickness = relation weight for current purpose mode
+- Dimmed relations rendered at 20% opacity
+- Navigation purpose selector: pill toggle group at top of Graph View
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| No Navigator | Navigator Bar hidden | Thread/Graph View operates normally |
+| Creating | Drag-and-drop list overlay | User arranges Units; "Start" button |
+| Active | Navigator Bar visible, step card centered | Arrow navigation, branch panel available |
+| Completed | Final step + "End of path" message | Summary: units read, branches taken, suggested next Navigator |
+
+**Keyboard Shortcuts:**
+- `N` — Open Navigator list / create new
+- `J` / `K` — Next / previous step (vim-style)
+- `H` — Toggle horizontal branch panel
+- `Esc` — Exit Navigator, return to previous view
+- `1-9` — Jump to Navigator step by number (if ≤ 9 steps)
+
+---
+
+### ThoughtRankIndicator
+
+**Purpose**: Display a Unit's calculated importance score (ThoughtRank) as a visual indicator on UnitCards throughout the UI.
+
+**Component Anatomy:**
+- Small vertical bar (3px wide × card height) on the right edge of UnitCard, inside the card border
+- Color intensity maps to ThoughtRank value (0.0–1.0):
+  - 0.0–0.2: `--text-quaternary` (barely visible)
+  - 0.2–0.4: `--text-tertiary`
+  - 0.4–0.6: `--accent-secondary` at 50% opacity
+  - 0.6–0.8: `--accent-secondary` at 80% opacity
+  - 0.8–1.0: `--accent-primary` at 100% + subtle pulse animation (1 cycle on first render)
+- Tooltip on hover: "ThoughtRank: 0.73 — Referenced by 8 units, in 3 assemblies, hub in 2 contexts"
+
+**Breakdown Popover (click the bar):**
+- Mini chart showing score contributors:
+  - Reference count: ████░░ (4/10)
+  - Assembly inclusion: ██████ (6/10)
+  - Context diversity: ███░░░ (3/10)
+  - Recency: ████████ (8/10)
+  - Hub role: █████░ (5/10)
+- "Pin importance" toggle — manually boost this Unit's rank
+- Scores adjust per navigation purpose (shown as tabs in the popover)
+
+**Graph View Integration:**
+- Node size in Graph View scales with ThoughtRank (min 8px, max 32px diameter)
+- High-rank nodes (>0.7) get a subtle glow effect
+- Sort/filter in search results: "Sort by ThoughtRank" option
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Not yet calculated | Thin gray bar, no tooltip | Appears during first indexing |
+| Low (0.0–0.3) | Faint bar | Tooltip shows score + suggestion: "Connect to more contexts to increase relevance" |
+| Medium (0.3–0.7) | Moderate color bar | Standard tooltip |
+| High (0.7–1.0) | Vivid bar + one-time pulse | Tooltip + "Hub Unit" badge on card |
+
+**Accessibility:**
+- Screen reader: "ThoughtRank: [score] out of 1.0, [rank descriptor: low/medium/high]"
+- Not color-only: bar width also subtly increases with score (3px → 5px for top tier)
+
+---
+
+### IncubationQueueUI
+
+**Purpose**: Store incomplete but valuable Units and periodically resurface them for the user to revisit, connect, or develop further.
+
+**Component Anatomy:**
+- **Queue Access Point** — icon button in the left sidebar: hourglass icon with badge count of queued items
+- **Queue Panel** — slide-out panel (320px) from the left sidebar, overlaying the main content
+  - Header: "Incubation Queue" + item count + settings gear icon
+  - Sort controls: "Most recent" / "Longest incubating" / "Most relevant to current context"
+  - Item list: compact UnitCards with incubation metadata
+
+**Queue Item Card:**
+- Compact UnitCard variant (single line content preview)
+- Below content: "Incubating for 12 days" in `--text-tertiary`
+- Right side: action buttons (vertical dots menu):
+  - "Connect now" → opens relation creation flow with current Context
+  - "Develop" → opens Unit in editor with AI suggestion to expand
+  - "Dismiss" → removes from queue (Unit persists, just unqueued)
+  - "Snooze 7d" → delays next resurfacing
+
+**Resurfacing Notification:**
+- Appears as a gentle toast (bottom-center, warm amber accent) when entering the app or switching Contexts:
+  - "💡 3 incubating thoughts may be relevant to [current Context name]"
+  - Click to open queue filtered to relevant items
+- AI relevance matching: compares incubated Units against current Context's Units using semantic similarity
+- Frequency configurable in settings (daily / every 3 days / weekly / manual only)
+
+**Adding to Incubation:**
+- Right-click UnitCard → "Send to Incubation Queue"
+- During Knowledge Connection flow: option ③ "Hold for now" → auto-queues
+- Drag UnitCard onto the hourglass sidebar icon
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Empty | Hourglass icon, no badge | Panel shows illustration: "No thoughts incubating" |
+| Has items | Badge count on hourglass | Panel shows scrollable list |
+| Resurfacing | Amber toast notification | Click opens filtered queue |
+| Item connected | Card slides out with green checkmark | Removed from queue, toast: "Connected to [Context]" |
+
+**Keyboard Shortcuts:**
+- `Cmd+I` — Toggle Incubation Queue panel
+- Within panel: `↑/↓` to navigate items, `Enter` to "Connect now", `D` to dismiss, `S` to snooze
+
+---
+
+### DriftDetectionUI
+
+**Purpose**: Alert users when newly created Units are semantically drifting from the current project's purpose, and propose corrective actions (sub-context split, branch project, or ignore).
+
+**Component Anatomy:**
+- **Drift Score Badge** — appears on UnitCards when `drift_score > 0.5`
+  - Small triangular warning icon (amber) at top-right corner of UnitCard
+  - Tooltip: "This thought is drifting from [Project Name]'s purpose (drift: 0.72)"
+- **Drift Alert Banner** — appears at the top of the workspace when multiple Units exceed threshold
+  - Amber background strip (48px height)
+  - Left: warning icon + "Your recent thoughts are drifting from [Project]'s focus"
+  - Right: "Review" button (opens Drift Review panel) + "Dismiss" (×)
+- **Drift Review Panel** — modal overlay (centered, 640px wide)
+  - Shows drifting Units as a cluster, with drift score bars
+  - Original project purpose statement displayed at top for reference
+  - Three action cards below:
+
+**Action Cards:**
+
+| Option | Icon | Title | Description |
+|--------|------|-------|-------------|
+| ① | `arrow.branch` | Split into sub-context | Keep connection but create separate exploration space |
+| ② | `square.on.square` | Branch into new project | Create independent project with reference relation |
+| ③ | `xmark.circle` | Ignore and continue | Keep units in current project, suppress drift warnings for these |
+
+**Drift Score Visualization:**
+- On UnitCard hover (when drift badge visible): mini radial gauge showing drift score (0.0 = centered, 1.0 = fully drifted)
+- In Graph View: drifting Units rendered with amber node border; at high drift (>0.8), a dashed line separates them from the core cluster
+
+**Branch Project Flow (Option ②):**
+1. User selects option ② → inline form: "Name your new project" + auto-suggested name based on drifting content
+2. Shared Units picker: checkboxes on Units to share between original and new project
+3. "Create Branch" button → animated transition showing Units sliding into a new project node in the sidebar
+4. Branch relation badge appears on both projects in the sidebar: `⑂` icon with link to sibling
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| No drift | No badge, no banner | Normal operation |
+| Mild drift (0.5–0.7) | Amber badge on individual cards | Tooltip warning only |
+| Significant drift (0.7–0.9) | Badges + banner appears | "Review" opens panel |
+| Critical drift (>0.9) | Red-tinted badges + persistent banner | Auto-opens Review panel on next Unit creation |
+| Post-action | Green success toast | "Created sub-context [name]" or "Branched to [project]" |
+
+---
+
+### ContextExportUI
+
+**Purpose**: Export a Context's structured Unit data (units, relations, open questions, snapshot) in formats readable by external AI tools, enabling Flowmind as a personalized context layer.
+
+**Component Anatomy:**
+- **Export Button** — in Context Dashboard header toolbar, icon: `square.and.arrow.up`
+  - Label: "Export Context"
+- **Export Configuration Dialog** — modal (480px wide), clean minimal form
+  - **Format Picker**: segmented control with three options
+    - `Prompt Package` — structured prompt optimized for LLM consumption
+    - `JSON` — machine-readable structured data
+    - `Markdown` — human-readable document format
+  - **Include Sections**: checkbox group
+    - ☑ Units (always checked, disabled)
+    - ☐ Relations
+    - ☐ Open Questions
+    - ☐ Context Snapshot
+  - **Filters** (collapsible "Advanced" section):
+    - Unit types: multi-select pills (claim, question, evidence, idea, etc.)
+    - Status: multi-select pills (confirmed, pending, draft)
+    - Depth: slider (1–5, default 3) — how many relation hops to include
+  - **Preview Pane**: right side of dialog (or below on narrow screens), live-updating preview of export output (first 20 lines + "..." truncation)
+  - **Action buttons**: "Copy to Clipboard" (primary) + "Download as File" (secondary) + "Cancel" (ghost)
+
+**Prompt Package Format Preview:**
+```
+# Context: [Context Name]
+## Background
+[AI-generated summary of context state]
+
+## Key Claims
+- [Claim 1] (certainty: 0.8, evidence: 3 supporting units)
+- [Claim 2] ...
+
+## Open Questions
+- [Question 1] (status: unresolved)
+
+## Constraints
+- [Constraint units listed]
+```
+
+**Interaction Flow:**
+1. Click "Export Context" → dialog opens with default settings (Prompt Package, all sections, depth 3)
+2. User adjusts format/filters → preview updates live (300ms debounce)
+3. Click "Copy to Clipboard" → dialog closes, toast: "Context exported to clipboard"
+4. Or click "Download" → browser download dialog → `.json` / `.md` / `.txt` file
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Dialog open | Modal with form + preview | Live preview updates on setting change |
+| Generating | Spinner in preview pane | "Preparing export..." |
+| Ready | Preview shows formatted output | Action buttons enabled |
+| Copied | Green flash on "Copy" button | Toast confirmation |
+| Empty context | Warning message in preview | "This context has no confirmed units to export" |
+
+**Keyboard Shortcuts:**
+- `Cmd+Shift+E` — Open export dialog for current Context
+- `Tab` through form fields → `Enter` on "Copy to Clipboard"
+
+---
+
+### KnowledgeConnectionUI
+
+**Purpose**: When importing external knowledge (papers, articles, web clips), prompt the user with "What does this mean to you?" to capture the role this knowledge plays in their thinking before filing it.
+
+**Component Anatomy:**
+- **Connection Dialog** — appears automatically after pasting/importing external content
+  - Top section: preview of imported content (title, first 3 lines, source URL if available)
+  - AI question: "In what context did you bring this?" displayed in `--text-secondary` italic
+  - Three option cards arranged vertically:
+
+**Option Cards:**
+
+| Option | Icon | Title | Subtitle |
+|--------|------|-------|----------|
+| ① | `link.badge.plus` | Connect to active Context | "Add as evidence or background to [Context Name]" |
+| ② | `plus.rectangle.on.rectangle` | Start new exploration | "Create a new Context starting from this knowledge" |
+| ③ | `clock.badge.questionmark` | Hold for now | "Place in Incubation Queue; notify when relevant" |
+
+**Option ① Flow (Connect):**
+1. User selects ① → AI proposes relations to existing Units in current Context
+2. Relation suggestions appear as a list: "[Imported Unit] — supports → [Existing Unit]" with accept/reject toggles
+3. User confirms → Resource Unit + Thought Units created, connected, toast: "Connected to [Context]"
+
+**Option ② Flow (New Context):**
+1. User selects ② → inline text field: "Name this new exploration" + AI-suggested name
+2. "Create" → new Context created with imported content as seed Units
+3. Sidebar updates to show new Context; workspace transitions to it
+
+**Option ③ Flow (Hold):**
+1. User selects ③ → Resource Unit created, sent to Incubation Queue
+2. Toast: "Saved to Incubation Queue — we'll notify you when it becomes relevant"
+3. No further interaction required
+
+**AI Proactive Suggestions:**
+- When AI detects that external knowledge could support/refute existing claims, a subtle notification appears:
+  - Small blue dot on the "Search" icon in toolbar
+  - Click: "AI found external knowledge that may relate to your claim: [claim preview]"
+  - Actions: "Connect" / "Dismiss" / "Save for later"
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Importing | Connection Dialog with content preview | Awaiting user choice |
+| Processing | Spinner on selected option card | AI generating relations/context |
+| Connected | Green checkmark animation | Toast + units appear in graph |
+| Incubated | Amber hourglass animation | Toast + item in queue |
+| Error | Red border on dialog | "Could not process this content — try again" |
+
+---
+
+### EpistemicHumilityUI
+
+**Purpose**: When AI detects a topic without social consensus (controversial, preference-based, or deeply contested), switch from assertion mode to question mode — asking the user to examine their position rather than reinforcing it.
+
+**Component Anatomy:**
+- **Epistemic Mode Banner** — appears at the top of the AI suggestion panel when triggered
+  - Soft purple background, 40px height
+  - Icon: `questionmark.circle` + "Epistemic Humility Mode — AI is asking questions, not providing answers"
+  - Dismiss: small `×` to acknowledge (banner stays until topic changes)
+- **Question Cards** — replace normal AI suggestions in the suggestion panel
+  - Styled differently from standard suggestions: purple left border (instead of blue), question mark icon
+  - Content: reflective questions like "What must you give up to take this position?" or "What would change your mind about this?"
+  - No accept/reject — instead, "Reflect" button that opens a text area for the user to write their response (captured as a new Unit of type `reflection`)
+
+**Trigger Conditions:**
+- AI detects controversial topics (politics, religion, ethics, deeply contested science)
+- User's Unit has `scope: personal` but claims `scope: universal` — scope mismatch triggers humility mode
+- Unit type is `claim` with `certainty > 0.8` on a contested topic
+
+**Question Types:**
+
+| Question Type | Example | Purpose |
+|---------------|---------|---------|
+| Position cost | "What must you give up to take this position?" | Surface hidden trade-offs |
+| Steelman | "What is the strongest version of the opposing view?" | Prevent strawmanning |
+| Evidence gap | "What evidence would change your mind?" | Identify falsifiability |
+| Scope check | "Does this apply universally, or to your specific situation?" | Calibrate scope |
+| Source | "Where did this belief originate for you?" | Surface provenance |
+
+**Interaction Flow:**
+1. User creates/edits a Unit on a controversial topic
+2. AI detects controversy → Epistemic Mode Banner slides in (300ms)
+3. Normal AI suggestions replaced with 2–3 reflective Question Cards
+4. User clicks "Reflect" on a question → text area expands inline → user types response
+5. Response saved as new Unit (type: `reflection`, relation: `responds_to` the original claim)
+6. Banner persists until user navigates to a different topic or dismisses
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Inactive | No banner, normal AI suggestions | Standard operation |
+| Triggered | Purple banner + question cards | AI switches to question mode |
+| Reflecting | Expanded text area below question card | User composing reflection |
+| Reflected | Question card shows green checkmark + "Reflected" | Response saved as Unit |
+| Dismissed | Banner fades out | Resumes normal mode (re-triggers if topic persists) |
+
+**Accessibility:**
+- Banner announced via ARIA live region: "Epistemic Humility Mode activated — AI will ask reflective questions on this topic"
+- Question cards focusable; `Enter` to expand reflection area
+
+---
+
+### BranchGraphUI
+
+**Purpose**: Visualize branching relations between Units, showing where thinking diverged, and enable switching between branches in Graph View.
+
+**Component Anatomy:**
+- **Branch Indicator** on UnitCard — small forking icon (`⑂`) at bottom-left when a Unit has branches
+  - Badge count: number of branches (e.g., "⑂ 3")
+  - Click to expand branch list popover
+- **Branch List Popover** — dropdown showing all branches from this Unit
+  - Each row: branch Unit title (truncated) + creation date + branch reason (one line)
+  - Click row → navigate to that branch in Graph/Thread View
+  - "Create new branch" button at bottom
+- **Branch Visualization in Graph View:**
+  - Branch edges rendered as forking lines (Y-shape) from the parent node
+  - Branch nodes share the parent's color family but with a lighter tint per generation
+  - Active branch path highlighted with full opacity; sibling branches at 40% opacity
+  - Branch switch: click a sibling branch node → animated transition (parent stays fixed, branch subtree swaps in with 400ms crossfade)
+
+**Branch Creation Flow:**
+1. On a UnitCard: right-click → "Create branch" or `Cmd+B`
+2. Inline editor appears: pre-filled with parent Unit's content, user modifies
+3. "Save branch" → new Unit created with `branches_from` relation to parent
+4. Graph View animates the new fork
+
+**Branch Project Indicators (sidebar):**
+- Projects that were branched from another project show `⑂` icon + parent project name
+- Click icon → navigate to parent project
+- Shared Units between branched projects show a "shared" badge (two overlapping squares icon)
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| No branches | No branch indicator | Standard UnitCard |
+| Has branches | `⑂ N` badge on card | Click opens branch list |
+| Branch selected | Active branch highlighted in graph | Sibling branches dimmed |
+| Switching | Crossfade animation (400ms) | Parent node stable, subtree swaps |
+| Creating | Inline editor below UnitCard | "Save branch" / "Cancel" |
+
+**Keyboard Shortcuts:**
+- `Cmd+B` — Create branch from focused Unit
+- `[` / `]` — Switch to previous / next sibling branch
+- `Cmd+↑` — Navigate to branch parent
+
+---
+
+### TensionDetectionUI
+
+**Purpose**: Surface mutually contradictory claims within the same Context so users can resolve, acknowledge, or investigate the tension.
+
+**Component Anatomy:**
+- **Tension Alert Badge** — appears in Context Dashboard header
+  - Red-orange dot with count: "⚡ 2 tensions detected"
+  - Click opens Tension Panel
+- **Tension Panel** — slide-out panel (400px) from right side
+  - Header: "Tensions in [Context Name]"
+  - List of tension pairs, each rendered as a Tension Card
+- **Tension Card** (within panel):
+  - Two mini UnitCards side by side, connected by a red `contradicts` relation line (lightning bolt icon at midpoint)
+  - Left card: Unit A (claim text preview)
+  - Right card: Unit B (contradicting claim text preview)
+  - AI explanation below: "These units contradict because [brief reason]"
+  - Action buttons row:
+    - "Resolve" — opens both Units in split editor view to reconcile
+    - "Acknowledge" — marks tension as known (badge changes to gray, sorted lower)
+    - "Investigate" — creates a new Unit (type: `question`) asking about the contradiction
+    - "Dismiss" — false positive, removes tension flag
+
+**Context Dashboard Integration:**
+- Tension count shown in the dashboard summary metrics
+- "Unaddressed contradictions" listed as a separate section in dashboard
+- High-tension Contexts get a subtle amber border in the sidebar
+
+**Graph View Integration:**
+- Contradicting Units connected by a red dashed edge with `⚡` icon at midpoint
+- Tension edges always visible regardless of navigation purpose mode
+- Clicking the `⚡` icon opens a popover with the AI explanation and action buttons
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| No tensions | No badge | Normal Context Dashboard |
+| Tensions detected | Red-orange badge with count | Click opens panel |
+| Reviewing | Tension Panel open, tension cards listed | User takes action per card |
+| Acknowledged | Card grayed, moved to bottom of list | Still tracked but deprioritized |
+| Resolved | Card removed with green checkmark animation | Toast: "Tension resolved" |
+| Dismissed | Card removed immediately | Not shown again for this pair |
+
+**Keyboard Shortcuts:**
+- `Cmd+T` — Toggle Tension Panel
+- Within panel: `↑/↓` navigate tension cards, `R` resolve, `A` acknowledge, `I` investigate
+
+---
+
+### ScopeJumpWarningUI
+
+**Purpose**: Alert users when a Unit's claim scope (personal → universal) doesn't match its evidence domain, preventing unwarranted generalizations.
+
+**Component Anatomy:**
+- **Scope Warning Badge** — small amber shield icon on UnitCard's metadata row when scope mismatch detected
+  - Appears next to the Unit's scope label (e.g., "Scope: universal ⚠")
+  - Tooltip: "This claim has personal scope evidence but universal scope claim"
+- **Scope Warning Popover** (click badge):
+  - Header: "Scope Mismatch Detected"
+  - Visual diagram: two labeled circles
+    - Left circle: "Evidence scope: personal" (with examples from Unit's evidence chain)
+    - Right circle: "Claim scope: universal"
+    - Gap indicator arrow between them: "Jump: personal → universal"
+  - AI suggestion: "Consider narrowing this claim to personal scope, or adding universal evidence"
+  - Action buttons:
+    - "Narrow scope" — changes Unit's scope to match evidence (one click)
+    - "Find evidence" — triggers external knowledge search for universal evidence
+    - "Acknowledge" — user consciously accepts the scope gap (badge changes to gray)
+
+**Scope Levels Hierarchy:**
+```
+personal → situational → domain_specific → domain_general → universal
+```
+- Warning triggers when claim scope is ≥2 levels above evidence scope
+- Single-level jumps get a subtle info icon (not warning)
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| No mismatch | No badge | Normal UnitCard |
+| Mild gap (1 level) | Gray info icon | Tooltip only, no action needed |
+| Significant gap (2+ levels) | Amber shield badge | Click opens popover with actions |
+| Acknowledged | Gray shield badge | Popover shows "Acknowledged by user" |
+| Resolved | Badge removed | Scope or evidence updated |
+
+**Accessibility:**
+- Screen reader: "Scope mismatch warning: personal evidence supporting universal claim"
+- Warning conveyed by icon shape (shield) + color, not color alone
+
+---
+
+### ReasoningChainUI
+
+**Purpose**: Visualize the logical path from evidence through inference to conclusion, explicitly showing how Units with different evidence domains and scopes connect.
+
+**Component Anatomy:**
+- **Chain View** — activated from a Unit's context menu: "View Reasoning Chain" or from Assembly view
+- **Chain Visualization** — horizontal (left-to-right) flow diagram within a dedicated panel (full-width, 280px height)
+  - Each step is a compact UnitCard (120px wide) with:
+    - Role badge (top): foundation / motivation / validation / inference / conclusion
+    - Evidence domain badge (bottom-left): personal_event, external_public, reasoned_inference, etc.
+    - Scope badge (bottom-right): personal, situational, domain_general, universal
+  - Steps connected by directional arrows with transition labels on hover
+  - Color coding by evidence domain:
+    - Personal: warm coral
+    - External public: cool blue
+    - Reasoned inference: neutral gray
+    - Claim: green
+- **Chain Summary Bar** — below the chain visualization
+  - Shows the goal/conclusion as a highlighted text block
+  - "Strength assessment": AI-generated brief on how well the chain holds together
+  - Gap indicators: dashed placeholder cards where the chain has logical gaps ("Missing: validation step")
+
+**Chain Creation:**
+- AI auto-generates: select a conclusion Unit → "Generate Reasoning Chain" → AI traces backward through relations
+- Manual: drag Units into the chain panel in order; assign roles via dropdown on each step
+- Hybrid: AI proposes, user adjusts order/roles
+
+**Interaction Patterns:**
+- Hover a step → highlights that Unit in Graph View (synchronized)
+- Click a step → expands to show full Unit content inline
+- Click transition arrow → shows the logical justification for the step transition
+- Drag to reorder steps → AI re-evaluates chain coherence and flags issues
+
+**Gap Detection:**
+- Missing steps shown as dashed-border placeholder cards with `+` icon
+- Placeholder label: "Needs: [role]" (e.g., "Needs: validation")
+- Click `+` → search for existing Units that could fill the gap, or create new
+
+**States:**
+
+| State | Visual | Behavior |
+|-------|--------|----------|
+| Generating | Shimmer animation on placeholder cards | AI building chain |
+| Complete | All steps filled, solid connectors | Chain is fully expressed |
+| Has gaps | Dashed placeholder cards in chain | User prompted to fill |
+| Editing | Drag handles on steps, role dropdowns open | User modifying chain |
+| Viewing | Read-only, hover interactions only | Exploration mode |
+
+**Keyboard Shortcuts:**
+- `Cmd+R` — Generate/view Reasoning Chain for selected Unit
+- `←/→` — Navigate between chain steps
+- `Enter` — Expand/collapse step detail
+- `G` — Jump to next gap in chain
+
+---
+
+### Implementation Roadmap (Extended Features)
+
+**Phase 2 — Exploration (additions):**
+- ThoughtRankIndicator (all views)
+- NavigatorUI (basic vertical navigation)
+- IncubationQueueUI
+
+**Phase 3 — Composition (additions):**
+- ResourceAttachment (all formats)
+- ContextExportUI
+- NavigatorUI horizontal navigation + purpose modes
+- ReasoningChainUI
+
+**Phase 4 — Intelligence:**
+- KnowledgeConnectionUI
+- EpistemicHumilityUI
+- TensionDetectionUI
+- DriftDetectionUI
+- ScopeJumpWarningUI
+- BranchGraphUI
