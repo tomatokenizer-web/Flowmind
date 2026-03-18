@@ -814,6 +814,41 @@ When a user creates an Assembly from a template (e.g., "PRD" → Problem + UserS
   - Accepted Units appear as solid cards in their slots; empty slots show "+" icons
   - Bridge text zones between slots activate for user editing
 
+#### CanvasView
+**Purpose**: Infinite whiteboard for free-form spatial exploration of Units within a Context — inspired by Heptabase
+**Anatomy**: Infinite canvas surface + freely positionable UnitCard instances + relation lines between cards + minimap overlay + auto-layout button + view switcher toggle
+**States**: Default (pan/zoom idle), Dragging card (card lifted with shadow), Drawing relation (rubber-band line from source card edge), Pan (background drag), Zoomed out (minimap highlighted)
+**Interactions**: Drag card to reposition (position saved per-Unit per-Context), drag from card edge to another card to create a relation (opens relation type picker on drop), pan (drag background), zoom (scroll/pinch), click card to select (opens Detail Panel), double-click card to expand inline
+**Technology**: React Flow (preferred) or custom D3 infinite canvas with debounced position persistence
+
+**Distinction from Graph View:**
+- **Graph View** = analytical, read-only, force-directed layout computed automatically — optimized for discovering clusters, gaps, and patterns
+- **Canvas View** = creative, explorative, editable — user controls spatial arrangement, draws relations visually, thinks spatially
+
+**Design Spec:**
+- Toggle alongside Thread / Graph / List views in the Context view switcher (pill toggle group)
+- Each Unit rendered as a **Compact UnitCard variant**: type-colored left border, title (truncated to 2 lines), lifecycle badge, 180×100px default size
+- Relations rendered as curved lines between cards, colored by relation category at 60% opacity:
+  - Argument relations (supports, contradicts, etc.): `--blue-9` at 60%
+  - Creative relations (inspires, echoes, etc.): `--purple-9` at 60%
+  - Structural relations (contains, presupposes, etc.): `--gray-9` at 60%
+- Drawing a line between two cards opens a **relation type picker** popover at the midpoint of the line
+- Positions saved per-Unit per-Context via `canvas_position` field in the Perspective record (debounced tRPC mutation, 300ms)
+- **Minimap**: fixed 160×120px overlay in bottom-right corner, shows dot representation of all cards with viewport rectangle
+- **Auto-layout button**: floating action button labeled "Auto-layout" that applies force-directed positioning (same D3-force algorithm as Graph View) — user can undo with Cmd+Z
+- **Pan**: click-drag on canvas background; cursor changes to grab/grabbing
+- **Zoom**: scroll wheel or pinch gesture; range 10%–400%; zoom level shown in bottom-left corner
+- **Apple-like design**: white canvas (`--gray-1`), cards with subtle shadow (`0 1px 3px rgba(0,0,0,0.08)`), colored relation lines, no grid or dots on canvas background, generous whitespace
+
+**NavigationPurpose Integration:**
+- When NavigationPurpose is active (e.g., "Argument" mode), relation lines are filtered/dimmed by purpose — same behavior as Graph View
+- Non-matching relation lines fade to 15% opacity
+
+**Accessibility:**
+- All cards are focusable and keyboard-navigable (Tab to move between cards, Enter to select)
+- Arrow keys nudge selected card position (8px per press)
+- Screen reader announces card content and relation count on focus
+
 #### CompletenessCompass
 **Purpose**: Ambient progress indicator for thought-landscape completeness
 **Anatomy**: Radial progress visualization + category breakdown + action suggestions

@@ -1060,7 +1060,7 @@ So that I never lose my place or context while exploring.
 
 ## Epic 4: Relation Graph & Thought Connections
 
-**Goal:** Users can connect Units through 23+ typed relations, visualize connections as an interactive force-directed graph with two-layer zoom, detect cycles and loopbacks, create custom reusable relation types, and merge semantically identical Units.
+**Goal:** Users can connect Units through 23+ typed relations, visualize connections as an interactive force-directed graph with two-layer zoom, explore Contexts as an infinite canvas with free-form spatial positioning, detect cycles and loopbacks, create custom reusable relation types, and merge semantically identical Units.
 
 **FRs covered:** FR6, FR10, FR11, FR13, FR14, FR15
 **NFRs addressed:** NFR1, NFR2, NFR18
@@ -1218,6 +1218,27 @@ So that my spatial awareness is maintained across different representations of m
 **And** the synchronization is instantaneous from the user's perspective per NFR3
 **And** selection state is managed via a Zustand store (`useSelectionStore`) shared across all view components
 **And** ARIA live regions announce the selection change politely per UX-DR55
+
+### Story 4.10: Canvas View — Infinite Whiteboard for Context Exploration
+
+As a user,
+I want to explore a Context as an infinite canvas where I can freely position Units and draw relations visually,
+So that I can think spatially and see my ideas as a living map.
+
+**Acceptance Criteria:**
+
+**Given** a Context with Units and Relations exists
+**When** the user toggles to Canvas View via the view switcher (alongside Thread/Graph/List)
+**Then** an infinite canvas renders with all Context Units as freely draggable compact cards (type-colored border, title, lifecycle badge) per UX-DR28
+**And** Units can be dragged to any position on the canvas, and positions persist per-Unit per-Context via `canvas_position` fields in `unit_perspectives` (debounced tRPC mutation, 300ms)
+**And** existing relations between visible Units are rendered as curved colored lines between cards (color by relation category at 60% opacity: blue for argument, purple for creative, gray for structural)
+**And** dragging from one card's edge to another card opens a relation type picker popover, allowing the user to create a new relation inline per FR10, FR11
+**And** pan (drag background) and zoom (scroll/pinch, range 10%–400%) are supported per UX-DR28
+**And** a minimap (160×120px, bottom-right corner) shows all card positions with a viewport rectangle for navigation
+**And** an "Auto-layout" button applies force-directed positioning (reusing D3-force from Story 4.4), undoable with Cmd+Z
+**And** NavigationPurpose filtering applies to relation line visibility (non-matching lines fade to 15% opacity) per FR38
+**And** selecting a card in Canvas View synchronizes with other views via `useSelectionStore` (extends Story 4.9)
+**And** all cards are keyboard-navigable (Tab between cards, arrow keys nudge position) with ARIA announcements per UX-DR55, UX-DR56
 
 ---
 

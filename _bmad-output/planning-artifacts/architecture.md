@@ -224,6 +224,9 @@ unit_perspectives
   stance          VARCHAR(20)  -- support, oppose, neutral, exploring
   importance      FLOAT        -- ThoughtRank within this context
   note            TEXT
+  canvas_x        FLOAT        -- Canvas View x position (nullable)
+  canvas_y        FLOAT        -- Canvas View y position (nullable)
+  canvas_zoom     FLOAT        -- Canvas View zoom level (nullable, per-unit-per-context)
   UNIQUE(unit_id, context_id)
 
 relations
@@ -1081,6 +1084,20 @@ flowmind/
     │   │   ├── utils.ts                   # Graph algorithms, layout helpers
     │   │   └── index.ts
     │   │
+    │   ├── canvas/
+    │   │   ├── components/
+    │   │   │   ├── CanvasView.tsx           # Infinite canvas container (React Flow or custom D3)
+    │   │   │   ├── CanvasCard.tsx           # Compact UnitCard variant for canvas
+    │   │   │   ├── CanvasRelationLine.tsx   # Curved relation line with category coloring
+    │   │   │   ├── RelationDrawGesture.tsx  # Drag-from-edge relation creation
+    │   │   │   ├── CanvasMinimap.tsx        # 160×120 viewport minimap
+    │   │   │   └── AutoLayoutButton.tsx     # Force-directed auto-positioning
+    │   │   ├── hooks/
+    │   │   │   ├── useCanvasPositions.ts    # Position persistence via debounced tRPC
+    │   │   │   └── useCanvasLayout.ts       # Auto-layout D3-force integration
+    │   │   ├── types.ts
+    │   │   └── index.ts
+    │   │
     │   ├── thread/
     │   │   ├── components/
     │   │   │   ├── ThreadView.tsx          # Vertical unit card stack
@@ -1286,6 +1303,7 @@ flowmind/
 | 14. Navigator | `features/navigator/` | `server/api/routers/navigator.ts` | NavigatorView, NavigatorBuilder |
 | 15. Search | `features/search/` | `server/api/routers/search.ts` | SearchView, SearchFilters |
 | 16. Graph View | `features/graph/` | (uses relation router) | GraphGlobalView, GraphLocalView |
+| 16. Canvas View | `features/canvas/` | (uses relation + perspective routers) | CanvasView, CanvasCard, RelationDrawGesture |
 | 16. Thread View | `features/thread/` | (uses unit router) | ThreadView |
 | 17. Assembly | `features/assembly/` | `server/api/routers/assembly.ts` | AssemblyEditor, ExportDialog |
 | 19. Projects | `features/projects/` | `server/api/routers/project.ts` | ProjectList, DriftDetectionAlert |
