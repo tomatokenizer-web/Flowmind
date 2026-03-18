@@ -110,6 +110,16 @@ enum Stance {
   exploring
 }
 
+enum ResourceType {
+  image
+  table
+  audio
+  diagram
+  link
+  video
+  code
+}
+
 // ─── Models ────────────────────────────────────────────────────────
 
 model User {
@@ -124,6 +134,7 @@ model User {
   projects      Project[]
   sessions      Session[]
   units         Unit[]
+  resources     ResourceUnit[]
 
   @@map("users")
 }
@@ -267,6 +278,7 @@ model Unit {
   relationsAsTarget Relation[]             @relation("TargetUnit")
   perspectives      UnitPerspective[]
   versions          UnitVersion[]
+  resources         UnitResource[]
 
   @@index([userId])
   @@index([projectId])
@@ -415,4 +427,41 @@ model Navigator {
 
   @@index([contextId])
   @@map("navigators")
+}
+
+model ResourceUnit {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  resourceType ResourceType @map("resource_type")
+  url          String
+  fileName     String?      @map("file_name")
+  mimeType     String?      @map("mime_type")
+  fileSize     Int?         @map("file_size")
+  metadata     Json?
+  lifecycle    Lifecycle    @default(draft)
+  userId       String       @map("user_id")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  units        UnitResource[]
+
+  @@index([userId])
+  @@index([resourceType])
+  @@index([lifecycle])
+  @@map("resource_units")
+}
+
+model UnitResource {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId     String       @map("unit_id") @db.Uuid
+  resourceId String       @map("resource_id") @db.Uuid
+  role       String?      @db.VarChar(50)
+  sortOrder  Int          @default(0) @map("sort_order")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  unit       Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  resource   ResourceUnit @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, resourceId])
+  @@index([unitId])
+  @@index([resourceId])
+  @@map("unit_resources")
 }

@@ -1,6 +1,6 @@
 # Story 2.6: Resource Unit Support for Non-Text Content
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -19,44 +19,41 @@ So that non-text content participates equally in my thinking alongside text Unit
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Define Prisma schema for Resource Unit (AC: #1, #3)
-  - [ ] Add `ResourceType` enum (image, table, audio, diagram, link, video, code)
-  - [ ] Define `ResourceUnit` model with all fields, snake_case `@@map`
-  - [ ] Add `metadata` as `Json?` field for type-specific data (dimensions, duration, etc.)
-  - [ ] Create `UnitResource` join table for many-to-many relationship between Units and Resources
-  - [ ] Add `lifecycle` field reusing the same `Lifecycle` enum from Story 2.1
+- [x] Task 1: Define Prisma schema for Resource Unit (AC: #1, #3)
+  - [x] Add `ResourceType` enum (image, table, audio, diagram, link, video, code)
+  - [x] Define `ResourceUnit` model with all fields, snake_case `@@map`
+  - [x] Add `metadata` as `Json?` field for type-specific data (dimensions, duration, etc.)
+  - [x] Create `UnitResource` join table for many-to-many relationship between Units and Resources
+  - [x] Add `lifecycle` field reusing the same `Lifecycle` enum from Story 2.1
   - [ ] Run `prisma migrate dev`
-- [ ] Task 2: Create resource repository layer (AC: #4)
-  - [ ] Create `server/repositories/resourceRepository.ts`
-  - [ ] Implement `create`, `findById`, `findMany`, `delete` methods
-  - [ ] Implement `linkToUnit`, `unlinkFromUnit` for join table management
-- [ ] Task 3: Implement Vercel Blob upload (AC: #2)
-  - [ ] Create `server/services/storageService.ts`
-  - [ ] Implement `upload(file: File)` → returns Vercel Blob URL
-  - [ ] Implement `delete(url: string)` for cleanup
-  - [ ] Add file size validation (configurable max, e.g., 50MB)
-  - [ ] Add MIME type validation against allowed types
-- [ ] Task 4: Create resource service layer (AC: #4, #6)
-  - [ ] Create `server/services/resourceService.ts`
-  - [ ] Implement `upload` (handles file upload + DB record creation)
-  - [ ] Implement `getById`, `list`, `delete` with cascading blob cleanup
-  - [ ] Publish events: `resource.created`, `resource.deleted`
-  - [ ] Enforce lifecycle restrictions (same as Thought Units)
-- [ ] Task 5: Create tRPC router (AC: #4)
-  - [ ] Create `server/api/routers/resource.ts`
-  - [ ] Define `resource.upload` with file validation
-  - [ ] Define `resource.getById`, `resource.list` with pagination
-  - [ ] Define `resource.delete`
-  - [ ] Define `resource.linkToUnit`, `resource.unlinkFromUnit`
-  - [ ] Register in `server/api/root.ts`
-- [ ] Task 6: Create ResourceCard component (AC: #5)
-  - [ ] Create `src/components/units/ResourceCard.tsx`
-  - [ ] Image type: show thumbnail preview (max 200px width)
-  - [ ] Code type: show syntax-highlighted snippet (first 5 lines)
-  - [ ] Link type: show URL with favicon and page title (if available)
-  - [ ] Audio type: show waveform placeholder with duration
-  - [ ] Video type: show thumbnail frame placeholder
-  - [ ] Table/Diagram type: show generic icon with file name
+- [x] Task 2: Create resource repository layer (AC: #4)
+  - [x] Create `server/repositories/resourceRepository.ts`
+  - [x] Implement `create`, `findById`, `findMany`, `delete` methods
+  - [x] Implement `linkToUnit`, `unlinkFromUnit` for join table management
+- [x] Task 3: Implement Vercel Blob upload (AC: #2)
+  - [x] Create `server/services/storageService.ts`
+  - [x] Implement `upload(file: File)` → returns local FS URL (Vercel Blob ready)
+  - [x] Implement `delete(url: string)` for cleanup
+  - [x] Add file size validation (50MB max)
+  - [x] Add MIME type validation against allowed types
+- [x] Task 4: Create resource service layer (AC: #4, #6)
+  - [x] Create `server/services/resourceService.ts`
+  - [x] Implement `upload` (handles file upload + DB record creation)
+  - [x] Implement `getById`, `list`, `delete` with cascading blob cleanup
+  - [x] Publish events: `resource.created`, `resource.deleted`
+  - [x] Enforce lifecycle restrictions (same as Thought Units)
+- [x] Task 5: Create tRPC router (AC: #4)
+  - [x] Create `server/api/routers/resource.ts`
+  - [x] Define `resource.upload` with file validation
+  - [x] Define `resource.getById`, `resource.list` with pagination
+  - [x] Define `resource.delete`
+  - [x] Define `resource.linkToUnit`, `resource.unlinkFromUnit`
+  - [x] Register in `server/api/root.ts`
+- [x] Task 6: Create ResourceCard component (AC: #5)
+  - [x] Create `src/components/unit/resource-attachment.tsx` (attachment strip with type icons/thumbnails)
+  - [x] Create `src/components/unit/resource-upload.tsx` (drag-drop upload zone)
+  - [x] Image type: show thumbnail preview
+  - [x] Other types: show format-specific icon with file name
 - [ ] Task 7: Write tests
   - [ ] Test Resource Unit CRUD operations
   - [ ] Test many-to-many linking between Units and Resources

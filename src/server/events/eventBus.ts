@@ -9,6 +9,12 @@ export type UnitEventType =
   | "unit.deleted"
   | "unit.lifecycleChanged";
 
+export type ResourceEventType =
+  | "resource.created"
+  | "resource.deleted";
+
+export type AppEventType = UnitEventType | ResourceEventType;
+
 export interface UnitEvent {
   type: UnitEventType;
   payload: {
@@ -20,14 +26,25 @@ export interface UnitEvent {
   timestamp: Date;
 }
 
-type EventHandler = (event: UnitEvent) => void | Promise<void>;
+export interface ResourceEvent {
+  type: ResourceEventType;
+  payload: {
+    resourceId: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
+export type AppEvent = UnitEvent | ResourceEvent;
+
+type EventHandler = (event: AppEvent) => void | Promise<void>;
 
 // ─── Event Bus ─────────────────────────────────────────────────────
 
 class EventBus {
   private handlers = new Map<string, Set<EventHandler>>();
 
-  on(eventType: UnitEventType, handler: EventHandler): () => void {
+  on(eventType: AppEventType, handler: EventHandler): () => void {
     if (!this.handlers.has(eventType)) {
       this.handlers.set(eventType, new Set());
     }
@@ -39,7 +56,7 @@ class EventBus {
     };
   }
 
-  async emit(event: UnitEvent): Promise<void> {
+  async emit(event: AppEvent): Promise<void> {
     const handlers = this.handlers.get(event.type);
     if (!handlers) return;
 
@@ -47,7 +64,7 @@ class EventBus {
     await Promise.allSettled(promises);
   }
 
-  removeAllListeners(eventType?: UnitEventType): void {
+  removeAllListeners(eventType?: AppEventType): void {
     if (eventType) {
       this.handlers.delete(eventType);
     } else {
