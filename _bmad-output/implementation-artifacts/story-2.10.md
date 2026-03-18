@@ -1,6 +1,6 @@
 # Story 2.10: Drag-and-Drop Foundation & Undo/Redo System
 
-Status: ready-for-dev
+Status: in-progress
 
 ## Story
 
@@ -21,56 +21,56 @@ So that I can freely experiment with my thought organization without fear of los
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Set up dnd-kit for UnitCardList (AC: #1, #2, #3)
-  - [ ] Import and configure `@dnd-kit/core` and `@dnd-kit/sortable`
-  - [ ] Wrap UnitCardList with `DndContext` and `SortableContext`
-  - [ ] Make each UnitCard a `useSortable` item
-  - [ ] Wire up the 6-dot grip handle as the drag activator
-  - [ ] Configure `restrictToVerticalAxis` modifier for list reordering
-- [ ] Task 2: Implement drag visual feedback (AC: #2, #3)
-  - [ ] Create `DragOverlay` component showing the dragged card at 0.8 opacity
-  - [ ] Show dashed accent-colored drop zone indicators between cards
-  - [ ] Implement 200ms spring animation on drop using `useSortable` transition config
-  - [ ] Hide the original card's position during drag (placeholder with dashed border)
-- [ ] Task 3: Implement keyboard drag-and-drop (AC: #4)
-  - [ ] Configure `KeyboardSensor` with `sortableKeyboardCoordinates`
-  - [ ] Space to pick up / drop a focused card
-  - [ ] Arrow Up/Down to move within the list
-  - [ ] Escape to cancel drag
-  - [ ] Announce drag actions for screen readers (`announcements` prop)
-- [ ] Task 4: Persist reorder changes (AC: #1)
+- [x] Task 1: Set up dnd-kit for UnitCardList (AC: #1, #2, #3)
+  - [x] Import and configure `@dnd-kit/core` and `@dnd-kit/sortable` → `src/hooks/use-drag-drop.ts`
+  - [x] Wrap UnitCardList with `DndContext` and `SortableContext` → hook exports `dndContextProps`
+  - [x] Make each UnitCard a `useSortable` item → `src/components/unit/draggable-unit-card.tsx`
+  - [x] Wire up the 6-dot grip handle as the drag activator → `setActivatorNodeRef` on grip button
+  - [x] Configure `restrictToVerticalAxis` modifier for list reordering → inline modifier
+- [x] Task 2: Implement drag visual feedback (AC: #2, #3)
+  - [x] Create `DragOverlay` component showing the dragged card at 0.8 opacity → `DragOverlayCard`
+  - [x] Show dashed accent-colored drop zone indicators between cards → `isDragging` styling
+  - [x] Implement 200ms spring animation on drop using `useSortable` transition config
+  - [x] Hide the original card's position during drag (placeholder with dashed border)
+- [x] Task 3: Implement keyboard drag-and-drop (AC: #4)
+  - [x] Configure `KeyboardSensor` with `sortableKeyboardCoordinates`
+  - [x] Space to pick up / drop a focused card
+  - [x] Arrow Up/Down to move within the list
+  - [x] Escape to cancel drag
+  - [x] Announce drag actions for screen readers (`announcements` prop)
+- [ ] Task 4: Persist reorder changes (AC: #1) — deferred to integration phase
   - [ ] Add `sort_order` field to Unit model (integer, nullable)
   - [ ] Create `unit.reorder` tRPC procedure accepting `{ unitId, newIndex }`
   - [ ] Use optimistic UI for reorder — update local state immediately, sync to server
   - [ ] Handle reorder conflicts (if another user reordered simultaneously)
-- [ ] Task 5: Create undo/redo system (AC: #5, #6, #7)
-  - [ ] Create `src/stores/undoStore.ts` with Zustand
-  - [ ] Define action types: `unit.create`, `unit.update`, `unit.delete`, `unit.reorder`, `unit.lifecycleChange`
-  - [ ] Implement undo stack (max 50 actions) and redo stack
-  - [ ] Each action stores: `type`, `payload` (before/after state), `timestamp`, `description`
-  - [ ] `undo()`: pop from undo stack, execute reverse action, push to redo stack
-  - [ ] `redo()`: pop from redo stack, execute action, push to undo stack
-- [ ] Task 6: Register undo/redo keyboard shortcuts (AC: #5, #6)
-  - [ ] Cmd+Z / Ctrl+Z triggers `undo()`
-  - [ ] Cmd+Shift+Z / Ctrl+Shift+Z triggers `redo()`
-  - [ ] Disable when no actions in stack
-- [ ] Task 7: Implement undo toast notifications (AC: #7)
-  - [ ] On undo: show toast "Unit creation undone", "Edit undone", etc.
-  - [ ] Toast includes "Redo" action button for quick redo
-  - [ ] Use existing toast system from Story 1.7
-- [ ] Task 8: Implement delete confirmation dialog (AC: #8)
+- [x] Task 5: Create undo/redo system (AC: #5, #6, #7)
+  - [x] Create `src/stores/undo-store.ts` with Zustand
+  - [x] Define action types: `unit.create`, `unit.update`, `unit.delete`, `unit.reorder`, `unit.lifecycleChange` → `src/lib/undo-actions.ts`
+  - [x] Implement undo stack (max 50 actions) and redo stack
+  - [x] Each action stores: `type`, `payload` (before/after state), `timestamp`, `description`
+  - [x] `undo()`: pop from undo stack, execute reverse action, push to redo stack
+  - [x] `redo()`: pop from redo stack, execute action, push to undo stack
+- [x] Task 6: Register undo/redo keyboard shortcuts (AC: #5, #6)
+  - [x] Cmd+Z / Ctrl+Z triggers `undo()` → `src/hooks/use-undo-redo.ts`
+  - [x] Cmd+Shift+Z / Ctrl+Shift+Z triggers `redo()`
+  - [x] Disable when no actions in stack
+- [x] Task 7: Implement undo toast notifications (AC: #7)
+  - [x] On undo: show toast "Unit creation undone", "Edit undone", etc. → integrated in undo-store
+  - [x] Toast includes "Redo" action button for quick redo → `undoAction` callback
+  - [x] Use existing toast system from Story 1.7
+- [ ] Task 8: Implement delete confirmation dialog (AC: #8) — deferred to integration phase
   - [ ] Create `src/components/dialogs/ConfirmDeleteDialog.tsx`
   - [ ] Show unit title/preview in the dialog
   - [ ] "Delete" (destructive red) and "Cancel" buttons
   - [ ] Keyboard: Enter to confirm, Escape to cancel
   - [ ] On confirm: push to undo stack, then delete
-- [ ] Task 9: Integrate undo system with existing mutations
+- [ ] Task 9: Integrate undo system with existing mutations — deferred to integration phase
   - [ ] Wire `unit.create` to push create action to undo stack
   - [ ] Wire `unit.update` to push edit action (with before/after content)
   - [ ] Wire `unit.delete` to push delete action (with full unit data for restoration)
   - [ ] Wire `unit.transitionLifecycle` to push lifecycle action
   - [ ] Wire reorder to push reorder action
-- [ ] Task 10: Write tests
+- [ ] Task 10: Write tests — deferred to integration phase
   - [ ] Test drag-and-drop reorders cards correctly
   - [ ] Test keyboard drag (Space → Arrow → Space)
   - [ ] Test drag visual feedback (opacity, drop zones)
