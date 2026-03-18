@@ -1653,3 +1653,337 @@ personal → situational → domain_specific → domain_general → universal
 - DriftDetectionUI
 - ScopeJumpWarningUI
 - BranchGraphUI
+- EnergyLevelUI
+- ExecutionLayerUI
+
+---
+
+## Energy Level UI
+
+### Overview
+
+The `energy_level` field (high / neutral / low) is a user-defined metadata property on every Thought Unit, allowing Flowmind's AI to correlate cognitive patterns with self-reported energy states. Over time, the system delivers metacognitive feedback such as *"You tend to write uncertain observations when energy is low"* — insights that emerge only from longitudinal pattern tracking.
+
+### Energy Capture — Ambient Indicator
+
+**Location:** Persistent in the Capture Mode toolbar and the Unit Detail Panel metadata tab.
+
+**Component: `EnergyLevelSelector`**
+
+A minimal 3-state toggle rendered as three horizontally arranged circles with a single tap/click to cycle:
+
+| State | Icon | Color | Label |
+|-------|------|-------|-------|
+| High | `●` filled | `green-500` / `green-400` dark | High |
+| Neutral | `◐` half | `gray-400` / `gray-500` dark | Neutral |
+| Low | `○` outline | `orange-500` / `orange-400` dark | Low |
+
+**Visual Behavior:**
+- Default on new Unit creation: **Neutral** (no user friction — energy is captured only when the user actively changes it)
+- The selector uses a subtle pulse animation on state change (0.2s ease-out) to confirm the action
+- In Capture Mode, the selector sits at the right edge of the toolbar, always visible but never prominent — it should feel ambient, not mandatory
+- On the UnitCard compact variant: energy is shown as a 6px colored dot in the bottom-right metadata row, no label
+
+**Keyboard Shortcut:**
+- `Cmd+Shift+E` — Cycle energy level (High → Neutral → Low → High)
+
+### Energy in Unit Detail Panel
+
+In the **Metadata** tab of the Unit Detail Panel, energy level appears in the "User-Defined" section alongside `domain`, `mood`, `color`, `icon`, `note`, and `alias[]`.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│ User-Defined Metadata               │
+├─────────────────────────────────────┤
+│ Domain      [Philosophy       ▾]    │
+│ Energy      [● High] [◐] [○]       │
+│ Mood        [Focused          ▾]    │
+│ Color       [■ Indigo         ▾]    │
+│ Note        [free text input      ] │
+└─────────────────────────────────────┘
+```
+
+The Energy row uses a segmented control (Radix `ToggleGroup`) matching the 3-state design above. The active segment is filled with its state color; inactive segments use `gray-200` / `gray-700` dark.
+
+### Metacognitive Feedback — AI Insight Cards
+
+**Trigger:** When sufficient energy-tagged Units exist (threshold: 30+ Units with non-neutral energy across 7+ days), the AI surfaces metacognitive observations via Insight Cards.
+
+**Component: `MetacognitiveInsightCard`**
+
+Appears in:
+1. **Context Dashboard** — "Your Patterns" section, below statistics
+2. **Capture Mode** — as a non-interrupting nudge (bottom-right toast-style, auto-dismiss after 8s)
+
+**Card Layout:**
+```
+┌────────────────────────────────────────────────┐
+│ 💡 Metacognitive Insight                        │
+│                                                 │
+│ "You tend to write uncertain observations       │
+│  when your energy is low. Your strongest        │
+│  claims appear during high-energy sessions."    │
+│                                                 │
+│ Based on 47 Units over 14 days                  │
+│                                                 │
+│ [Explore Pattern]          [Dismiss]            │
+└────────────────────────────────────────────────┘
+```
+
+**Visual Treatment:**
+- Background: `amber-50` / `amber-950` dark with `amber-200` / `amber-800` border
+- Rounded corners: `radius-xl` (16px)
+- Text: `text-sm` body, `text-xs` for the "Based on..." attribution line
+- No animation on appear in Dashboard; slide-up animation (0.3s spring) for Capture Mode nudge
+- Non-interrupting per NFR24: dismissed insights don't repeat for the same pattern
+
+**"Explore Pattern" action:** Opens a filtered view showing the Units that contributed to the insight, grouped by energy level, with certainty scores highlighted. This uses the existing Search View with pre-applied filters.
+
+**Insight Types (AI-generated):**
+
+| Pattern | Example Feedback |
+|---------|-----------------|
+| Energy ↔ Certainty | "Low-energy sessions produce 2.3× more uncertain claims" |
+| Energy ↔ Unit Type | "You generate more questions when energy is neutral, more claims when high" |
+| Energy ↔ Time | "Your high-energy writing clusters between 9–11am" |
+| Energy ↔ Topic | "Philosophy writing happens mostly during low-energy states" |
+
+### Energy in Graph View
+
+In the Graph View local exploration layer, nodes can be optionally tinted by energy level using a "Color by: Energy" option in the Graph toolbar. High = green tint, Neutral = no tint, Low = orange tint. This is additive to the existing type-based coloring system.
+
+---
+
+## Execution Layer UI
+
+### Overview
+
+The Execution Layer bridges thinking and action. Action Units are not tasks — they are thought-driven decisions to act, with full decision-making provenance preserved as relations. Execution management is delegated to external services; Flowmind tracks the delegation and captures results when actions complete, creating the feedback loop through which real-world experience re-enters the system.
+
+### Action Unit Card — Extended UnitCard Variant
+
+Action Units use the standard `UnitCard` component with an extended footer for execution state.
+
+**Component: `ActionUnitFooter`**
+
+```
+┌─────────────────────────────────────────────────┐
+│ ● Action · High Energy                           │
+│                                                  │
+│ "Schedule meeting with design team to review     │
+│  the interaction model for Graph View."          │
+│                                                  │
+│ ┌──────────────────────────────────────────────┐ │
+│ │ 📅 Google Calendar    Mar 22, 10:00am        │ │
+│ │    Status: Scheduled  [Open ↗]               │ │
+│ └──────────────────────────────────────────────┘ │
+│                                                  │
+│ Decided from: 3 Units · [View Decision Chain →]  │
+│                                                  │
+│ [Mark Complete]                    [Delegate ▾]  │
+└─────────────────────────────────────────────────┘
+```
+
+**States:**
+
+| State | Visual | Footer Content |
+|-------|--------|----------------|
+| Pending | Left border: `blue-500` | [Delegate ▾] button prominent |
+| Delegated | Left border: `amber-500` | Service badge + external link |
+| Completed | Left border: `green-500` | Completion date + [View Result →] |
+| Cancelled | Left border: `gray-400`, content dimmed | Cancellation reason |
+
+### External Service Delegation Dialog
+
+**Component: `DelegationDialog`**
+
+Triggered by the [Delegate ▾] dropdown on an Action Unit.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────┐
+│ Delegate Action to External Service              │
+│─────────────────────────────────────────────────│
+│                                                  │
+│ ┌───────────┐ ┌───────────┐ ┌───────────┐      │
+│ │ 📅        │ │ ✓         │ │ 💬        │      │
+│ │ Calendar  │ │ To-do     │ │ Message   │      │
+│ └───────────┘ └───────────┘ └───────────┘      │
+│ ┌───────────┐ ┌───────────┐                     │
+│ │ 📍        │ │ 🛒        │                     │
+│ │ Location  │ │ Purchase  │                     │
+│ └───────────┘ └───────────┘                     │
+│                                                  │
+│ ─── Select Service ──────────────────────────── │
+│                                                  │
+│ [Google Calendar ▾]                              │
+│                                                  │
+│ ─── Pre-filled Details ─────────────────────── │
+│                                                  │
+│ Title    [Meeting: Graph View interaction model] │
+│ Date     [2026-03-22]  Time [10:00 ▾]           │
+│ Notes    [Review the interaction model...]       │
+│                                                  │
+│              [Cancel]  [Delegate & Link]         │
+└─────────────────────────────────────────────────┘
+```
+
+**Execution Type → Service Mapping:**
+
+| Execution Type | Available Services | Pre-filled Fields |
+|---------------|-------------------|-------------------|
+| Schedule | Google Calendar, TIMEMINE | Title, date/time, notes from Unit content |
+| To-do | Todoist, Apple Reminders | Task name, due date, priority from certainty |
+| Communication | Email, KakaoTalk, Slack | Recipient (if mentioned), message body from Unit |
+| Appointment/visit | Google Maps, KakaoMap | Location (AI-extracted from Unit content) |
+| Purchase | Coupang, Amazon | Item name (AI-extracted), link if present |
+
+**Behavior:**
+- Service selection uses a category-first flow: user picks execution type (icon grid), then specific service (dropdown)
+- Fields are pre-filled by AI from the Action Unit's content and related Units
+- On successful delegation: the Action Unit's metadata gains `linked_calendar_event` or `linked_task` (per Appendix A-13), the service icon badge appears on the UnitCard, and a subtle success toast confirms
+- OAuth configuration for each service lives in Settings → Integrations, not in this dialog
+
+### Action Completion & Result Record Flow
+
+**Component: `CompletionFlowSheet`**
+
+When the user marks an Action Unit as "Complete" (via button or keyboard `Cmd+Shift+D`), a bottom sheet slides up proposing a result record.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────┐
+│ Action Completed                                 │
+│─────────────────────────────────────────────────│
+│                                                  │
+│ ✅ "Schedule meeting with design team"           │
+│    Completed: Mar 22, 2026                       │
+│                                                  │
+│ ─── Create Result Record ──────────────────────│
+│                                                  │
+│ Flowmind proposes capturing the outcome so it    │
+│ can inform future decisions.                     │
+│                                                  │
+│ Result:                                          │
+│ ┌──────────────────────────────────────────────┐ │
+│ │ [AI-prefilled: "Met with design team.        │ │
+│ │  Agreed on card-array approach for local     │ │
+│ │  Graph View. Need to prototype 2 variants."] │ │
+│ └──────────────────────────────────────────────┘ │
+│                                                  │
+│ Type: [Observation ▾]                            │
+│                                                  │
+│ Connected to:                                    │
+│  • "We need a simpler Graph navigation" (Claim)  │
+│  • "Card array vs force-directed" (Question)     │
+│  • ← derives_from, references                   │
+│                                                  │
+│     [Skip]  [Save Result Record]                 │
+└─────────────────────────────────────────────────┘
+```
+
+**Behavior:**
+- The result record is a new Thought Unit with `origin_type: "direct_write"` and default `unit_type: "observation"`
+- AI pre-fills the result text based on the Action Unit's content and any notes the user added
+- The "Connected to" section shows the decision-making Units that led to this Action, with relation types pre-assigned (`derives_from` for the direct parent decision, `references` for supporting context)
+- The user can edit everything before saving
+- "Skip" completes the Action without a result record (non-blocking per NFR24)
+- After saving, the result record Unit appears in the current Context and is immediately navigable
+
+### Feedback Loop Visualization
+
+**Component: `FeedbackLoopIndicator`**
+
+When a result record exists for a completed Action Unit, the decision chain gains a visual "loop closed" indicator.
+
+**In Graph View:**
+- The path from decision Units → Action Unit → result record Unit is highlighted with a distinctive dashed-then-solid connector pattern
+- A small loop icon (↩) appears on the result record node
+
+**In Thread View:**
+- Below the completed Action Unit, the result record appears as an indented child card with a "Result" badge
+- The connection line uses `green-500` to indicate the closed feedback loop
+
+**In Context Dashboard:**
+- A "Feedback Loops" metric shows: `X of Y Action Units have result records`
+- Clicking opens a filtered view of completed Actions with and without results
+
+### Decision Chain — "Why Am I Doing This?"
+
+**Component: `DecisionChainPanel`**
+
+Accessible from any Action Unit via the "View Decision Chain →" link.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────┐
+│ Decision Chain                                   │
+│─────────────────────────────────────────────────│
+│                                                  │
+│ ┌─────────┐    ┌─────────┐    ┌─────────┐      │
+│ │Question │ →  │Evidence │ →  │Claim    │      │
+│ │"How to  │    │"Card    │    │"We need │      │
+│ │ simplify│    │ arrays  │    │ simpler │      │
+│ │ nav?"   │    │ work"   │    │ nav"    │      │
+│ └─────────┘    └─────────┘    └─────────┘      │
+│                                      ↓          │
+│                               ┌─────────┐      │
+│                               │ ACTION  │      │
+│                               │"Schedule│      │
+│                               │ meeting"│      │
+│                               └─────────┘      │
+│                                      ↓          │
+│                               ┌ ─ ─ ─ ─┐      │
+│                               │ Result  │      │
+│                               │"Agreed  │      │
+│                               │ on card │      │
+│                               │ array"  │      │
+│                               └ ─ ─ ─ ─┘      │
+│                                                  │
+│ This chain shows why this action exists and      │
+│ what resulted from it.                           │
+└─────────────────────────────────────────────────┘
+```
+
+**Behavior:**
+- AI traces backward through relations from the Action Unit to find the originating thoughts
+- Each node is clickable (navigates to that Unit)
+- The result record (if present) appears at the bottom with a dashed border indicating it's the outcome
+- Uses the same visual language as ReasoningChainUI but with an action-specific color scheme (`blue` for the chain, `green` for the result)
+
+### Integration Status in Settings
+
+**Location:** Settings → Integrations
+
+```
+┌─────────────────────────────────────────────────┐
+│ External Service Integrations                    │
+│─────────────────────────────────────────────────│
+│                                                  │
+│ 📅 Google Calendar    [Connected ✓]  [Manage]   │
+│ ✓  Todoist            [Connect →]               │
+│ 💬 Slack              [Connect →]               │
+│ 📅 TIMEMINE           [Connected ✓]  [Manage]   │
+│ 📍 Google Maps        [Connect →]               │
+│                                                  │
+│ Connected services can receive delegated         │
+│ Action Units from Flowmind.                      │
+│                                                  │
+│ [+ Add Custom Integration]                       │
+└─────────────────────────────────────────────────┘
+```
+
+Each connected service shows: connection status, last sync time, and number of delegated Actions. OAuth re-authorization uses the standard system dialog.
+
+### Implementation Roadmap Additions
+
+**Phase 3 — Composition (additions):**
+- ActionUnitFooter (delegation UI)
+- DelegationDialog (service linking)
+
+**Phase 4 — Intelligence (additions):**
+- CompletionFlowSheet (result record creation)
+- FeedbackLoopIndicator (Graph + Thread views)
+- DecisionChainPanel (provenance visualization)
+- MetacognitiveInsightCard (energy pattern feedback)

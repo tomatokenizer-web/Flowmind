@@ -1779,9 +1779,9 @@ So that I can evaluate the logical structure of my arguments and identify gaps i
 
 ## Epic 8: Feedback Loop & Thought Evolution
 
-**Goal:** Users can evolve their thinking over time through an Incubation Queue, Compression, Orphan Unit Recovery, external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, unit drift detection from project purpose, and Branch Project creation from drifted thinking.
+**Goal:** Users can evolve their thinking over time through an Incubation Queue, Compression, Orphan Unit Recovery, external knowledge import with connection mode selection, reverse provenance tracking, Action Unit completion records, unit drift detection from project purpose, Branch Project creation from drifted thinking, energy-level metacognitive feedback, and Action Unit external service delegation with result record feedback loops.
 
-**FRs covered:** FR19, FR21, FR57, FR58, FR59, FR62, FR64
+**FRs covered:** FR19, FR21, FR56, FR57, FR58, FR59, FR62, FR64
 **NFRs addressed:** NFR13, NFR14, NFR24
 **UX-DRs covered:** UX-DR14 (CompletenessCompass)
 
@@ -1899,6 +1899,68 @@ So that I can stay focused or consciously expand the scope.
 **And** the drift detection runs as a Trigger.dev background job on Unit creation/update
 **And** the Project Dashboard shows an aggregate drift indicator
 **And** the notification follows non-interrupting policy per NFR24
+
+### Story 8.9: Energy Level Capture & Metacognitive Feedback
+
+As a user,
+I want to tag my Thought Units with my current energy level (high/neutral/low) and receive AI-generated metacognitive insights based on accumulated patterns,
+So that I gain self-awareness about how my cognitive state affects my thinking quality.
+
+**Acceptance Criteria:**
+
+**Given** the user is creating or editing a Thought Unit
+**When** the EnergyLevelSelector is displayed (in Capture Mode toolbar and Unit Detail Panel metadata tab)
+**Then** the user can set energy_level to high, neutral, or low per PRD Appendix A-11
+**And** the default value for new Units is "neutral" (zero-friction — energy is only captured when the user actively changes it)
+**And** energy_level is stored as part of the Unit's user-defined metadata alongside domain, mood, color, icon, note, alias[]
+**And** the energy level is displayed as a 6px colored dot (green/gray/orange) on the UnitCard compact variant
+**And** the keyboard shortcut `Cmd+Shift+E` cycles through energy levels
+**And** when 30+ Units with non-neutral energy exist across 7+ days, the AI Metacognitive Insight service activates
+**And** the service correlates energy_level with unit_type, certainty, evidence_domain, and temporal patterns per PRD Appendix A-11
+**And** insights are surfaced as MetacognitiveInsightCards in the Context Dashboard ("Your Patterns" section) and as non-interrupting nudges in Capture Mode
+**And** example insight: "You tend to write uncertain observations when energy is low" per PRD
+**And** each insight card shows the contributing data ("Based on N Units over M days") and an "Explore Pattern" action that opens a filtered Search View
+**And** dismissed insights follow non-interrupting policy per NFR24 — the same pattern insight doesn't repeat once dismissed
+**And** in Graph View, nodes can optionally be tinted by energy level via a "Color by: Energy" toolbar option
+
+**Technical Notes:**
+- Energy level is a simple enum field on the Unit model — no schema migration complexity
+- Metacognitive analysis runs as a Trigger.dev background job, scheduled weekly or on-demand
+- Insight generation uses the LLM service with a structured prompt containing energy-tagged Unit statistics
+- Insights are stored as system-generated records (not Units) with dismissal tracking per user
+
+### Story 8.10: Action Unit External Service Delegation & Result Record Flow
+
+As a user,
+I want to delegate Action Units to external services (Google Calendar, Todoist, Slack, etc.) and capture result records when actions complete,
+So that my thought-driven actions flow into my existing tools and real-world outcomes feed back into my knowledge graph.
+
+**Acceptance Criteria:**
+
+**Given** an Action Unit exists (unit_type: "action") with decision-making provenance relations
+**When** the user clicks "Delegate" on the Action Unit
+**Then** a DelegationDialog presents execution type categories (Schedule, To-do, Communication, Appointment/visit, Purchase) per PRD Section 17
+**And** each category maps to specific services: Schedule → Google Calendar/TIMEMINE, To-do → Todoist/Apple Reminders, Communication → Email/KakaoTalk/Slack, Appointment → Google Maps/KakaoMap, Purchase → Coupang/Amazon per PRD Section 17
+**And** the dialog pre-fills relevant fields from the Action Unit's content and AI-extracted metadata (title, date, location, recipient)
+**And** on successful delegation, the Unit metadata gains `linked_calendar_event` or `linked_task` per PRD Appendix A-13
+**And** a service icon badge appears on the UnitCard and the `action_status` updates to "delegated"
+**And** when the user marks the Action Unit as "Complete" (button or `Cmd+Shift+D`)
+**Then** a CompletionFlowSheet slides up proposing a result record Unit per PRD Section 17 ("When an Action is completed, Flowmind proposes creating a result record Unit")
+**And** the result record is pre-filled by AI with `origin_type: "direct_write"` and `unit_type: "observation"` by default
+**And** the result record auto-connects to the original decision-making Units via `derives_from` and `references` relations per FR57
+**And** the user can edit result content and connections before saving, or skip (non-blocking per NFR24)
+**And** completed Actions with result records display a FeedbackLoopIndicator (loop icon ↩) in Graph View and an indented result card in Thread View
+**And** the Context Dashboard shows a "Feedback Loops" metric: "X of Y Action Units have result records"
+**And** a DecisionChainPanel is accessible from any Action Unit via "View Decision Chain →", showing the full provenance path from originating thoughts through the action to its result
+**And** integration configuration (OAuth tokens, API keys) is managed in Settings → Integrations, not in the delegation dialog
+**And** Flowmind tracks delegation but does not manage execution — the external service owns the task lifecycle per PRD design principle
+
+**Technical Notes:**
+- OAuth integration uses Supabase's built-in OAuth provider support where possible
+- External service APIs are called via edge functions to keep secrets server-side
+- Delegation status can be polled or webhook-updated depending on service capability
+- The DecisionChainPanel reuses ReasoningChainUI's traversal logic but with action-specific styling
+- Result record creation reuses the standard Unit creation tRPC procedure with pre-filled fields
 
 ### Story 8.8: Branch Project from Drift Detection
 
