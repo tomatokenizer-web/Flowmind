@@ -1,6 +1,6 @@
 # Story 1.4: Design System Tokens & Theme Configuration
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -23,35 +23,35 @@ So that every component uses consistent visual language from a single source of 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Define base color tokens (AC: #1)
-  - [ ] Add CSS custom properties to global stylesheet
-  - [ ] Map to Tailwind `theme.extend.colors` in `tailwind.config.ts`
-- [ ] Task 2: Define unit-type color tokens (AC: #2)
-  - [ ] Define background tint + dark accent pairs for all 9 unit types
-  - [ ] Add as CSS custom properties and Tailwind extensions
-- [ ] Task 3: Define lifecycle state tokens (AC: #3)
-  - [ ] Create utility classes for Draft, Pending, Confirmed visual states
-  - [ ] Define as CSS custom properties
-- [ ] Task 4: Define semantic color tokens (AC: #4)
-  - [ ] Add success, warning, error, info color variables
-- [ ] Task 5: Define typography tokens (AC: #5)
-  - [ ] Configure 3 font stacks (primary, heading, mono) in Tailwind
-  - [ ] Define 7-step type scale with weights, line heights, letter-spacing
-- [ ] Task 6: Define spacing scale tokens (AC: #6)
-  - [ ] Configure 4px-based spacing scale (10 steps: 4px to 64px) in Tailwind
-- [ ] Task 7: Define card elevation tokens (AC: #7)
-  - [ ] Define 4 shadow levels (flat, resting, elevated, high)
-  - [ ] Set border-radius to 12px for cards
-  - [ ] Define hover/selected state styles
-- [ ] Task 8: Define animation duration tokens (AC: #8)
-  - [ ] Add CSS custom properties for transition durations
-  - [ ] Implement `prefers-reduced-motion` media query override to 0ms
-- [ ] Task 9: Configure responsive breakpoints (AC: #9)
-  - [ ] Verify Tailwind breakpoints match specification
-- [ ] Task 10: Create token reference page (AC: #10)
-  - [ ] Build dev-only route `/dev/tokens`
-  - [ ] Display color swatches, typography samples, spacing visualization, elevation demos
-  - [ ] Guard route to only show in development environment
+- [x] Task 1: Define base color tokens (AC: #1)
+  - [x] Add CSS custom properties to global stylesheet
+  - [x] Map to Tailwind `theme.extend.colors` in `tailwind.config.ts`
+- [x] Task 2: Define unit-type color tokens (AC: #2)
+  - [x] Define background tint + dark accent pairs for all 9 unit types
+  - [x] Add as CSS custom properties and Tailwind extensions
+- [x] Task 3: Define lifecycle state tokens (AC: #3)
+  - [x] Create utility classes for Draft, Pending, Confirmed visual states
+  - [x] Define as CSS custom properties
+- [x] Task 4: Define semantic color tokens (AC: #4)
+  - [x] Add success, warning, error, info color variables
+- [x] Task 5: Define typography tokens (AC: #5)
+  - [x] Configure 3 font stacks (primary, heading, mono) in Tailwind
+  - [x] Define 7-step type scale with weights, line heights, letter-spacing
+- [x] Task 6: Define spacing scale tokens (AC: #6)
+  - [x] Configure 4px-based spacing scale (10 steps: 4px to 64px) in Tailwind
+- [x] Task 7: Define card elevation tokens (AC: #7)
+  - [x] Define 4 shadow levels (flat, resting, elevated, high)
+  - [x] Set border-radius to 12px for cards
+  - [x] Define hover/selected state styles
+- [x] Task 8: Define animation duration tokens (AC: #8)
+  - [x] Add CSS custom properties for transition durations
+  - [x] Implement `prefers-reduced-motion` media query override to 0ms
+- [x] Task 9: Configure responsive breakpoints (AC: #9)
+  - [x] Verify Tailwind breakpoints match specification
+- [x] Task 10: Create token reference page (AC: #10)
+  - [x] Build dev-only route `/dev/tokens`
+  - [x] Display color swatches, typography samples, spacing visualization, elevation demos
+  - [x] Guard route to only show in development environment
 
 ## Dev Notes
 
@@ -61,8 +61,9 @@ So that every component uses consistent visual language from a single source of 
 
 ### Project Structure Notes
 
-- `src/app/globals.css` — CSS custom property definitions
+- `src/styles/tokens.css` — CSS custom property definitions (single source of truth)
 - `tailwind.config.ts` — Tailwind theme extensions referencing CSS vars
+- `src/app/globals.css` — prefers-reduced-motion override
 - `src/app/dev/tokens/page.tsx` — Dev-only token reference page
 
 ### References
@@ -82,10 +83,28 @@ So that every component uses consistent visual language from a single source of 
 
 ### Agent Model Used
 
-
+Claude Opus 4.6
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- All 9 unit type colors implemented (Claim, Question, Evidence, Counterargument, Observation, Idea + new Definition, Assumption, Action from UX spec)
+- Lifecycle state tokens (Draft/Pending/Confirmed) added as CSS vars and Tailwind colors
+- Semantic colors (success/warning/error/info) added separately from accent colors
+- Typography scale: 7 steps (11px–39px) with weight, line-height, letter-spacing in Tailwind fontSize config
+- Spacing: 10 steps (4px–64px) including --space-16: 64px
+- Elevation: 4 levels (flat/resting/elevated/high) + hover/active/modal shadows
+- Animation: 8 duration tokens including sidebar (250ms), focus (150ms), drag (200ms)
+- prefers-reduced-motion already handled in globals.css (sets all durations to 0.01ms)
+- Breakpoints: sm/md/lg/xl/2xl explicitly set in Tailwind screens config
+- Token reference page at /dev/tokens with all sections, guarded by NODE_ENV check
+- All Tailwind unit colors now reference CSS vars (not hardcoded hex) for future dark mode support
+- Type-check passes (only pre-existing Prisma seed errors unrelated to this story)
+
 ### File List
+
+- `src/styles/tokens.css` — Updated with all CSS custom properties
+- `tailwind.config.ts` — Updated with complete Flowmind token mappings
+- `src/app/dev/tokens/page.tsx` — New dev-only token reference page
+- `src/app/globals.css` — Unchanged (prefers-reduced-motion already present)

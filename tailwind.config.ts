@@ -26,31 +26,61 @@ const config: Config = {
           warning: "var(--accent-warning)",
           error: "var(--accent-error)",
         },
-        // Unit type colors
+        semantic: {
+          success: "var(--success)",
+          warning: "var(--warning)",
+          error: "var(--error)",
+          info: "var(--info)",
+        },
         unit: {
           claim: {
-            bg: "#E8F0FE",
-            accent: "#1A56DB",
+            bg: "var(--unit-claim-bg)",
+            accent: "var(--unit-claim-accent)",
           },
           question: {
-            bg: "#FEF3C7",
-            accent: "#92400E",
+            bg: "var(--unit-question-bg)",
+            accent: "var(--unit-question-accent)",
           },
           evidence: {
-            bg: "#ECFDF5",
-            accent: "#065F46",
+            bg: "var(--unit-evidence-bg)",
+            accent: "var(--unit-evidence-accent)",
           },
           counterargument: {
-            bg: "#FEF2F2",
-            accent: "#991B1B",
+            bg: "var(--unit-counterargument-bg)",
+            accent: "var(--unit-counterargument-accent)",
           },
           observation: {
-            bg: "#F5F3FF",
-            accent: "#4C1D95",
+            bg: "var(--unit-observation-bg)",
+            accent: "var(--unit-observation-accent)",
           },
           idea: {
-            bg: "#FFF7ED",
-            accent: "#9A3412",
+            bg: "var(--unit-idea-bg)",
+            accent: "var(--unit-idea-accent)",
+          },
+          definition: {
+            bg: "var(--unit-definition-bg)",
+            accent: "var(--unit-definition-accent)",
+          },
+          assumption: {
+            bg: "var(--unit-assumption-bg)",
+            accent: "var(--unit-assumption-accent)",
+          },
+          action: {
+            bg: "var(--unit-action-bg)",
+            accent: "var(--unit-action-accent)",
+          },
+        },
+        lifecycle: {
+          draft: {
+            border: "var(--lifecycle-draft-border)",
+            bg: "var(--lifecycle-draft-bg)",
+          },
+          pending: {
+            border: "var(--lifecycle-pending-border)",
+            bg: "var(--lifecycle-pending-bg)",
+          },
+          confirmed: {
+            border: "var(--lifecycle-confirmed-border)",
           },
         },
       },
@@ -60,6 +90,7 @@ const config: Config = {
           "BlinkMacSystemFont",
           "SF Pro Text",
           "Inter",
+          "system-ui",
           "sans-serif",
         ],
         heading: [
@@ -67,9 +98,19 @@ const config: Config = {
           "BlinkMacSystemFont",
           "SF Pro Display",
           "Inter",
+          "system-ui",
           "sans-serif",
         ],
         mono: ["SF Mono", "JetBrains Mono", "Fira Code", "monospace"],
+      },
+      fontSize: {
+        xs: ["11px", { lineHeight: "1.4", fontWeight: "400" }],
+        sm: ["13px", { lineHeight: "1.5", fontWeight: "400" }],
+        base: ["16px", { lineHeight: "1.6", fontWeight: "400" }],
+        lg: ["20px", { lineHeight: "1.5", fontWeight: "500" }],
+        xl: ["25px", { lineHeight: "1.3", fontWeight: "600" }],
+        "2xl": ["31px", { lineHeight: "1.2", fontWeight: "600" }],
+        "3xl": ["39px", { lineHeight: "1.1", fontWeight: "700" }],
       },
       spacing: {
         "space-1": "4px",
@@ -81,13 +122,17 @@ const config: Config = {
         "space-8": "32px",
         "space-10": "40px",
         "space-12": "48px",
+        "space-16": "64px",
       },
       borderRadius: {
         card: "12px",
       },
       boxShadow: {
+        flat: "none",
         resting: "0 1px 3px rgba(0,0,0,0.08)",
         hover: "0 4px 12px rgba(0,0,0,0.12)",
+        elevated: "0 8px 24px rgba(0,0,0,0.14)",
+        high: "0 20px 60px rgba(0,0,0,0.18)",
         active: "0 0 0 2px var(--accent-primary)",
         modal: "0 20px 60px rgba(0,0,0,0.15)",
       },
@@ -97,10 +142,27 @@ const config: Config = {
         normal: "250ms",
         slow: "300ms",
         view: "300ms",
+        sidebar: "250ms",
+        focus: "150ms",
+        drag: "200ms",
       },
       transitionTimingFunction: {
         default: "cubic-bezier(0.4, 0, 0.2, 1)",
         spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+      },
+      letterSpacing: {
+        "heading-tight": "-0.02em",
+      },
+      maxWidth: {
+        content: "1200px",
+        reading: "720px",
+      },
+      screens: {
+        sm: "640px",
+        md: "768px",
+        lg: "1024px",
+        xl: "1280px",
+        "2xl": "1536px",
       },
     },
   },

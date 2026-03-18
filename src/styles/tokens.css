@@ -1,4 +1,10 @@
 :root {
+  /* ========================================
+     Flowmind Design Tokens
+     Single source of truth for all visual properties.
+     Referenced by tailwind.config.ts via var().
+     ======================================== */
+
   /* Backgrounds */
   --bg-primary: #ffffff;
   --bg-secondary: #f5f5f7;
@@ -20,41 +26,13 @@
   --accent-warning: #ff9500;
   --accent-error: #ff3b30;
 
-  /* Spacing (4px base unit) */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
+  /* Semantic Colors */
+  --success: #34c759;
+  --warning: #ff9500;
+  --error: #ff3b30;
+  --info: #5ac8fa;
 
-  /* Typography */
-  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
-    sans-serif;
-  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
-    sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
-
-  /* Card */
-  --radius-card: 12px;
-  --shadow-resting: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-active: 0 0 0 2px var(--accent-primary);
-  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
-
-  /* Animation */
-  --duration-instant: 100ms;
-  --duration-fast: 150ms;
-  --duration-normal: 250ms;
-  --duration-slow: 300ms;
-  --duration-view: 300ms;
-  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* Unit Type Colors */
+  /* Unit Type Colors — bg tint / dark accent pairs */
   --unit-claim-bg: #e8f0fe;
   --unit-claim-accent: #1a56db;
   --unit-question-bg: #fef3c7;
@@ -67,4 +45,71 @@
   --unit-observation-accent: #4c1d95;
   --unit-idea-bg: #fff7ed;
   --unit-idea-accent: #9a3412;
+  --unit-definition-bg: #e0f2f1;
+  --unit-definition-accent: #00695c;
+  --unit-assumption-bg: #eceff1;
+  --unit-assumption-accent: #546e7a;
+  --unit-action-bg: #e8eaf6;
+  --unit-action-accent: #283593;
+
+  /* Lifecycle State Tokens */
+  --lifecycle-draft-border: var(--border-default);
+  --lifecycle-draft-bg: var(--bg-secondary);
+  --lifecycle-draft-opacity: 0.8;
+  --lifecycle-pending-border: #ffc107;
+  --lifecycle-pending-bg: #fffde7;
+  --lifecycle-confirmed-border: var(--border-default);
+  --lifecycle-confirmed-opacity: 1;
+
+  /* Spacing (4px base unit) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography — Font Stacks */
+  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    system-ui, sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
+    system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+
+  /* Typography — Type Scale (16px base, 1.25 ratio) */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 16px;
+  --text-lg: 20px;
+  --text-xl: 25px;
+  --text-2xl: 31px;
+  --text-3xl: 39px;
+
+  /* Card & Border Radius */
+  --radius-card: 12px;
+
+  /* Elevation — Shadow Levels */
+  --shadow-flat: none;
+  --shadow-resting: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.14);
+  --shadow-high: 0 20px 60px rgba(0, 0, 0, 0.18);
+  --shadow-active: 0 0 0 2px var(--accent-primary);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
+
+  /* Animation */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 300ms;
+  --duration-view: 300ms;
+  --duration-sidebar: 250ms;
+  --duration-focus: 150ms;
+  --duration-drag: 200ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
