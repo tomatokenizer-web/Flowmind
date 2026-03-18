@@ -279,6 +279,7 @@ model Unit {
   perspectives      UnitPerspective[]
   versions          UnitVersion[]
   resources         UnitResource[]
+  unitContexts      UnitContext[]
 
   @@index([userId])
   @@index([projectId])
@@ -356,11 +357,12 @@ model CustomRelationType {
 model Context {
   id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name           String
+  description    String?
   projectId      String            @map("project_id") @db.Uuid
   parentId       String?           @map("parent_id") @db.Uuid
-  snapshot       Json?
-  openQuestions  Json?             @map("open_questions")
-  contradictions Json?
+  snapshot       String            @default("")
+  openQuestions  Json              @default("[]") @map("open_questions")
+  contradictions Json              @default("[]")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
   parent         Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
@@ -368,9 +370,26 @@ model Context {
   project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   navigators     Navigator[]
   perspectives   UnitPerspective[]
+  unitContexts   UnitContext[]
 
+  @@unique([name, parentId, projectId])
   @@index([projectId])
+  @@index([parentId])
   @@map("contexts")
+}
+
+model UnitContext {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId     String   @map("unit_id") @db.Uuid
+  contextId  String   @map("context_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  context    Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, contextId])
+  @@index([unitId])
+  @@index([contextId])
+  @@map("unit_contexts")
 }
 
 model UnitVersion {

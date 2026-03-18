@@ -5,6 +5,7 @@ import { captureRouter } from "@/server/api/routers/capture";
 import { resourceRouter } from "@/server/api/routers/resource";
 import { versionRouter } from "@/server/api/routers/version";
 import { audioRouter } from "@/server/api/routers/audio";
+import { contextRouter } from "@/server/api/routers/context";
 
 export const appRouter = createTRPCRouter({
   unit: unitRouter,
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   resource: resourceRouter,
   version: versionRouter,
   audio: audioRouter,
+  context: contextRouter,
 });
 
 export type AppRouter = typeof appRouter;
