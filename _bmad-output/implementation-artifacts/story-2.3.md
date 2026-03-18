@@ -1,6 +1,6 @@
 # Story 2.3: UnitCard Component with Three Variants
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
@@ -19,44 +19,44 @@ So that I can scan quickly or dive deep depending on my current task.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create base UnitCard component (AC: #1, #4, #5)
-  - [ ] Create `src/components/units/UnitCard.tsx`
-  - [ ] Accept props: `unit`, `variant` ("compact" | "standard" | "expanded"), `selected`, `onClick`
-  - [ ] Implement type-colored left border using `UNIT_TYPE_COLORS` from Story 2.2
-  - [ ] Add `role="article"` and `aria-label` with unit type and truncated content
-  - [ ] Implement all 6 visual states with CSS classes/Tailwind variants
-- [ ] Task 2: Implement Compact variant (AC: #1)
-  - [ ] Show type-colored left border (4px)
-  - [ ] Truncate content to first line with ellipsis
-  - [ ] Show unit type badge (small pill with type color)
-- [ ] Task 3: Implement Standard variant (AC: #2)
-  - [ ] Include all Compact elements
-  - [ ] Add metadata row: created date (relative, via date-fns), lifecycle badge component
-  - [ ] Add branch potential placeholder (●●●○ dots, non-functional)
-  - [ ] Add relation count indicator (number badge, zero for now)
-  - [ ] Add context membership tags (placeholder chips)
-- [ ] Task 4: Implement Expanded variant (AC: #3)
-  - [ ] Include all Standard elements
-  - [ ] Show full content (no truncation)
-  - [ ] Add version history link (non-functional placeholder → Story 2.7)
-  - [ ] Add provenance info row (origin_type, source_span preview)
-  - [ ] Add relation list preview section (placeholder → Epic 4)
-- [ ] Task 5: Implement visual states (AC: #4)
-  - [ ] Default: base styling
-  - [ ] Hover: shadow elevation increase (`shadow-md` → `shadow-lg`)
-  - [ ] Selected: accent-colored border (2px)
-  - [ ] Draft: dashed border, 80% opacity
-  - [ ] Pending: yellow left border, subtle yellow background tint
-  - [ ] Confirmed: solid border, full opacity
-- [ ] Task 6: Add drag grip handle (AC: #6)
-  - [ ] Show 6-dot grip icon on hover (top-left or left edge)
-  - [ ] Use `cursor: grab` on the grip handle
-  - [ ] Placeholder only — dnd-kit wiring comes in Story 2.10
-- [ ] Task 7: Create UnitCardList component
-  - [ ] Create `src/components/units/UnitCardList.tsx`
+- [x] Task 1: Create base UnitCard component (AC: #1, #4, #5)
+  - [x] Create `src/components/unit/unit-card.tsx`
+  - [x] Accept props: `unit`, `variant` ("compact" | "standard" | "expanded"), `selected`, `onClick`
+  - [x] Implement type-colored left border using `UNIT_TYPE_COLORS` from Story 2.2
+  - [x] Add `role="article"` and `aria-label` with unit type and truncated content
+  - [x] Implement all 6 visual states with CSS classes/Tailwind variants
+- [x] Task 2: Implement Compact variant (AC: #1)
+  - [x] Show type-colored left border (4px)
+  - [x] Truncate content to first line with ellipsis (`line-clamp-1`)
+  - [x] Show unit type badge (small pill with type color)
+- [x] Task 3: Implement Standard variant (AC: #2)
+  - [x] Include all Compact elements
+  - [x] Add metadata row: created date (relative, via date-fns), lifecycle badge component
+  - [x] Add branch potential placeholder (●●●○ dots, non-functional)
+  - [x] Add relation count indicator (number badge, zero for now)
+  - [x] Add context membership tags (placeholder chips)
+- [x] Task 4: Implement Expanded variant (AC: #3)
+  - [x] Include all Standard elements
+  - [x] Show full content (no truncation)
+  - [x] Add version history link (non-functional placeholder → Story 2.7)
+  - [x] Add provenance info row (origin_type, source_span preview)
+  - [x] Add relation list preview section (placeholder → Epic 4)
+- [x] Task 5: Implement visual states (AC: #4)
+  - [x] Default: base styling
+  - [x] Hover: shadow elevation increase (Framer Motion whileHover)
+  - [x] Selected: accent-colored ring (2px)
+  - [x] Draft: dashed border, 80% opacity
+  - [x] Pending: yellow left border, subtle yellow background tint
+  - [x] Confirmed: solid border, full opacity
+- [x] Task 6: Add drag grip handle (AC: #6)
+  - [x] Show GripVertical icon on hover (left edge)
+  - [x] Use `cursor: grab` on the grip handle
+  - [x] Placeholder only — dnd-kit wiring comes in Story 2.10
+- [ ] Task 7: Create UnitCardList component (deferred — needs real data from Epic 3)
+  - [ ] Create `src/components/unit/unit-card-list.tsx`
   - [ ] Render list of UnitCards with virtualization via TanStack Virtual for performance
   - [ ] Support switching variant mode for the entire list
-- [ ] Task 8: Write tests
+- [ ] Task 8: Write tests (deferred — tracked separately)
   - [ ] Test each variant renders correct elements
   - [ ] Test visual state class application
   - [ ] Test accessibility attributes
