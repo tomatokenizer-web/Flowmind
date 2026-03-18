@@ -1,0 +1,70 @@
+:root {
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-surface: #fafafa;
+  --bg-hover: #f0f0f2;
+
+  /* Text */
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+
+  /* Borders */
+  --border-default: #d2d2d7;
+  --border-focus: #0071e3;
+
+  /* Accent */
+  --accent-primary: #0071e3;
+  --accent-success: #34c759;
+  --accent-warning: #ff9500;
+  --accent-error: #ff3b30;
+
+  /* Spacing (4px base unit) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Typography */
+  --font-primary: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
+    sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+
+  /* Card */
+  --radius-card: 12px;
+  --shadow-resting: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-active: 0 0 0 2px var(--accent-primary);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
+
+  /* Animation */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 300ms;
+  --duration-view: 300ms;
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Unit Type Colors */
+  --unit-claim-bg: #e8f0fe;
+  --unit-claim-accent: #1a56db;
+  --unit-question-bg: #fef3c7;
+  --unit-question-accent: #92400e;
+  --unit-evidence-bg: #ecfdf5;
+  --unit-evidence-accent: #065f46;
+  --unit-counterargument-bg: #fef2f2;
+  --unit-counterargument-accent: #991b1b;
+  --unit-observation-bg: #f5f3ff;
+  --unit-observation-accent: #4c1d95;
+  --unit-idea-bg: #fff7ed;
+  --unit-idea-accent: #9a3412;
+}

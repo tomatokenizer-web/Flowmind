@@ -1,6 +1,6 @@
 # Story 1.1: T3 Stack Project Initialization & Configuration
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -20,38 +20,38 @@ So that all subsequent development builds on a consistent, type-safe foundation.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Initialize T3 Stack project (AC: #1)
-  - [ ] Run `pnpm create t3-app@latest flowmind --CI --tailwind --trpc --prisma --appRouter --dbProvider postgresql`
-  - [ ] Verify generated project structure matches T3 conventions
-- [ ] Task 2: Verify TypeScript strict mode (AC: #2)
-  - [ ] Confirm `tsconfig.json` has `strict: true`
-  - [ ] Run `pnpm tsc --noEmit` with zero errors
-- [ ] Task 3: Verify Turbopack dev server (AC: #3)
-  - [ ] Run `pnpm dev` and confirm Turbopack starts without errors
-- [ ] Task 4: Configure ESLint and Prettier (AC: #4)
-  - [ ] Ensure ESLint config extends T3 defaults
-  - [ ] Add Prettier config (`.prettierrc`)
-  - [ ] Run `pnpm lint` and `pnpm format:check` with zero issues
-- [ ] Task 5: Install additional packages (AC: #5)
-  - [ ] Install shadcn/ui and initialize with `pnpm dlx shadcn@latest init`
-  - [ ] Install Zustand 5.x (`zustand`)
-  - [ ] Install D3.js (`d3`, `@types/d3`)
-  - [ ] Install dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`)
-  - [ ] Install Tiptap 3.x (`@tiptap/react`, `@tiptap/starter-kit`)
-  - [ ] Install TanStack Virtual (`@tanstack/react-virtual`)
-  - [ ] Install date-fns (`date-fns`)
-  - [ ] Install Auth.js v5 (`next-auth@beta`)
-  - [ ] Install Trigger.dev SDK (`@trigger.dev/sdk`)
-  - [ ] Install Sentry SDK (`@sentry/nextjs`)
-  - [ ] Install pino (`pino`, `pino-pretty`)
-  - [ ] Install cmdk (`cmdk`)
-- [ ] Task 6: Enforce pnpm as package manager (AC: #6)
-  - [ ] Add `preinstall` script in `package.json` to reject npm/yarn
-  - [ ] Add `engines` field specifying pnpm
-  - [ ] Add `.npmrc` with `engine-strict=true`
-- [ ] Task 7: Create placeholder landing page (AC: #7)
-  - [ ] Update `src/app/page.tsx` with Flowmind branding placeholder
-  - [ ] Verify page renders correctly in browser
+- [x] Task 1: Initialize T3 Stack project (AC: #1)
+  - [x] Run `pnpm create t3-app@latest flowmind --CI --tailwind --trpc --prisma --appRouter --dbProvider postgresql`
+  - [x] Verify generated project structure matches T3 conventions
+- [x] Task 2: Verify TypeScript strict mode (AC: #2)
+  - [x] Confirm `tsconfig.json` has `strict: true`
+  - [x] Run `pnpm tsc --noEmit` with zero errors
+- [x] Task 3: Verify Turbopack dev server (AC: #3)
+  - [x] Run `pnpm dev` and confirm Turbopack starts without errors
+- [x] Task 4: Configure ESLint and Prettier (AC: #4)
+  - [x] Ensure ESLint config extends T3 defaults
+  - [x] Add Prettier config (`.prettierrc`)
+  - [x] Run `pnpm lint` and `pnpm format:check` with zero issues
+- [x] Task 5: Install additional packages (AC: #5)
+  - [x] Install shadcn/ui and initialize with `pnpm dlx shadcn@latest init`
+  - [x] Install Zustand 5.x (`zustand`)
+  - [x] Install D3.js (`d3`, `@types/d3`)
+  - [x] Install dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`)
+  - [x] Install Tiptap 3.x (`@tiptap/react`, `@tiptap/starter-kit`)
+  - [x] Install TanStack Virtual (`@tanstack/react-virtual`)
+  - [x] Install date-fns (`date-fns`)
+  - [x] Install Auth.js v5 (`next-auth@beta`)
+  - [x] Install Trigger.dev SDK (`@trigger.dev/sdk`)
+  - [x] Install Sentry SDK (`@sentry/nextjs`)
+  - [x] Install pino (`pino`, `pino-pretty`)
+  - [x] Install cmdk (`cmdk`)
+- [x] Task 6: Enforce pnpm as package manager (AC: #6)
+  - [x] Add `preinstall` script in `package.json` to reject npm/yarn
+  - [x] Add `engines` field specifying pnpm
+  - [x] Add `.npmrc` with `engine-strict=true`
+- [x] Task 7: Create placeholder landing page (AC: #7)
+  - [x] Update `src/app/page.tsx` with Flowmind branding placeholder
+  - [x] Verify page renders correctly in browser
 
 ## Dev Notes
 
