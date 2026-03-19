@@ -8,26 +8,78 @@ import { GlobalGraphCanvas } from "./GlobalGraphCanvas";
 import { LocalCardArray } from "./LocalCardArray";
 import { GraphControls } from "./GraphControls";
 
-export function GraphView() {
+// ─── Props ────────────────────────────────────────────────────────────
+interface GraphViewProps {
+  projectId: string | undefined;
+}
+
+export function GraphView({ projectId }: GraphViewProps) {
   const layer = useGraphStore((s) => s.layer);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
 
-  const { data: units } = api.unit.list.useQuery(
-    { contextId: activeContextId ?? undefined },
+  // Fetch units for the current context/project
+  const { data: unitsData } = api.unit.list.useQuery(
+    {
+      projectId: projectId!,
+      contextId: activeContextId ?? undefined,
+      limit: 100,
+    },
+    { enabled: !!projectId },
   );
 
+  const units = unitsData?.items ?? [];
+
   const unitIds = React.useMemo(
-    () => (units ?? []).map((u) => u.id),
+    () => units.map((u) => u.id),
     [units],
   );
 
-  // Fetch relations for all visible units
-  // We'll aggregate from listByUnit for each unit, deduped
-  const relationsQueries = api.useQueries((t) =>
-    unitIds.slice(0, 50).map((id) =>
-      t.relation.listByUnit({ unitId: id, contextId: activeContextId ?? undefined }),
-    ),
+  // Fetch relations for all units via a single query per visible unit
+  // Using individual queries since tRPC v11 doesn't have useQueries on the api object
+  const firstBatchIds = unitIds.slice(0, 10);
+
+  const r0 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[0]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[0] },
   );
+  const r1 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[1]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[1] },
+  );
+  const r2 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[2]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[2] },
+  );
+  const r3 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[3]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[3] },
+  );
+  const r4 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[4]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[4] },
+  );
+  const r5 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[5]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[5] },
+  );
+  const r6 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[6]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[6] },
+  );
+  const r7 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[7]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[7] },
+  );
+  const r8 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[8]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[8] },
+  );
+  const r9 = api.relation.listByUnit.useQuery(
+    { unitId: firstBatchIds[9]!, contextId: activeContextId ?? undefined },
+    { enabled: !!firstBatchIds[9] },
+  );
+
+  const relationsQueries = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9];
 
   const relations = React.useMemo(() => {
     const seen = new Set<string>();

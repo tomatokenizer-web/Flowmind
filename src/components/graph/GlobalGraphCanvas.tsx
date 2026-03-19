@@ -1,15 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCenter,
-  forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
-} from "d3-force";
+import * as d3 from "d3";
 import { useGraphStore } from "~/stores/graphStore";
 
 // ─── Unit type → hex color ────────────────────────────────────────
@@ -45,15 +37,19 @@ interface GraphRelation {
   direction: string;
 }
 
-interface SimNode extends SimulationNodeDatum {
+interface SimNode extends d3.SimulationNodeDatum {
   id: string;
   content: string;
   unitType: string;
+  x?: number;
+  y?: number;
 }
 
-interface SimLink extends SimulationLinkDatum<SimNode> {
+interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   id: string;
   strength: number;
+  source: string | SimNode;
+  target: string | SimNode;
 }
 
 interface Props {
@@ -63,7 +59,7 @@ interface Props {
 
 export function GlobalGraphCanvas({ units, relations }: Props) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const simRef = React.useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
+  const simRef = React.useRef<d3.Simulation<SimNode, SimLink> | null>(null);
   const nodesRef = React.useRef<SimNode[]>([]);
   const linksRef = React.useRef<SimLink[]>([]);
   const animRef = React.useRef<number>(0);
@@ -123,14 +119,14 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
     nodesRef.current = nodes;
     linksRef.current = links;
 
-    const sim = forceSimulation<SimNode>(nodes)
+    const sim = d3.forceSimulation<SimNode>(nodes)
       .force(
         "link",
-        forceLink<SimNode, SimLink>(links).id((d) => d.id),
+        d3.forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id),
       )
-      .force("charge", forceManyBody().strength(-100))
-      .force("center", forceCenter(0, 0))
-      .force("collide", forceCollide(NODE_RADIUS * 2));
+      .force("charge", d3.forceManyBody().strength(-100))
+      .force("center", d3.forceCenter(0, 0))
+      .force("collide", d3.forceCollide(NODE_RADIUS * 2));
 
     simRef.current = sim;
 

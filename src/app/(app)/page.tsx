@@ -3,18 +3,31 @@
 import { Layout, Focus, GitBranch } from "lucide-react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { Button } from "~/components/ui/button";
+import { GraphView } from "~/components/graph/GraphView";
+
+// ─── Default project placeholder ────────────────────────────────────
+// TODO: Epic 9 — real project selector
+const DEFAULT_PROJECT_ID: string | undefined = undefined;
 
 export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const toggleDetailPanel = useLayoutStore((s) => s.toggleDetailPanel);
 
+  // Render GraphView when in graph mode
+  if (viewMode === "graph") {
+    return (
+      <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
+        <GraphView projectId={DEFAULT_PROJECT_ID} />
+      </section>
+    );
+  }
+
   const modeConfig = {
     canvas: { icon: Layout, label: "Canvas View", description: "Spatial canvas for arranging thought units" },
     focus: { icon: Focus, label: "Focus View", description: "Distraction-free linear reading and writing" },
-    graph: { icon: GitBranch, label: "Graph View", description: "Explore connections between thought units" },
   } as const;
 
-  const current = modeConfig[viewMode];
+  const current = modeConfig[viewMode as keyof typeof modeConfig] ?? { icon: Layout, label: "Canvas View", description: "Spatial canvas" };
   const Icon = current.icon;
 
   return (

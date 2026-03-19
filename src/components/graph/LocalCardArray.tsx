@@ -66,7 +66,7 @@ export function LocalCardArray() {
     [localHubId, neighborIds],
   );
 
-  const { data: units } = api.unit.list.useQuery(
+  const { data: units } = api.unit.listByIds.useQuery(
     { ids: allIds },
     { enabled: allIds.length > 0 },
   );
@@ -194,9 +194,15 @@ export function LocalCardArray() {
               <div className="h-full w-full">
                 <UnitCard
                   unit={{
-                    ...unit,
+                    id: unit.id,
+                    content: unit.content,
+                    unitType: unit.unitType,
                     createdAt: new Date(unit.createdAt),
-                    lifecycle: unit.lifecycle as "draft" | "pending" | "confirmed" | "deferred" | "complete" | "archived" | "discarded",
+                    lifecycle: (["draft", "pending", "confirmed", "deferred", "complete"].includes(unit.lifecycle)
+                      ? unit.lifecycle
+                      : "draft") as "draft" | "pending" | "confirmed" | "deferred" | "complete",
+                    originType: unit.originType ?? undefined,
+                    sourceSpan: typeof unit.sourceSpan === "string" ? unit.sourceSpan : null,
                   }}
                   variant="compact"
                   selected={id === localHubId}

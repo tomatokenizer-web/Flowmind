@@ -105,6 +105,10 @@ const listUnitsSchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
+const listByIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+});
+
 // ─── Router ────────────────────────────────────────────────────────
 
 export const unitRouter = createTRPCRouter({
@@ -147,6 +151,18 @@ export const unitRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const service = createUnitService(ctx.db);
       return service.list(input);
+    }),
+
+  listByIds: protectedProcedure
+    .input(listByIdsSchema)
+    .query(async ({ ctx, input }) => {
+      const units = await ctx.db.unit.findMany({
+        where: {
+          id: { in: input.ids },
+          userId: ctx.session.user.id!,
+        },
+      });
+      return units;
     }),
 
   update: protectedProcedure
