@@ -1,4 +1,5 @@
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
+import { projectRouter } from "@/server/api/routers/project";
 import { unitRouter } from "@/server/api/routers/unit";
 import { unitTypeRouter } from "@/server/api/routers/unit-type";
 import { captureRouter } from "@/server/api/routers/capture";
@@ -16,6 +17,7 @@ import { aiRouter } from "@/server/api/routers/ai";
 import { searchRouter } from "@/server/api/routers/search";
 
 export const appRouter = createTRPCRouter({
+  project: projectRouter,
   unit: unitRouter,
   unitType: unitTypeRouter,
   capture: captureRouter,
