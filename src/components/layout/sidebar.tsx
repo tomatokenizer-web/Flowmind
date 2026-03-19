@@ -22,10 +22,9 @@ const SIDEBAR_COLLAPSED_WIDTH = 60;
 
 interface SidebarProps {
   className?: string;
-  projectId?: string;
 }
 
-export function Sidebar({ className, projectId }: SidebarProps) {
+export function Sidebar({ className }: SidebarProps) {
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);

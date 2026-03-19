@@ -39,12 +39,15 @@ function subscribe(listener: Listener): () => void {
 // Stable snapshot — new reference on every change so useSyncExternalStore detects updates
 let cachedSnapshot: ReadonlyMap<string, KeyboardShortcut> = new Map();
 
+// Server snapshot must be a stable reference (never changes on server)
+const SERVER_SNAPSHOT: ReadonlyMap<string, KeyboardShortcut> = new Map();
+
 function getSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
   return cachedSnapshot;
 }
 
 function getServerSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
-  return new Map();
+  return SERVER_SNAPSHOT;
 }
 
 export function registerShortcut(shortcut: KeyboardShortcut): () => void {
