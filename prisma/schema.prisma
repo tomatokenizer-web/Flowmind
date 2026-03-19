@@ -325,6 +325,7 @@ model Relation {
   purpose       String[]         @default([])
   isCustom      Boolean          @default(false) @map("is_custom")
   customName    String?          @map("custom_name")
+  isLoopback    Boolean          @default(false) @map("is_loopback")
   createdAt     DateTime         @default(now()) @map("created_at")
   perspective   UnitPerspective? @relation(fields: [perspectiveId], references: [id])
   sourceUnit    Unit             @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
@@ -347,13 +348,15 @@ model SystemRelationType {
 }
 
 model CustomRelationType {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  projectId String   @map("project_id") @db.Uuid
-  scope     String   @default("private") @db.VarChar(10)
-  reusable  Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String   @default("")
+  projectId   String   @map("project_id") @db.Uuid
+  scope       String   @default("private") @db.VarChar(10)
+  reusable    Boolean  @default(false)
+  purposeTag  String?  @map("purpose_tag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("custom_relation_types")

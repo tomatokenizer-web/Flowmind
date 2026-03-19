@@ -9,6 +9,9 @@ import { contextRouter } from "@/server/api/routers/context";
 import { perspectiveRouter } from "@/server/api/routers/perspective";
 import { contextVisitRouter } from "@/server/api/routers/context-visit";
 import { dashboardRouter } from "@/server/api/routers/dashboard";
+import { relationRouter } from "@/server/api/routers/relation";
+import { customRelationTypeRouter } from "@/server/api/routers/customRelationType";
+import { relationTypeRouter } from "@/server/api/routers/relation-type";
 
 export const appRouter = createTRPCRouter({
   unit: unitRouter,
@@ -21,6 +24,9 @@ export const appRouter = createTRPCRouter({
   perspective: perspectiveRouter,
   contextVisit: contextVisitRouter,
   dashboard: dashboardRouter,
+  relation: relationRouter,
+  customRelationType: customRelationTypeRouter,
+  relationType: relationTypeRouter,
 });
 
 export type AppRouter = typeof appRouter;
