@@ -1,0 +1,83 @@
+You are finishing Epic 6 Part 2 of the Flowmind project. Check all existing files before creating anything.
+
+Already done in Part 1: ThreadView, ThreadConnector, NavigatorPanel, NavigatorView, navigationPurposeStore, layout-store updated with 'thread' view mode.
+
+## FINISH THESE REMAINING STORIES:
+
+### Story 6.4: Multi-Layer Search
+
+Check if src/server/services/searchService.ts exists. If not, create it:
+- search(query, options: { contextId?, projectId, layers: string[], limit?: number }):
+  - 'text' layer: use db.$queryRaw with PostgreSQL ILIKE for content matching, return highlights
+  - 'structural' layer: filter by unitType, lifecycle, relation count
+  - 'temporal' layer: filter/sort by createdAt
+  - Merge results, deduplicate by unitId, sort by score
+  - Returns SearchResult[]: { unitId, content, score, matchLayer, highlights: string[] }
+
+Add search.query tRPC procedure in src/server/api/routers/search.ts:
+- Input: { query: string, contextId?: string, projectId: string, layers?: string[], limit?: number }
+Register in src/server/api/root.ts
+
+Create src/components/search/SearchView.tsx:
+- Full-screen search panel (shown via Cmd+K or search button)
+- Text input with 300ms debounce
+- Layer toggles: Text / Structural / Temporal (pill buttons)
+- Results: list of unit snippets with highlighted match text
+- Click result: calls setSelectedUnit(unitId) and closes panel
+- Empty state, loading skeleton (no spinner)
+
+Create src/components/search/CommandPalette.tsx:
+- Radix Dialog, triggered by Cmd+K shortcut
+- Quick search input
+- Sections: Recent Units, All Contexts, Quick Actions (Create unit, New context, Switch view)
+- Arrow key navigation, Enter to select
+- Wire Cmd+K into src/components/shared/global-keyboard-shortcuts.tsx
+
+### Story 6.5: ThoughtRank Importance Score
+
+Check if src/server/services/thoughtRankService.ts exists. If not, create it:
+- computeThoughtRank(units: {id:string}[], relations: {sourceUnitId:string, targetUnitId:string, strength:number}[]): Map<string, number>
+  - PageRank: start each node at 1/N, iterate 20x with damping 0.85
+  - Distribute rank through outgoing relations weighted by strength
+- updateThoughtRankForContext(contextId, db): runs computation, updates unit.importance in DB via updateMany
+
+Add context.recomputeThoughtRank tRPC procedure (input: { contextId })
+Wire into relation.create onSuccess (non-blocking void call).
+Show importance score on UnitCard as a subtle small bar (0-100% width, accent color, 2px height at bottom of card). Check UnitCard component carefully before editing.
+
+### Story 6.6: Context Dashboard Statistics
+
+Create src/components/dashboard/ContextDashboard.tsx:
+- Stats for active context (shown at top of ContextView when a context is active)
+- Unit counts: total, confirmed, draft, pending (small colored badges)
+- Top 3 most-connected units (by relation count) as clickable chips
+- Open questions count + contradictions count
+- "Jump to highest ThoughtRank unit" button
+- Reuse ContributionTransparency component for AI ratio
+
+Add context.getStats tRPC procedure in context router:
+- Input: { contextId }
+- Returns: { totalUnits, confirmedCount, draftCount, pendingCount, topConnectedUnits: {id,content,relationCount}[], openQuestionsCount, contradictionsCount, aiRatio: number }
+
+Wire ContextDashboard into context-view.tsx above the unit list when a context is active.
+
+### Story 6.7: Cross-View Coordination
+
+Check src/stores/selectionStore.ts exists. 
+
+In ThreadView.tsx: wire UnitCard onClick to call setSelectedUnit(unit.id) and scroll to that unit when selectedUnitId changes externally.
+
+In GlobalGraphCanvas.tsx: when selectedUnitId changes from outside (e.g. ThreadView click), add a pulse highlight ring to that node (draw a larger circle with accent color, animate opacity 0->1->0 over 300ms using requestAnimationFrame).
+
+Wire Escape key in global-keyboard-shortcuts.tsx to call clearSelection().
+
+### Story 6.8: Command Palette wired into toolbar
+
+Add a search/command icon button to the Toolbar component (magnifying glass icon from Lucide).
+Clicking opens CommandPalette.
+Show Cmd+K hint in the button tooltip.
+
+## AFTER ALL DONE:
+1. git add -A
+2. git commit -m "feat: Epic 6 complete - search, command palette, ThoughtRank, context dashboard stats, cross-view sync"
+3. openclaw system event --text "Done: Epic 6 fully complete - all navigation and search features done" --mode now

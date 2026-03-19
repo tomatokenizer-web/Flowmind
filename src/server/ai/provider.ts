@@ -32,7 +32,7 @@ export class AnthropicProvider implements AIProvider {
   private client: Anthropic;
   private model: string;
 
-  constructor(apiKey?: string, model = "claude-sonnet-4-20250514") {
+  constructor(apiKey?: string, model = "claude-sonnet-4-5") {
     this.client = new Anthropic({
       apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY,
     });

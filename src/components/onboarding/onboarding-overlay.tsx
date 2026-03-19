@@ -76,10 +76,20 @@ export function OnboardingOverlay({ projectId }: OnboardingOverlayProps) {
       {/* Phase 1: Full-screen first capture */}
       <AnimatePresence>
         {phase === "first-capture" && (
-          <FirstCaptureExperience
-            onSubmit={handleFirstCapture}
-            isSubmitting={submitMutation.isPending}
-          />
+          <>
+            <FirstCaptureExperience
+              onSubmit={handleFirstCapture}
+              isSubmitting={submitMutation.isPending}
+            />
+            {/* Skip button — lets devs/testers bypass onboarding */}
+            <button
+              type="button"
+              onClick={skipTour}
+              className="fixed bottom-6 right-6 z-[200] rounded-lg bg-black/30 px-4 py-2 text-sm text-white/60 hover:text-white/90 transition-colors"
+            >
+              Skip intro →
+            </button>
+          </>
         )}
       </AnimatePresence>
 
