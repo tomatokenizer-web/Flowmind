@@ -218,4 +218,88 @@ export const assemblyRouter = createTRPCRouter({
       const service = createAssemblyService(ctx.db);
       return service.createFromTemplate(input, ctx.session.user.id!);
     }),
+
+  /**
+   * Export assembly as formatted text
+   */
+  export: protectedProcedure
+    .input(z.object({
+      assemblyId: z.string().uuid(),
+      format: z.enum(["essay", "presentation", "email", "social"]),
+    }))
+    .query(async ({ ctx, input }) => {
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.assemblyId },
+        include: {
+          items: {
+            orderBy: { position: "asc" },
+            include: {
+              unit: { select: { id: true, content: true, unitType: true } },
+            },
+          },
+        },
+      });
+
+      if (!assembly) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+
+      const units = assembly.items.map((item) => ({
+        content: item.unit.content,
+        type: item.unit.unitType,
+        slotName: item.slotName,
+        bridgeText: item.bridgeText,
+      }));
+
+      let content = "";
+
+      if (input.format === "essay") {
+        content = units.map((u) => {
+          const heading = u.slotName ? `\n## ${u.slotName}\n\n` : "\n";
+          return `${heading}${u.content}${u.bridgeText ? `\n\n${u.bridgeText}` : ""}`;
+        }).join("\n");
+      } else if (input.format === "presentation") {
+        content = units.map((u, i) => {
+          return `Slide ${i + 1}${u.slotName ? ` — ${u.slotName}` : ""}\n• ${u.content}`;
+        }).join("\n\n");
+      } else if (input.format === "email") {
+        const actionItems = units.filter((u) => u.type === "action");
+        const keyPoints = units.filter((u) => u.type !== "action");
+        content = `Key Points:\n${keyPoints.map((u) => `• ${u.content}`).join("\n")}`;
+        if (actionItems.length > 0) {
+          content += `\n\nAction Items:\n${actionItems.map((u) => `☐ ${u.content}`).join("\n")}`;
+        }
+      } else if (input.format === "social") {
+        content = units.map((u) => {
+          const truncated = u.content.length > 240 ? u.content.slice(0, 237) + "..." : u.content;
+          return truncated;
+        }).join("\n\n---\n\n");
+      }
+
+      return {
+        content,
+        format: input.format,
+        unitCount: units.length,
+        exportedAt: new Date(),
+      };
+    }),
+
+  /**
+   * Diff two assemblies
+   */
+  diff: protectedProcedure
+    .input(z.object({ assemblyAId: z.string().uuid(), assemblyBId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const [a, b] = await Promise.all([
+        ctx.db.assembly.findUnique({ where: { id: input.assemblyAId }, include: { items: { include: { unit: true } } } }),
+        ctx.db.assembly.findUnique({ where: { id: input.assemblyBId }, include: { items: { include: { unit: true } } } }),
+      ]);
+      if (!a || !b) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+
+      const aIds = new Set(a.items.map((i) => i.unitId));
+      const bIds = new Set(b.items.map((i) => i.unitId));
+      const onlyInA = a.items.filter((i) => !bIds.has(i.unitId)).map((i) => i.unitId);
+      const onlyInB = b.items.filter((i) => !aIds.has(i.unitId)).map((i) => i.unitId);
+      const shared = a.items.filter((i) => bIds.has(i.unitId)).map((i) => i.unitId);
+
+      return { onlyInA, onlyInB, shared, summary: { added: onlyInB.length, removed: onlyInA.length, shared: shared.length } };
+    }),
 });

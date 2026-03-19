@@ -34,6 +34,7 @@ export const appRouter = createTRPCRouter({
   relationType: relationTypeRouter,
   ai: aiRouter,
   search: searchRouter,
+  assembly: assemblyRouter,
 });
 
 export type AppRouter = typeof appRouter;

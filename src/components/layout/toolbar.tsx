@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Layout, Focus, GitBranch, List, Menu, Maximize2, Minimize2 } from "lucide-react";
+import { Layout, Focus, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -14,6 +14,7 @@ const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: stri
   { mode: "focus", icon: Focus, label: "Focus" },
   { mode: "graph", icon: GitBranch, label: "Graph" },
   { mode: "thread", icon: List, label: "Thread" },
+  { mode: "assembly", icon: BookOpen, label: "Assembly" },
 ];
 
 interface ToolbarProps {
