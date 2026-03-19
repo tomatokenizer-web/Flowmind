@@ -1,9 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Minus, Maximize2 } from "lucide-react";
+import { Plus, Minus, Maximize2, List } from "lucide-react";
 import { useGraphStore } from "~/stores/graphStore";
+import { useLayoutStore } from "~/stores/layout-store";
 import { Button } from "~/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 
 // ─── Unit type config ─────────────────────────────────────────────
@@ -28,6 +35,7 @@ export function GraphControls() {
   const setPan = useGraphStore((s) => s.setPan);
   const filters = useGraphStore((s) => s.filters);
   const toggleUnitTypeFilter = useGraphStore((s) => s.toggleUnitTypeFilter);
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
 
   const handleFitAll = React.useCallback(() => {
     setZoom(1);
@@ -36,11 +44,31 @@ export function GraphControls() {
 
   return (
     <>
-      {/* Top-right: layer indicator */}
-      <div className="absolute right-4 top-4 z-10 rounded-lg bg-bg-secondary/90 px-3 py-1.5 text-sm font-medium text-text-primary shadow-md backdrop-blur-sm border border-border">
-        {layer === "global"
-          ? "Global Overview"
-          : `Local: ${localHubId?.slice(0, 8) ?? ""}...`}
+      {/* Top-right: layer indicator + thread toggle */}
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+        <div className="rounded-lg bg-bg-secondary/90 px-3 py-1.5 text-sm font-medium text-text-primary shadow-md backdrop-blur-sm border border-border">
+          {layer === "global"
+            ? "Global Overview"
+            : `Local: ${localHubId?.slice(0, 8) ?? ""}...`}
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 bg-bg-secondary/90 backdrop-blur-sm"
+                onClick={() => setViewMode("thread")}
+              >
+                <List className="h-4 w-4" />
+                <span className="hidden sm:inline">Thread</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Switch to Thread View (linear reading)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Top: filter pills */}

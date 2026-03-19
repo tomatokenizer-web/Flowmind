@@ -1,9 +1,10 @@
 "use client";
 
-import { Layout, Focus, GitBranch } from "lucide-react";
+import { Layout, Focus, GitBranch, List } from "lucide-react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { Button } from "~/components/ui/button";
 import { GraphView } from "~/components/graph/GraphView";
+import { ThreadView } from "~/components/thread/ThreadView";
 
 // ─── Default project placeholder ────────────────────────────────────
 // TODO: Epic 9 — real project selector
@@ -13,11 +14,25 @@ export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const toggleDetailPanel = useLayoutStore((s) => s.toggleDetailPanel);
 
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
+
   // Render GraphView when in graph mode
   if (viewMode === "graph") {
     return (
       <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
         <GraphView projectId={DEFAULT_PROJECT_ID} />
+      </section>
+    );
+  }
+
+  // Render ThreadView when in thread mode
+  if (viewMode === "thread") {
+    return (
+      <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
+        <ThreadView
+          projectId={DEFAULT_PROJECT_ID}
+          onSwitchToGraph={() => setViewMode("graph")}
+        />
       </section>
     );
   }

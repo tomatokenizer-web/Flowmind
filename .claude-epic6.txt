@@ -1,0 +1,163 @@
+You are implementing Epic 6 of the Flowmind project: Navigation, Search & Discovery.
+
+Project: Next.js 14, tRPC, Prisma, Zustand, Tailwind CSS, Radix UI, Framer Motion, D3.
+Check ALL existing files before creating new ones.
+
+## Story 6.1: Thread View - Linear Reading Mode
+
+Create src/components/thread/ThreadView.tsx:
+- Vertical list of UnitCards ordered chronologically or by derivation
+- Relation connectors between cards: thin SVG lines with type-colored dots
+- Branch point indicator showing fork count, clicking reveals branch options
+- Toggle: chronological order vs derivation order (toolbar button)
+- Smooth ScrollArea with 4px hover-visible scrollbar
+- Accessible alternative to Graph View (link "Switch to Thread View" in graph)
+- Wire into layout: when viewMode='thread' render ThreadView (add 'thread' to layout-store viewMode type)
+
+Create src/components/thread/ThreadConnector.tsx:
+- SVG line connecting two UnitCards in the thread
+- Type-colored dot at midpoint indicating relation type
+- Dashed line for loopback relations
+
+Create src/hooks/use-thread-order.ts:
+- useThreadOrder(contextId, mode: 'chronological'|'derivation')
+- Chronological: sort by createdAt
+- Derivation: topological sort following relation graph (DFS from root nodes)
+- Returns ordered unit IDs
+
+## Story 6.2: Purpose-Based Relation Weight Rendering
+
+Create src/stores/navigationPurposeStore.ts (Zustand):
+- purpose: 'argument' | 'creative' | 'chronological' | null
+- setPurpose(purpose)
+- Persist in session
+
+Create src/lib/relationWeights.ts:
+- ARGUMENT_HIGHLIGHTED = ['supports','contradicts','derives_from','expands','references','exemplifies','defines','questions']
+- CREATIVE_HIGHLIGHTED = ['inspires','echoes','transforms_into','foreshadows','parallels','contextualizes','operationalizes']
+- getRelationWeight(relationType, purpose): returns { opacity: number (0.3 or 1.0), strokeWidth: number (1 or 3) }
+
+Wire into GlobalGraphCanvas and ThreadConnector:
+- Apply weights to relation lines based on active purpose
+- Animate weight changes with 150ms transition
+
+Add purpose mode selector to GraphControls.tsx and ThreadView toolbar.
+
+## Story 6.3: Navigators - User-Defined Reading Paths
+
+Check prisma/schema.prisma for Navigator model (it exists with: id, name, purpose, contextId, path: String[] uuid).
+
+Create src/server/api/routers/navigator.ts:
+- navigator.create: { name, contextId, purpose?, path: string[] (ordered unit IDs) }
+- navigator.getById: { id }
+- navigator.list: { contextId }
+- navigator.update: { id, name?, path? }
+- navigator.delete: { id }
+- navigator.addUnit: { navigatorId, unitId, position? }
+- navigator.removeUnit: { navigatorId, unitId }
+- navigator.reorder: { navigatorId, orderedUnitIds }
+Register in root.ts
+
+Create src/components/navigator/NavigatorPanel.tsx:
+- List of navigators for active context
+- Create new navigator button
+- Each navigator: name, unit count, purpose tag
+- Click to enter navigator mode
+
+Create src/components/navigator/NavigatorView.tsx:
+- Reads units in navigator path order
+- Step-by-step navigation: prev/next buttons + keyboard arrows
+- Progress indicator (step N of M)
+- Edit mode: drag to reorder units in path
+- "Add current unit" button when browsing
+
+Create src/server/services/navigatorService.ts with CRUD operations.
+Add ai.generateNavigator tRPC procedure: AI suggests an optimal reading path for a given purpose.
+
+## Story 6.4: Multi-Layer Search
+
+Create src/server/services/searchService.ts:
+- search(query, options: { contextId?, layers: ('text'|'semantic'|'structural'|'temporal')[] }):
+  - text: PostgreSQL full-text search on unit content (use Prisma raw query with to_tsquery)
+  - semantic: vector similarity search using pgvector (cosine similarity on embedding column, if embedding exists)
+  - structural: search by unit type, lifecycle, relation count
+  - temporal: filter by date ranges
+  - Returns: SearchResult[] { unitId, content, score, matchLayer, highlights }
+  - Merge and rank results across layers
+
+Create src/server/api/routers/search.ts:
+- search.query: input { query, contextId?, projectId, layers?, limit? }
+- search.naturalLanguage: input { prompt, contextId, projectId } - uses AI to convert NL to structured query
+
+Register in root.ts.
+
+Create src/components/search/SearchView.tsx:
+- Full-screen search experience (Cmd+K or search icon)
+- Input with debounce (300ms)
+- Layer toggles: Text / Semantic / Structural / Temporal
+- Results list: UnitCard snippets with highlighted matches
+- Natural language mode toggle: "Search by meaning" uses AI query interpretation
+- Click result: navigate to unit and highlight it
+
+Create src/components/search/CommandPalette.tsx:
+- Radix Dialog triggered by Cmd+K
+- Quick search across units, contexts, navigators
+- Recent items
+- Quick actions: "Create unit", "New context", "Switch view"
+- Keyboard navigation (arrow keys, Enter)
+- Wire into GlobalKeyboardShortcuts
+
+## Story 6.5: ThoughtRank Importance Score
+
+Create src/server/services/thoughtRankService.ts:
+- computeThoughtRank(units, relations): PageRank-inspired algorithm
+  - Each unit starts with rank 1/N
+  - Iteratively distribute rank through outgoing relations weighted by strength
+  - Damping factor 0.85, 20 iterations
+  - Returns: Map<unitId, score>
+- updateThoughtRankForContext(contextId): runs computation and updates unit.importance in DB
+
+Add context.recomputeThoughtRank tRPC procedure.
+Trigger ThoughtRank update on relation.create/update/delete (background, non-blocking).
+Display importance score subtly on UnitCard (small bar or number).
+
+## Story 6.6: Context Dashboard with Statistics
+
+Create src/components/dashboard/ContextDashboard.tsx:
+- Stats panel for active context:
+  - Total units, confirmed vs draft vs pending
+  - Most connected units (by relation count)
+  - Top 5 high Branch Potential units
+  - Open questions count, contradictions count
+  - AI ratio bar (reuse ContributionTransparency component)
+  - Recent activity timeline
+- Entry points: "Jump to highest ThoughtRank unit", "View open questions", "Review AI suggestions"
+- Tensions list (from tension detection)
+
+Add context.getStats tRPC procedure: returns aggregated stats for a context.
+
+## Story 6.7: Cross-View Coordination (already partially done via selectionStore)
+
+Verify selectionStore is wired in:
+- UnitCard click sets selectedUnitId (already done)
+- GraphCanvas node click sets selectedUnitId (check GlobalGraphCanvas)
+- ThreadView card click sets selectedUnitId
+- Detail panel opens for selectedUnitId
+
+Add: when selectedUnitId changes in ThreadView, scroll to that unit with smooth scroll.
+Add: when selectedUnitId changes in GraphView, pulse animation on node (150ms highlight ring).
+Wire Escape key to clearSelection().
+
+## Story 6.8: 4-Layer Indexing and Search Optimization
+
+Add to searchService.ts:
+- buildSearchIndex(contextId): pre-compute text search vectors
+- Use Prisma.$executeRaw to create/update tsvector for full-text search
+- Add GIN index hint in schema comments (actual index on tsvector column)
+
+Add unit create/update hooks to trigger index update (use existing event bus).
+
+## After all done:
+1. git add -A
+2. git commit -m "feat: Epic 6 complete - Thread View, purpose navigation, Navigators, multi-layer search, ThoughtRank, context dashboard, cross-view sync"
+3. openclaw system event --text "Done: Epic 6 complete - navigation search and discovery implemented" --mode now
