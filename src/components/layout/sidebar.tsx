@@ -8,7 +8,9 @@ import {
   FolderTree,
   FileText,
   Star,
+  Settings,
 } from "lucide-react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
@@ -16,6 +18,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 import { Button } from "~/components/ui/button";
 import { ContextTree } from "~/components/context/context-tree";
+import { ProjectSelector } from "~/components/project/ProjectSelector";
 import { IncubationQueue } from "~/components/incubation/IncubationQueue";
 
 const SIDEBAR_WIDTH = 260;
@@ -71,18 +74,9 @@ export function Sidebar({ className }: SidebarProps) {
         </Button>
       </div>
 
-      {/* Project name display */}
+      {/* Project selector */}
       <div className="border-b border-border px-space-3 py-space-2">
-        {isExpanded ? (
-          <div className={cn("flex w-full items-center gap-space-2 rounded-lg px-space-2 py-[6px]", "text-sm text-text-secondary")}>
-            <FolderTree className="h-4 w-4 shrink-0 text-text-tertiary" />
-            <span className="flex-1 truncate text-left">{projectId ? "My Thoughts" : "Loading..."}</span>
-          </div>
-        ) : (
-          <div className="flex w-full items-center justify-center py-space-2" title="My Thoughts">
-            <FolderTree className="h-5 w-5 shrink-0 text-text-tertiary" />
-          </div>
-        )}
+        <ProjectSelector collapsed={isCollapsed} />
       </div>
 
       {/* Context tree */}
@@ -97,6 +91,14 @@ export function Sidebar({ className }: SidebarProps) {
       <div className="border-t border-border p-space-2">
         <SidebarItem icon={FileText} label="All Thoughts" collapsed={isCollapsed} />
         <SidebarItem icon={Star} label="Starred" collapsed={isCollapsed} />
+        <Link href="/settings" className={cn(
+          "flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2",
+          "text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors",
+          isCollapsed && "justify-center px-0",
+        )}>
+          <Settings className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Settings</span>}
+        </Link>
       </div>
     </motion.nav>
   );

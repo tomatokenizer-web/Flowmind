@@ -8,6 +8,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
 import { Button } from "~/components/ui/button";
 import { Breadcrumb, type BreadcrumbSegment } from "~/components/navigation/Breadcrumb";
+import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 
 const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { mode: "canvas", icon: Layout, label: "Canvas" },
@@ -116,6 +117,9 @@ export function Toolbar({
           ))}
         </div>
       )}
+
+      {/* Completeness Compass */}
+      {!focusMode && <CompletenessCompass />}
 
       {/* Focus Mode toggle */}
       <Button

@@ -19,6 +19,7 @@ import { aiRouter } from "@/server/api/routers/ai";
 import { searchRouter } from "@/server/api/routers/search";
 import { assemblyRouter } from "@/server/api/routers/assembly";
 import { domainTemplateRouter } from "@/server/api/routers/domain-template";
+import { apiKeyRouter } from "@/server/api/routers/api-key";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -41,6 +42,7 @@ export const appRouter = createTRPCRouter({
   search: searchRouter,
   assembly: assemblyRouter,
   domainTemplate: domainTemplateRouter,
+  apiKey: apiKeyRouter,
 });
 
 export type AppRouter = typeof appRouter;
