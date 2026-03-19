@@ -1,40 +1,61 @@
 "use client";
 
-import { Layout, Focus, GitBranch } from "lucide-react";
-import { useLayoutStore } from "~/stores/layout-store";
-import { Button } from "~/components/ui/button";
+import { useMemo, useState } from "react";
+import { api } from "~/trpc/react";
+import { ProjectOverview } from "~/components/dashboard/project-overview";
+import type { ContextSummaryData } from "~/components/dashboard/context-summary-card";
+
+// TODO: Replace with real project ID from session/route once multi-project is implemented
+const DEFAULT_PROJECT_ID: string | undefined = undefined;
 
 export default function DashboardPage() {
-  const viewMode = useLayoutStore((s) => s.viewMode);
-  const toggleDetailPanel = useLayoutStore((s) => s.toggleDetailPanel);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
-  const modeConfig = {
-    canvas: { icon: Layout, label: "Canvas View", description: "Spatial canvas for arranging thought units" },
-    focus: { icon: Focus, label: "Focus View", description: "Distraction-free linear reading and writing" },
-    graph: { icon: GitBranch, label: "Graph View", description: "Explore connections between thought units" },
-  } as const;
+  const { data: contexts, isLoading } = api.context.list.useQuery(
+    { projectId: DEFAULT_PROJECT_ID! },
+    { enabled: !!DEFAULT_PROJECT_ID },
+  );
 
-  const current = modeConfig[viewMode];
-  const Icon = current.icon;
+  // Build a parentId → name map for card labels
+  const contextMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (contexts) {
+      for (const ctx of contexts) {
+        map.set(ctx.id, ctx.name);
+      }
+    }
+    return map;
+  }, [contexts]);
+
+  // Transform tRPC data into ContextSummaryData[]
+  const summaryData: ContextSummaryData[] = useMemo(() => {
+    if (!contexts) return [];
+    return contexts
+      .map((ctx) => {
+        const openQuestions = Array.isArray(ctx.openQuestions)
+          ? (ctx.openQuestions as unknown[])
+          : [];
+        return {
+          id: ctx.id,
+          name: ctx.name,
+          description: ctx.description,
+          parentName: ctx.parentId ? (contextMap.get(ctx.parentId) ?? null) : null,
+          unitCount: ctx._count.unitContexts,
+          unresolvedQuestionCount: openQuestions.length,
+          updatedAt: ctx.updatedAt,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+  }, [contexts, contextMap]);
 
   return (
-    <section aria-label="Dashboard">
-      <div className="flex flex-col items-center justify-center gap-space-6 py-space-16 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-bg-secondary">
-          <Icon className="h-8 w-8 text-text-tertiary" />
-        </div>
-        <div className="flex flex-col gap-space-2">
-          <h1 className="font-heading text-xl text-text-primary">
-            {current.label}
-          </h1>
-          <p className="max-w-sm text-sm text-text-secondary">
-            {current.description}
-          </p>
-        </div>
-        <Button variant="ghost" onClick={toggleDetailPanel}>
-          Toggle Detail Panel
-        </Button>
-      </div>
-    </section>
+    <ProjectOverview
+      contexts={summaryData}
+      isLoading={isLoading && !!DEFAULT_PROJECT_ID}
+      onNewContext={() => setShowCreateDialog(true)}
+    />
   );
 }
