@@ -1,0 +1,183 @@
+You are implementing Epic 7 of the Flowmind project: Assembly, Composition & Export.
+Project: Next.js 14, tRPC, Prisma, Zustand, Tailwind CSS, Radix UI, Framer Motion, dnd-kit.
+Check ALL existing files before creating new ones. The Assembly and AssemblyItem models already exist in prisma/schema.prisma.
+
+## Story 7.1: Assembly CRUD API
+
+Check prisma/schema.prisma for Assembly and AssemblyItem models.
+Check src/server/api/routers/ for existing assembly router.
+
+If no assembly router, create src/server/api/routers/assembly.ts:
+- assembly.create: { name, description?, projectId } → creates Assembly
+- assembly.getById: { id } → returns assembly with ordered items + unit data
+- assembly.list: { projectId } → returns assemblies with item count
+- assembly.update: { id, name?, description? }
+- assembly.delete: { id }
+- assembly.addUnit: { assemblyId, unitId, position?, slotName? } — reject if unit.lifecycle === 'draft'
+- assembly.removeUnit: { assemblyId, unitId }
+- assembly.reorderUnits: { assemblyId, orderedUnitIds: string[] } — updates positions
+
+Create src/server/services/assemblyService.ts with business logic.
+Register in src/server/api/root.ts.
+
+## Story 7.2: Assembly View with Drag-and-Drop
+
+Create src/components/assembly/AssemblyBoard.tsx:
+- Full assembly editing view
+- Left rail: searchable unit browser (api.unit.list, filterable by type)
+- Main area: ordered draggable unit cards using dnd-kit (SortableContext + DndContext)
+- Drag handle: 6-dot grip (GripVertical from lucide)
+- 0.8 opacity during drag, dashed drop zones between cards
+- 200ms spring snap on drop
+- Remove button on each card (removes from assembly, not deletes unit)
+- Assembly header: name, description, unit count, last modified
+- Edit/Preview toggle: edit=drag mode, preview=read-only rendered view
+- Keyboard reordering: select card with Enter, arrow keys to move, Enter to confirm
+
+Create src/components/assembly/AssemblyCard.tsx:
+- Unit card in assembly context
+- Shows: content preview (3 lines), unit type badge, position number
+- Drag handle, remove button
+- Bridge text zone below card (editable textarea, shown when bridge text exists)
+
+Create src/stores/assemblyStore.ts (Zustand):
+- activeAssemblyId: string | null
+- setActiveAssembly(id)
+- bridgeTexts: Record<string, string> (keyed by "assemblyId-unitId")
+- setBridgeText(assemblyId, afterUnitId, text)
+
+## Story 7.3: Assembly Templates
+
+Create src/lib/assembly-templates.ts:
+Define 4 built-in templates as constants:
+- Essay: slots = [Introduction, Thesis, Evidence 1, Evidence 2, Counterargument, Conclusion]
+- Report: slots = [Executive Summary, Background, Findings, Recommendations, Conclusion]
+- Decision Brief: slots = [Context, Options, Pros/Cons, Recommendation, Next Steps]
+- Research Summary: slots = [Abstract, Problem Statement, Methodology, Findings, Implications]
+
+Each slot has: { name, description, preferredTypes: UnitType[], required: boolean }
+
+Create src/server/services/templateMappingService.ts:
+- mapUnitsToTemplate(template, units, relations): proposes best unit for each slot
+  - Score each unit per slot by: type match (high), content keyword match (medium), relation count (low)
+  - Returns: { slot: string, proposedUnit: Unit | null, confidence: 'high'|'medium'|'low' }[]
+
+Add ai.mapUnitsToTemplate tRPC procedure.
+
+Create src/components/assembly/TemplatePicker.tsx:
+- Grid of template cards with icons
+- On select: creates assembly with template slots, calls AI mapping
+
+Create src/components/assembly/TemplateMappingReview.tsx:
+- Shows each slot with proposed unit
+- Accept / Swap / Skip per slot
+- "Apply Mappings" button
+
+## Story 7.4: Bridge Text Generation
+
+Add to src/server/ai/aiService.ts:
+- generateBridgeText(unitA: string, unitB: string, relationContext?: string): generates 1-2 sentence transition
+- generateAllBridgeText(assemblyId, units): generates bridge text for all adjacent pairs
+
+Add ai.generateBridgeText tRPC procedure: { assemblyId, unitAId, unitBId }
+Returns: { bridgeText: string }
+
+Bridge text is stored in assemblyStore (client-side only, not DB for MVP).
+Show "Generate Bridge Text" button in AssemblyBoard toolbar.
+
+## Story 7.5: Assembly Diff
+
+Create src/components/assembly/AssemblyDiff.tsx:
+- Side-by-side view of two assemblies
+- Left column: assembly A units, right column: assembly B units
+- Color coding: only-in-A = red bg, only-in-B = green bg, shared = neutral
+- Align shared units horizontally where possible
+- Summary header: "N added, M removed, K shared"
+- Click unit to highlight in both columns
+
+Add assembly.diff tRPC procedure: { assemblyAId, assemblyBId }
+Returns: { onlyInA: string[], onlyInB: string[], shared: string[], summary }
+
+## Story 7.6: Multi-Format Export
+
+Create src/server/services/exportService.ts:
+- exportAssembly(assemblyId, format: 'essay'|'presentation'|'email'|'social', db):
+  - Fetch assembly with units in order
+  - Apply format-specific conversion rules per unit type:
+    Essay: claim→thesis paragraph, evidence→supporting paragraph, question→rhetorical heading
+    Presentation: each unit→bullet point or slide, type determines formatting
+    Email: claim→key point, action→action item, concise
+    Social: condensed, 280 char limit per unit
+  - Include bridge texts if provided
+  - Returns: { content: string, format, unitCount, exportedAt }
+
+Add assembly.export tRPC procedure: { assemblyId, format }
+
+Create src/components/assembly/ExportDialog.tsx:
+- Radix Dialog with format selector (4 radio options with icons)
+- Preview pane showing formatted output
+- Download button (creates .txt or .md file)
+- Copy to clipboard button
+
+## Story 7.7: Partial Export & Export History
+
+Add ExportHistory model to prisma/schema.prisma if not exists:
+model ExportHistory {
+  id         String   @id @default(cuid())
+  assemblyId String   @map("assembly_id")
+  format     String
+  unitIds    String[] @map("unit_ids")
+  contentHash String  @map("content_hash")
+  exportedAt DateTime @default(now()) @map("exported_at")
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  @@map("export_history")
+}
+
+Add to Assembly model: exportHistory ExportHistory[]
+
+Add assembly.getExportHistory tRPC procedure.
+Add export filter options to ExportDialog: filter by unit type, lifecycle, context.
+Show "N units changed since last export" badge when content has changed.
+
+## Story 7.8: Assembly Source Map
+
+Add sourceMap Json field to Assembly model in schema if not exists.
+
+Create src/components/assembly/SourceMapPanel.tsx:
+- Tab panel in Assembly view
+- Lists all sources: external resources (origin_type = external_*) vs user-written
+- Each entry: source name/URL, contributing unit count, % of assembly
+- "Reference List" section with formatted citations
+- Auto-generated from unit provenance data
+
+Add assembly.generateSourceMap tRPC procedure: { assemblyId }
+Returns: { sources: SourceEntry[], referenceList: string }
+
+## Story 7.9: Reasoning Chain
+
+Create src/components/assembly/ReasoningChain.tsx:
+- Sequential step visualization
+- Each step: unit card + role badge (foundation/motivation/validation/inference/conclusion)
+- Arrows between steps showing relation type
+- Gap warnings highlighted in amber
+- Auto-generate button (calls AI)
+
+Add to aiService: generateReasoningChain(contextId, goalUnitId)
+Returns: { steps: { unitId, role, transition }[], gaps: string[] }
+
+Add ai.generateReasoningChain tRPC procedure.
+
+## Story 7.10: Template Auto-Mapping (wired into Story 7.3)
+Already covered in 7.3 via TemplateMappingReview component and mapUnitsToTemplate service.
+
+## WIRE INTO APP:
+1. Add 'assembly' view mode to layout-store.ts ViewMode type
+2. When viewMode='assembly', render AssemblyBoard in the main page
+3. Add Assembly icon to toolbar view switcher
+4. Add "New Assembly" button to sidebar bottom nav
+
+## AFTER ALL DONE:
+1. npx prisma db push (to add ExportHistory model if added)
+2. git add -A
+3. git commit -m "feat: Epic 7 complete - Assembly board, templates, bridge text, export, diff, source map, reasoning chain"
+4. openclaw system event --text "Done: Epic 7 complete - Assembly and export features built" --mode now
