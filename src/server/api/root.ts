@@ -7,6 +7,7 @@ import { versionRouter } from "@/server/api/routers/version";
 import { audioRouter } from "@/server/api/routers/audio";
 import { contextRouter } from "@/server/api/routers/context";
 import { perspectiveRouter } from "@/server/api/routers/perspective";
+import { contextVisitRouter } from "@/server/api/routers/context-visit";
 
 export const appRouter = createTRPCRouter({
   unit: unitRouter,
@@ -17,6 +18,7 @@ export const appRouter = createTRPCRouter({
   audio: audioRouter,
   context: contextRouter,
   perspective: perspectiveRouter,
+  contextVisit: contextVisitRouter,
 });
 
 export type AppRouter = typeof appRouter;

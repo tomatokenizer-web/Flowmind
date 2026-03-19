@@ -5,12 +5,14 @@ import type { UnitType } from "@prisma/client";
 import { Layers } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useContextUnits } from "~/hooks/use-context-units";
+import { useContextBriefing } from "~/hooks/use-context-briefing";
 import { usePanelStore } from "~/stores/panel-store";
 import type { LifecycleState } from "~/components/unit/lifecycle-indicator";
 import { UnitCard, type UnitCardUnit } from "~/components/unit/unit-card";
 import { UnitCardSkeleton } from "~/components/unit/unit-card-skeleton";
 import { EmptyState } from "~/components/shared/empty-state";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
+import { ContextBriefing } from "./context-briefing";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -33,12 +35,28 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   const openPanel = usePanelStore((s) => s.openPanel);
 
+  const { briefing, isLoading: isBriefingLoading } =
+    useContextBriefing(activeContextId);
+
   const handleUnitClick = React.useCallback(
     (unit: UnitCardUnit) => {
       openPanel(unit.id);
     },
     [openPanel],
   );
+
+  const handleContinueWhereLeftOff = React.useCallback(() => {
+    if (briefing?.lastViewedUnitId) {
+      const el = document.getElementById(
+        `unit-${briefing.lastViewedUnitId}`,
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [briefing?.lastViewedUnitId]);
+
+  const handleStartFresh = React.useCallback(() => {
+    // Briefing dismisses itself internally; no extra action needed
+  }, []);
 
   // Map units to UnitCardUnit, applying perspective overrides
   const cardUnits: UnitCardUnit[] = React.useMemo(() => {
@@ -77,6 +95,15 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         ) : null
       )}
 
+      {/* Context briefing — auto-displays on re-entry */}
+      {activeContextId && !isBriefingLoading && briefing && (
+        <ContextBriefing
+          briefing={briefing}
+          onContinue={handleContinueWhereLeftOff}
+          onStartFresh={handleStartFresh}
+        />
+      )}
+
       {/* Unit list */}
       {isLoading ? (
         <div className="flex flex-col gap-space-3" role="list" aria-label="Loading units">
@@ -109,7 +136,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           }
         >
           {cardUnits.map((unit) => (
-            <div key={unit.id} role="listitem">
+            <div key={unit.id} id={`unit-${unit.id}`} role="listitem">
               <UnitCard
                 unit={unit}
                 onClick={handleUnitClick}

@@ -135,6 +135,7 @@ model User {
   sessions      Session[]
   units         Unit[]
   resources     ResourceUnit[]
+  contextVisits ContextVisit[]
 
   @@map("users")
 }
@@ -280,6 +281,7 @@ model Unit {
   versions          UnitVersion[]
   resources         UnitResource[]
   unitContexts      UnitContext[]
+  contextVisits     ContextVisit[]
 
   @@index([userId])
   @@index([projectId])
@@ -371,6 +373,7 @@ model Context {
   navigators     Navigator[]
   perspectives   UnitPerspective[]
   unitContexts   UnitContext[]
+  contextVisits  ContextVisit[]
 
   @@unique([name, parentId, projectId])
   @@index([projectId])
@@ -390,6 +393,23 @@ model UnitContext {
   @@index([unitId])
   @@index([contextId])
   @@map("unit_contexts")
+}
+
+model ContextVisit {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  contextId        String   @map("context_id") @db.Uuid
+  lastVisitedAt    DateTime @default(now()) @map("last_visited_at")
+  lastViewedUnitId String?  @map("last_viewed_unit_id") @db.Uuid
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  context          Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  lastViewedUnit   Unit?    @relation(fields: [lastViewedUnitId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, contextId])
+  @@index([userId])
+  @@index([contextId])
+  @@map("context_visits")
 }
 
 model UnitVersion {
