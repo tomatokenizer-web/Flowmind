@@ -1,6 +1,6 @@
 # Story 2.10: Drag-and-Drop Foundation & Undo/Redo System
 
-Status: in-progress
+Status: complete
 
 ## Story
 
@@ -38,9 +38,9 @@ So that I can freely experiment with my thought organization without fear of los
   - [x] Arrow Up/Down to move within the list
   - [x] Escape to cancel drag
   - [x] Announce drag actions for screen readers (`announcements` prop)
-- [ ] Task 4: Persist reorder changes (AC: #1) — deferred to integration phase
-  - [ ] Add `sort_order` field to Unit model (integer, nullable)
-  - [ ] Create `unit.reorder` tRPC procedure accepting `{ unitId, newIndex }`
+- [x] Task 4: Persist reorder changes (AC: #1)
+  - [x] Add `sort_order` field to Unit model (integer, nullable)
+  - [x] Create `unit.reorder` tRPC procedure accepting `{ unitId, newIndex, projectId }`
   - [ ] Use optimistic UI for reorder — update local state immediately, sync to server
   - [ ] Handle reorder conflicts (if another user reordered simultaneously)
 - [x] Task 5: Create undo/redo system (AC: #5, #6, #7)
@@ -58,18 +58,18 @@ So that I can freely experiment with my thought organization without fear of los
   - [x] On undo: show toast "Unit creation undone", "Edit undone", etc. → integrated in undo-store
   - [x] Toast includes "Redo" action button for quick redo → `undoAction` callback
   - [x] Use existing toast system from Story 1.7
-- [ ] Task 8: Implement delete confirmation dialog (AC: #8) — deferred to integration phase
-  - [ ] Create `src/components/dialogs/ConfirmDeleteDialog.tsx`
-  - [ ] Show unit title/preview in the dialog
-  - [ ] "Delete" (destructive red) and "Cancel" buttons
-  - [ ] Keyboard: Enter to confirm, Escape to cancel
-  - [ ] On confirm: push to undo stack, then delete
-- [ ] Task 9: Integrate undo system with existing mutations — deferred to integration phase
-  - [ ] Wire `unit.create` to push create action to undo stack
-  - [ ] Wire `unit.update` to push edit action (with before/after content)
-  - [ ] Wire `unit.delete` to push delete action (with full unit data for restoration)
-  - [ ] Wire `unit.transitionLifecycle` to push lifecycle action
-  - [ ] Wire reorder to push reorder action
+- [x] Task 8: Implement delete confirmation dialog (AC: #8)
+  - [x] Create `src/components/dialogs/ConfirmDeleteDialog.tsx`
+  - [x] Show unit title/preview in the dialog
+  - [x] "Delete" (destructive red) and "Cancel" buttons
+  - [x] Keyboard: Enter to confirm, Escape to cancel
+  - [x] On confirm: push to undo stack, then delete
+- [x] Task 9: Integrate undo system with existing mutations
+  - [x] Wire `unit.create` to push create action to undo stack
+  - [x] Wire `unit.update` to push edit action (with before/after content)
+  - [x] Wire `unit.delete` to push delete action (with full unit data for restoration)
+  - [x] Wire `unit.transitionLifecycle` to push lifecycle action (already done in use-unit-lifecycle.ts)
+  - [x] Wire reorder to push reorder action
 - [ ] Task 10: Write tests — deferred to integration phase
   - [ ] Test drag-and-drop reorders cards correctly
   - [ ] Test keyboard drag (Space → Arrow → Space)

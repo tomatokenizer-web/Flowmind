@@ -267,6 +267,9 @@ model Unit {
   branchPotential   Float                  @default(0) @map("branch_potential")
   driftScore        Float                  @default(0) @map("drift_score")
 
+  // A-10: Ordering
+  sortOrder         Int?                   @map("sort_order")
+
   // A-11: User-defined
   energyLevel       EnergyLevel?           @map("energy_level")
   meta              Json?

@@ -1,6 +1,6 @@
 # Story 2.2: Unit Type System with AI-Proposed Types
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 

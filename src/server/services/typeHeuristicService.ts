@@ -109,6 +109,17 @@ const HEURISTIC_RULES: HeuristicRule[] = [
  * Suggest a unit type based on content heuristics.
  * Returns `observation` as fallback when no rule matches.
  */
+/**
+ * Convenience wrapper — returns just the UnitType string.
+ */
+export function inferUnitType(content: string): UnitType {
+  return suggestUnitType(content).unitType;
+}
+
+/**
+ * Suggest a unit type based on content heuristics.
+ * Returns `observation` as fallback when no rule matches.
+ */
 export function suggestUnitType(content: string): HeuristicResult {
   const trimmed = content.trim();
 

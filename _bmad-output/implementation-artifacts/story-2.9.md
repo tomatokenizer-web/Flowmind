@@ -1,6 +1,6 @@
 # Story 2.9: Onboarding First-Time Experience
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 

@@ -201,6 +201,21 @@ export const unitRouter = createTRPCRouter({
       );
     }),
 
+  reorder: protectedProcedure
+    .input(
+      z.object({
+        unitId: z.string().uuid(),
+        newIndex: z.number().int().min(0),
+        projectId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.unit.update({
+        where: { id: input.unitId },
+        data: { sortOrder: input.newIndex },
+      });
+    }),
+
   archive: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
