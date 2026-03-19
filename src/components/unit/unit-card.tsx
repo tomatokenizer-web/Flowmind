@@ -4,6 +4,7 @@ import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, X } from "lucide-react";
+import { useSelectionStore } from "~/stores/selectionStore";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { UnitTypeBadge } from "./unit-type-badge";
@@ -92,6 +93,9 @@ export function UnitCard({
   className,
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
+  const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
+  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const isSelected = selectedUnitId === unit.id;
 
   const isDraft = unit.lifecycle === "draft";
   const isPending = unit.lifecycle === "pending";
@@ -120,15 +124,15 @@ export function UnitCard({
         isDraft && "border-dashed opacity-80 bg-lifecycle-draft-bg",
         isPending && "border-l-lifecycle-pending-border bg-lifecycle-pending-bg/30",
 
-        // Selected state
-        selected && "ring-2 ring-accent-primary",
+        // Selected state (from prop or global selection store)
+        (selected || isSelected) && "ring-2 ring-accent-primary",
 
         className,
       )}
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}
-      onClick={() => onClick?.(unit)}
+      onClick={() => { setSelectedUnit(unit.id); onClick?.(unit); }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();

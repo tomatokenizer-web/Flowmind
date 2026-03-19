@@ -2,6 +2,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createRelationService } from "@/server/services/relationService";
+import { updateLoopbacksForContext } from "@/server/services/cycleDetectionService";
+import { createUnitMergeService } from "@/server/services/unitMergeService";
 
 // ─── Zod Schemas ────────────────────────────────────────────────────
 
@@ -71,7 +73,22 @@ export const relationRouter = createTRPCRouter({
       }
 
       const service = createRelationService(ctx.db);
-      return service.create(input, ctx.session.user.id!);
+      const relation = await service.create(input, ctx.session.user.id!);
+
+      // Run cycle detection if relation belongs to a context (via perspective)
+      if (input.perspectiveId) {
+        const perspective = await ctx.db.unitPerspective.findUnique({
+          where: { id: input.perspectiveId },
+          select: { contextId: true },
+        });
+        if (perspective) {
+          void updateLoopbacksForContext(ctx.db, perspective.contextId).catch(() => {
+            // Non-fatal — cycle detection runs best-effort
+          });
+        }
+      }
+
+      return relation;
     }),
 
   update: protectedProcedure
@@ -101,5 +118,25 @@ export const relationRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const service = createRelationService(ctx.db);
       return service.listBetween(input.sourceUnitId, input.targetUnitId);
+    }),
+
+  // ─── Unit Merge ──────────────────────────────────────────────────
+
+  mergePreview: protectedProcedure
+    .input(z.object({ sourceUnitId: z.string().uuid(), targetUnitId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const service = createUnitMergeService(ctx.db);
+      return service.preview(input.sourceUnitId, input.targetUnitId);
+    }),
+
+  merge: protectedProcedure
+    .input(z.object({
+      sourceUnitId: z.string().uuid(),
+      targetUnitId: z.string().uuid(),
+      keepContent: z.enum(["source", "target"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const service = createUnitMergeService(ctx.db);
+      return service.merge(input);
     }),
 });
