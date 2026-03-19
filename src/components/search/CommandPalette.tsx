@@ -17,6 +17,7 @@ import { api } from "~/trpc/react";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
+import { useSidebarStore } from "~/stores/sidebar-store";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType } from "@prisma/client";

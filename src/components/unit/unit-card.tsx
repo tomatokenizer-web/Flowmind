@@ -283,13 +283,13 @@ export function UnitCard({
               </div>
             </div>
 
-            {/* Version history link placeholder */}
+            {/* Version history — opens detail panel on history tab */}
             <button
               type="button"
               className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                // Placeholder — wired in Story 2.7
+                onClick?.(unit); // open detail panel
               }}
             >
               <History className="h-3 w-3" aria-hidden="true" />
