@@ -3,7 +3,7 @@ import { ToastProvider } from "~/components/shared/toast";
 import { GlobalKeyboardShortcuts } from "~/components/shared/global-keyboard-shortcuts";
 import { ProjectProvider } from "~/contexts/project-context";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <ProjectProvider>
       <AppShell>

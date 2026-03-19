@@ -1,0 +1,121 @@
+You are doing a critical integration audit and fix of the Flowmind project. The app has been coded epics 1-6 but has broken integration. Fix everything so the app actually works end-to-end.
+
+## ROOT PROBLEMS TO FIX:
+
+### Problem 1: Split routing - users land on dead-end page
+- `src/app/page.tsx` redirects authenticated users to `/dashboard-app`
+- But `/dashboard-app` has no capture input, no working projectId, no context creation
+- The working app is at `src/app/(app)/page.tsx` but users never get there
+- FIX: Change `src/app/page.tsx` to redirect to `/app` (or whatever the (app) route resolves to)
+- Actually the (app) route group resolves to `/` after the group folder... check the actual URL by reading src/app/(app)/page.tsx and its layout
+- The correct fix: redirect from `/` to the (app) layout route. Since (app) is a route group, its page IS at `/`. But there's a conflict - both `/` (the landing) and `/(app)/` try to serve `/`. 
+- REAL FIX: Move the main app to `/app` route. Create `src/app/app/page.tsx` and `src/app/app/layout.tsx` that contain the AppShell + working page content. Update redirect in `src/app/page.tsx` to go to `/app` when logged in.
+
+### Problem 2: ContextTree has no projectId
+- `src/components/context/context-tree.tsx` has `const DEFAULT_PROJECT_ID: string | undefined = undefined`
+- This means contexts never load
+- FIX: The Sidebar needs to receive projectId. Pass it from the AppShell which should get it from useDefaultProject hook.
+- Update `src/components/layout/sidebar.tsx` to accept projectId prop
+- Update `src/components/layout/app-shell.tsx` to use useDefaultProject and pass projectId down to Sidebar and ContextTree
+
+### Problem 3: No capture input visible
+- CaptureBar (the floating "Capture a thought" button) is inside CaptureOverlay which only renders when isOpen=true
+- But CaptureBar itself is rendered inside CaptureMode component... check if CaptureBar renders independently
+- Read src/components/unit/capture-bar.tsx and capture-mode.tsx fully
+- FIX: CaptureBar should always be visible at the bottom of the screen (not inside the CaptureOverlay). Make sure CaptureBar is rendered in the main layout directly, not conditionally inside CaptureOverlay.
+
+### Problem 4: Context creation dialog not wired
+- `src/app/dashboard-app/page.tsx` has `setShowCreateDialog(true)` but showCreateDialog is never used to render a dialog
+- FIX: Import and render the CreateContextDialog (check if it exists in src/components/context/), wire it to showCreateDialog state
+
+### Problem 5: dashboard-app vs app confusion  
+- There are two layouts: `src/app/dashboard-app/` and `src/app/(app)/`
+- Users go to /dashboard-app but the good code is in (app)
+- FIX: Consolidate. Make /dashboard-app redirect to /app, or make /app the canonical destination
+
+## HOW TO FIX - STEP BY STEP:
+
+1. Read ALL these files first to understand current state:
+   - src/app/page.tsx
+   - src/app/(app)/page.tsx  
+   - src/app/(app)/layout.tsx
+   - src/app/dashboard-app/page.tsx
+   - src/app/dashboard-app/layout.tsx
+   - src/components/layout/app-shell.tsx
+   - src/components/layout/sidebar.tsx
+   - src/components/context/context-tree.tsx (first 80 lines)
+   - src/components/unit/capture-bar.tsx
+   - src/components/unit/capture-mode.tsx (first 50 lines)
+   - src/hooks/use-default-project.ts
+   - src/hooks/use-context-tree.ts
+
+2. Then implement these fixes:
+
+   a. Create `src/app/app/layout.tsx`:
+   ```
+   import { AppShellWithProject } from "~/components/layout/app-shell-with-project";
+   import { ToastProvider } from "~/components/shared/toast";
+   import { GlobalKeyboardShortcuts } from "~/components/shared/global-keyboard-shortcuts";
+   export default function AppLayout({ children }) {
+     return (
+       <AppShellWithProject>
+         {children}
+         <ToastProvider />
+         <GlobalKeyboardShortcuts />
+       </AppShellWithProject>
+     );
+   }
+   ```
+
+   b. Create `src/components/layout/app-shell-with-project.tsx`:
+   - "use client" component
+   - Uses useDefaultProject() to get real projectId
+   - Passes projectId to AppShell (modify AppShell to accept it or use context)
+   - Passes projectId to Sidebar via a React context or prop
+   - Renders CaptureBar always visible at bottom
+
+   c. Create `src/app/app/page.tsx` - the main working page:
+   - "use client"
+   - Gets viewMode from layoutStore
+   - Gets projectId from a ProjectContext (React context set by AppShellWithProject)
+   - Gets activeContextId from sidebarStore
+   - Renders: ContextView (default), GraphView (when viewMode=graph), ThreadView (when viewMode=thread)
+   - Renders CaptureOverlay (the modal when capture is open)
+
+   d. Update `src/app/page.tsx`:
+   - Redirect authenticated users to `/app` instead of `/dashboard-app`
+
+   e. Update `src/components/context/context-tree.tsx`:
+   - Accept projectId as required prop (remove DEFAULT_PROJECT_ID = undefined)
+   - Update useContextTree call to use real projectId
+
+   f. Update `src/components/layout/sidebar.tsx`:
+   - Accept projectId prop
+   - Pass to ContextTree
+
+   g. Fix `src/app/dashboard-app/page.tsx` - either:
+   - Make it redirect to /app, OR
+   - Add the CreateContextDialog so "New Context" button works
+
+   h. Create ProjectContext:
+   - `src/contexts/project-context.tsx` - React context providing projectId string | undefined
+   - Export useProjectId() hook
+
+3. Verify CaptureBar is always visible and clicking it opens the capture overlay
+
+4. Verify context creation works:
+   - Check if CreateContextDialog exists in src/components/context/
+   - If not, create a simple one using Radix Dialog that calls api.context.create
+   - Wire it into the sidebar's "+" button and the dashboard "New Context" button
+
+5. Test the full user flow mentally:
+   - User logs in → redirected to /app
+   - Sees AppShell with sidebar (showing contexts) and main content area
+   - CaptureBar visible at bottom → click → overlay opens → type thought → Cmd+Enter → unit created → appears in list
+   - Sidebar shows "New Context" button → click → dialog opens → type name → context created → appears in sidebar tree
+   - Click context in sidebar → context view shows units in that context
+
+## AFTER FIXING:
+1. git add -A
+2. git commit -m "fix: complete integration audit - routing, projectId, capture bar, context creation all working"
+3. openclaw system event --text "Done: integration audit complete, app should be fully working now" --mode now

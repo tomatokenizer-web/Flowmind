@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
+import { useProjectId } from "~/contexts/project-context";
 import { Button } from "~/components/ui/button";
 import { ContextTree } from "~/components/context/context-tree";
 
@@ -21,12 +22,14 @@ const SIDEBAR_COLLAPSED_WIDTH = 60;
 
 interface SidebarProps {
   className?: string;
+  projectId?: string;
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ className, projectId }: SidebarProps) {
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
+  const projectId = useProjectId();
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
   const isCollapsed = !sidebarOpen || sidebarWidth === 60;
@@ -104,7 +107,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Context tree */}
-      <ContextTree collapsed={isCollapsed} />
+      <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
       {/* Bottom nav items */}
       <div className="border-t border-border p-space-2">

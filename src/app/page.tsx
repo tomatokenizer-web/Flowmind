@@ -4,9 +4,10 @@ import Link from "next/link";
 
 export default async function Home() {
   const session = await auth();
-  
+
+  // Authenticated users go straight to the app
   if (session?.user) {
-    redirect("/dashboard-app");
+    redirect("/dashboard");
   }
 
   return (

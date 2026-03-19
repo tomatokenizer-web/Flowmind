@@ -1,23 +1,22 @@
 "use client";
 
-import { Layout, Focus, GitBranch, List } from "lucide-react";
 import { useLayoutStore } from "~/stores/layout-store";
-import { useDefaultProject } from "~/hooks/use-default-project";
-import { Button } from "~/components/ui/button";
+import { useProjectId, useProjectLoading } from "~/contexts/project-context";
+import { useSidebarStore } from "~/stores/sidebar-store";
 import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
+import { CaptureBar } from "~/components/unit/capture-bar";
 import { CaptureOverlay } from "~/components/unit/capture-mode";
-import { useSidebarStore } from "~/stores/sidebar-store";
 
-export default function DashboardPage() {
+export default function AppPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
-  const toggleDetailPanel = useLayoutStore((s) => s.toggleDetailPanel);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
-  const { projectId, isLoading } = useDefaultProject();
+  const projectId = useProjectId();
+  const isLoading = useProjectLoading();
 
-  if (isLoading || !projectId) {
+  if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="h-8 w-8 animate-pulse rounded-full bg-bg-secondary" />
@@ -27,27 +26,37 @@ export default function DashboardPage() {
 
   if (viewMode === "graph") {
     return (
-      <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
-        <GraphView projectId={projectId} />
-      </section>
+      <>
+        <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
+          <GraphView projectId={projectId} />
+        </section>
+        <CaptureBar />
+        {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
+      </>
     );
   }
 
   if (viewMode === "thread") {
     return (
-      <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
-        <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
-      </section>
+      <>
+        <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
+          <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
+        </section>
+        <CaptureBar />
+        {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
+      </>
     );
   }
 
   return (
-    <section aria-label="Dashboard" className="relative h-full">
-      {/* Context / unit list view */}
+    <>
       <ContextView projectId={projectId} />
-
-      {/* Floating capture bar + overlay */}
-      <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
-    </section>
+      {/* CaptureBar always visible — floating button at bottom */}
+      <CaptureBar />
+      {/* CaptureOverlay — fullscreen modal when capture is open */}
+      {projectId && (
+        <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
+      )}
+    </>
   );
 }

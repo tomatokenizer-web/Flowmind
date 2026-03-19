@@ -18,23 +18,16 @@ import { ContextMergeDialog } from "./context-merge-dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 
-// ─── Default project placeholder ────────────────────────────────────
-// TODO: Epic 9 — real project selector
-const DEFAULT_PROJECT_ID: string | undefined = undefined;
-
 // ─── Props ──────────────────────────────────────────────────────────
 
 interface ContextTreeProps {
-  projectId?: string;
+  projectId: string | undefined;
   collapsed: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
 
-export function ContextTree({
-  projectId = DEFAULT_PROJECT_ID,
-  collapsed,
-}: ContextTreeProps) {
+export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   const {
     flatNodes,
     isLoading,
