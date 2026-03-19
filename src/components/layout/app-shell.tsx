@@ -3,6 +3,7 @@
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
+import { useFocusModeStore } from "~/stores/focusModeStore";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { DetailPanel } from "./detail-panel";
@@ -19,6 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const setSidebarOpen = useLayoutStore((s) => s.setSidebarOpen);
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
+  const focusMode = useFocusModeStore((s) => s.focusMode);
 
   // Auto-collapse sidebar at lg breakpoint, hide at md
   React.useEffect(() => {
@@ -93,10 +95,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Shell body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop sidebar (lg+) */}
-        <div className="hidden lg:block">
-          <Sidebar />
-        </div>
+        {/* Desktop sidebar (lg+) — hidden in focus mode */}
+        {!focusMode && (
+          <div className="hidden lg:block">
+            <Sidebar />
+          </div>
+        )}
 
         {/* Mobile sidebar overlay (below lg) */}
         {mobileMenuOpen && (
@@ -137,13 +141,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </main>
 
-            {/* Detail panel — inline at xl, overlay below */}
-            <div className="hidden xl:block">
-              <DetailPanel />
-            </div>
-            <div className="xl:hidden">
-              <DetailPanel fullScreenOverlay />
-            </div>
+            {/* Detail panel — inline at xl, overlay below; hidden in focus mode */}
+            {!focusMode && (
+              <>
+                <div className="hidden xl:block">
+                  <DetailPanel />
+                </div>
+                <div className="xl:hidden">
+                  <DetailPanel fullScreenOverlay />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

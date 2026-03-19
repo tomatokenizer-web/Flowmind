@@ -52,8 +52,11 @@ export function useOnboarding(): UseOnboardingReturn {
     setAlreadyCompleted(isOnboardingCompleted());
   }, []);
 
-  // Check if user has zero items
-  const { data: hasAnyData, isLoading } = api.unit.hasAny.useQuery(undefined, { enabled: !alreadyCompleted });
+  // Check if user has zero items — retry:false prevents console spam on 401 while session loads
+  const { data: hasAnyData, isLoading } = api.unit.hasAny.useQuery(undefined, {
+    enabled: !alreadyCompleted,
+    retry: false,
+  });
 
   const hasZeroitems = !isLoading && hasAnyData?.hasAny === false;
   const isFirstTime = !alreadyCompleted && hasZeroitems;

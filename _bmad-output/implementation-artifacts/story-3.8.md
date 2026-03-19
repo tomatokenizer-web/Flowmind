@@ -1,6 +1,6 @@
 # Story 3.8: Breadcrumb Navigation, Focus Mode & Context Preservation
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 

@@ -1,6 +1,6 @@
 # Story 3.7: Project Dashboard with Context Grid
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 

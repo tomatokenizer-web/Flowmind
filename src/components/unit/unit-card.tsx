@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { UnitTypeBadge } from "./unit-type-badge";
@@ -35,6 +35,8 @@ export interface UnitCardProps {
   selected?: boolean;
   onClick?: (unit: UnitCardUnit) => void;
   onLifecycleAction?: (unitId: string, action: "approve" | "reject" | "reset") => void;
+  /** When provided, shows "Remove from Context" in the context menu */
+  onRemoveFromContext?: () => void;
   className?: string;
 }
 
@@ -86,6 +88,7 @@ export function UnitCard({
   selected = false,
   onClick,
   onLifecycleAction,
+  onRemoveFromContext,
   className,
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
@@ -104,7 +107,7 @@ export function UnitCard({
     <motion.article
       className={cn(
         // Base card styles
-        "relative rounded-card bg-bg-primary border border-border",
+        "group relative rounded-card bg-bg-primary border border-border",
         "shadow-resting p-4 cursor-pointer",
         "border-l-4",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
@@ -170,6 +173,27 @@ export function UnitCard({
                 <Link2 className="h-3 w-3" aria-hidden="true" />
                 {unit.relationCount}
               </span>
+            )}
+            {/* Remove from context — shown when onRemoveFromContext is provided */}
+            {onRemoveFromContext && (
+              <button
+                type="button"
+                aria-label="Remove from context"
+                title="Remove from context"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveFromContext();
+                }}
+                className={cn(
+                  "inline-flex items-center justify-center rounded p-0.5",
+                  "text-text-tertiary hover:text-accent-danger hover:bg-bg-hover",
+                  "transition-colors duration-fast",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-danger",
+                  "opacity-0 group-hover:opacity-100",
+                )}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             )}
           </div>
         </div>

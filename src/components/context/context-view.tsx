@@ -4,6 +4,7 @@ import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { Layers } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { api } from "~/trpc/react";
 import { useContextUnits } from "~/hooks/use-context-units";
 import { useContextBriefing } from "~/hooks/use-context-briefing";
 import { usePanelStore } from "~/stores/panel-store";
@@ -13,6 +14,7 @@ import { UnitCardSkeleton } from "~/components/unit/unit-card-skeleton";
 import { EmptyState } from "~/components/shared/empty-state";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
+import { AddUnitToContext } from "./add-unit-to-context";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -34,9 +36,20 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   } = useContextUnits({ projectId });
 
   const openPanel = usePanelStore((s) => s.openPanel);
+  const utils = api.useUtils();
 
   const { briefing, isLoading: isBriefingLoading } =
     useContextBriefing(activeContextId);
+
+  // Remove unit from context mutation
+  const removeUnit = api.context.removeUnit.useMutation({
+    onSuccess: async () => {
+      if (activeContextId) {
+        await utils.unit.list.invalidate({ projectId: projectId! });
+        await utils.context.getById.invalidate({ id: activeContextId });
+      }
+    },
+  });
 
   const handleUnitClick = React.useCallback(
     (unit: UnitCardUnit) => {
@@ -47,15 +60,13 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   const handleContinueWhereLeftOff = React.useCallback(() => {
     if (briefing?.lastViewedUnitId) {
-      const el = document.getElementById(
-        `unit-${briefing.lastViewedUnitId}`,
-      );
+      const el = document.getElementById(`unit-${briefing.lastViewedUnitId}`);
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [briefing?.lastViewedUnitId]);
 
   const handleStartFresh = React.useCallback(() => {
-    // Briefing dismisses itself internally; no extra action needed
+    // Briefing dismisses itself internally
   }, []);
 
   // Map units to UnitCardUnit, applying perspective overrides
@@ -68,11 +79,14 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       return {
         id: unit.id,
         content: unit.content,
-        unitType: ((perspective as { type?: string | null } | undefined)?.type as UnitType) ?? unit.unitType,
+        unitType:
+          ((perspective as { type?: string | null } | undefined)
+            ?.type as UnitType) ?? unit.unitType,
         lifecycle: unit.lifecycle as LifecycleState,
         createdAt: unit.createdAt,
         branchPotential: (unit as { branchPotential?: number }).branchPotential,
-        relationCount: (unit as { _count?: { perspectives?: number } })._count?.perspectives,
+        relationCount: (unit as { _count?: { perspectives?: number } })._count
+          ?.perspectives,
         originType: unit.originType ?? undefined,
         sourceSpan: (unit as { sourceSpan?: string | null }).sourceSpan,
       };
@@ -82,18 +96,29 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   return (
     <div className={cn("flex flex-col gap-space-4 p-space-4", className)}>
       {/* Context header — only when a context is active */}
-      {activeContextId && (
-        isContextLoading ? (
+      {activeContextId &&
+        (isContextLoading ? (
           <ContextHeaderSkeleton />
         ) : context ? (
-          <ContextHeader
-            name={context.name}
-            snapshot={context.snapshot ?? ""}
-            unitCount={context._count?.unitContexts ?? 0}
-            perspectiveCount={context._count?.perspectives ?? 0}
-          />
-        ) : null
-      )}
+          <div className="flex flex-col gap-2">
+            <ContextHeader
+              name={context.name}
+              snapshot={context.snapshot ?? ""}
+              unitCount={context._count?.unitContexts ?? 0}
+              perspectiveCount={context._count?.perspectives ?? 0}
+            />
+            {/* Add Unit to Context button */}
+            <div className="flex justify-end">
+              <AddUnitToContext
+                contextId={activeContextId}
+                projectId={projectId!}
+                onAdded={() => {
+                  void utils.unit.list.invalidate({ projectId: projectId! });
+                }}
+              />
+            </div>
+          </div>
+        ) : null)}
 
       {/* Context briefing — auto-displays on re-entry */}
       {activeContextId && !isBriefingLoading && briefing && (
@@ -106,7 +131,11 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
       {/* Unit list */}
       {isLoading ? (
-        <div className="flex flex-col gap-space-3" role="list" aria-label="Loading units">
+        <div
+          className="flex flex-col gap-space-3"
+          role="list"
+          aria-label="Loading units"
+        >
           {Array.from({ length: 5 }, (_, i) => (
             <UnitCardSkeleton key={i} />
           ))}
@@ -115,9 +144,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         <EmptyState
           icon={Layers}
           headline={
-            activeContextId
-              ? "No units in this context"
-              : "No thought units yet"
+            activeContextId ? "No units in this context" : "No thought units yet"
           }
           description={
             activeContextId
@@ -140,6 +167,15 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               <UnitCard
                 unit={unit}
                 onClick={handleUnitClick}
+                onRemoveFromContext={
+                  activeContextId
+                    ? () =>
+                        removeUnit.mutate({
+                          unitId: unit.id,
+                          contextId: activeContextId,
+                        })
+                    : undefined
+                }
               />
             </div>
           ))}

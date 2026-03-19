@@ -1,6 +1,6 @@
 # Story 3.4: Context View — Filtered Unit Display
 
-Status: ready-for-dev
+Status: complete
 
 ## Story
 
