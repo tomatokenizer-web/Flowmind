@@ -20,7 +20,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, X, Eye, Edit3, Plus, Download, Loader2, Layers } from "lucide-react";
+import { GripVertical, X, Eye, Edit3, Plus, Download, Loader2, Layers, ArrowLeft } from "lucide-react";
+import { useLayoutStore } from "~/stores/layout-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
@@ -211,6 +212,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [localItems, setLocalItems] = React.useState<AssemblyItemData[]>([]);
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
   const openPanel = usePanelStore((s) => s.openPanel);
 
   const utils = api.useUtils();
@@ -289,12 +291,21 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setViewMode("canvas")}
+            className="text-text-tertiary hover:text-text-primary transition-colors"
+            title="Back to units"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
           <h2 className="font-heading text-lg font-semibold text-text-primary">{assembly.name}</h2>
           {assembly.description && (
             <p className="text-sm text-text-secondary">{assembly.description}</p>
           )}
           <p className="text-xs text-text-tertiary">{localItems.length} units</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button

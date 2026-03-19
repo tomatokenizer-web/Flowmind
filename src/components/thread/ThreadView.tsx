@@ -214,6 +214,10 @@ function ThreadItem({
           unit={unit}
           variant="standard"
           onLifecycleAction={onLifecycleAction}
+          onClick={(u) => {
+            useSelectionStore.getState().setSelectedUnit(u.id);
+            usePanelStore.getState().openPanel(u.id);
+          }}
         />
         <BranchPointIndicator
           forkCount={forkCount}

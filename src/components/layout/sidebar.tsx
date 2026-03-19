@@ -121,6 +121,17 @@ export function Sidebar({ className }: SidebarProps) {
           <BookOpen className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Assembly View</span>}
         </button>
+        <button type="button" onClick={() => {
+            useSidebarStore.getState().setActiveContext(null);
+            useLayoutStore.getState().setViewMode("canvas");
+            // Signal to show only pinned units (stored in a simple flag for now)
+            window.dispatchEvent(new CustomEvent("flowmind:show-starred"));
+          }}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="Starred Units">
+          <Star className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Starred</span>}
+        </button>
         <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}>
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}

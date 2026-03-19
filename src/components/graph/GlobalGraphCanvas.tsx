@@ -3,6 +3,8 @@
 import * as React from "react";
 import * as d3 from "d3";
 import { useGraphStore } from "~/stores/graphStore";
+import { usePanelStore } from "~/stores/panel-store";
+import { useSelectionStore } from "~/stores/selectionStore";
 
 // ─── Unit type → hex color ────────────────────────────────────────
 
@@ -71,6 +73,8 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
   const setLocalHub = useGraphStore((s) => s.setLocalHub);
   const setLayer = useGraphStore((s) => s.setLayer);
   const filters = useGraphStore((s) => s.filters);
+  const openPanel = usePanelStore((s) => s.openPanel);
+  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
 
   // Tooltip state
   const [tooltip, setTooltip] = React.useState<{
@@ -255,11 +259,13 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
     (e: React.MouseEvent) => {
       const node = hitTest(e.clientX, e.clientY);
       if (node) {
+        setSelectedUnit(node.id);
+        openPanel(node.id);
         setLocalHub(node.id);
         setLayer("local");
       }
     },
-    [hitTest, setLocalHub, setLayer],
+    [hitTest, setLocalHub, setLayer, setSelectedUnit, openPanel],
   );
 
   const handleWheel = React.useCallback(
