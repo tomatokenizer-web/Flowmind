@@ -172,7 +172,7 @@ export const aiRouter = createTRPCRouter({
 
       const result = await aiService.decomposeText(
         input.text,
-        input.contextId,
+        input.contextId ?? "",
         existingUnits,
         {
           userId: ctx.session.user.id!,
@@ -182,5 +182,307 @@ export const aiRouter = createTRPCRouter({
       );
 
       return result;
+    }),
+
+  // ─── Story 5.4: Unit Split with Relation Re-attribution ─────────────────
+
+  /**
+   * Propose how to reassign relations when splitting a unit into two parts
+   */
+  proposeSplitReattribution: protectedProcedure
+    .input(proposeSplitReattributionSchema)
+    .mutation(async ({ ctx, input }): Promise<SplitReattributionResult> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      return aiService.proposeSplitReattribution(
+        input.unitId,
+        input.contentA,
+        input.contentB,
+        {
+          userId: ctx.session.user.id!,
+          sessionId,
+        }
+      );
+    }),
+
+  // ─── Story 5.5: Alternative Framing ─────────────────────────────────────
+
+  /**
+   * Generate alternative ways to frame a unit's content
+   */
+  generateAlternativeFraming: protectedProcedure
+    .input(generateAlternativeFramingSchema)
+    .mutation(async ({ ctx, input }): Promise<AlternativeFraming[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      return aiService.generateAlternativeFraming(
+        input.content,
+        input.currentType,
+        {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        }
+      );
+    }),
+
+  // ─── Story 5.6: Counter-Arguments ───────────────────────────────────────
+
+  /**
+   * Suggest counter-arguments for a claim or argument
+   */
+  suggestCounterArguments: protectedProcedure
+    .input(suggestCounterArgumentsSchema)
+    .mutation(async ({ ctx, input }): Promise<CounterArgument[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      return aiService.suggestCounterArguments(
+        input.content,
+        input.unitType,
+        {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        }
+      );
+    }),
+
+  // ─── Story 5.7: Assumption Identification ───────────────────────────────
+
+  /**
+   * Identify underlying assumptions in content
+   */
+  identifyAssumptions: protectedProcedure
+    .input(identifyAssumptionsSchema)
+    .mutation(async ({ ctx, input }): Promise<IdentifiedAssumption[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      return aiService.identifyAssumptions(input.content, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.8: Contradiction Detection ─────────────────────────────────
+
+  /**
+   * Detect contradictions between units in a context
+   */
+  detectContradictions: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<ContradictionPair[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 30,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.detectContradictions(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.9: Merge Suggestion ────────────────────────────────────────
+
+  /**
+   * Suggest units that could be merged
+   */
+  suggestMerge: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<MergeSuggestion[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 30,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.suggestMerge(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.10: Completeness Analysis ──────────────────────────────────
+
+  /**
+   * Analyze completeness of an argument or context
+   */
+  analyzeCompleteness: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<CompletenessAnalysis> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 30,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.analyzeCompleteness(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.11: Context Summary ────────────────────────────────────────
+
+  /**
+   * Generate a summary of a context's content
+   */
+  summarizeContext: protectedProcedure
+    .input(contextUnitsSchema)
+    .query(async ({ ctx, input }): Promise<ContextSummary> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 50,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.summarizeContext(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.12: Question Generation ────────────────────────────────────
+
+  /**
+   * Generate questions to deepen understanding
+   */
+  generateQuestions: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<GeneratedQuestion[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 30,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.generateQuestions(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.13: Next Steps ─────────────────────────────────────────────
+
+  /**
+   * Suggest next steps for developing the argument
+   */
+  suggestNextSteps: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<NextStepSuggestion[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 30,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.suggestNextSteps(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.14: Key Term Extraction ────────────────────────────────────
+
+  /**
+   * Extract key terms from context units
+   */
+  extractKeyTerms: protectedProcedure
+    .input(contextUnitsSchema)
+    .mutation(async ({ ctx, input }): Promise<ExtractedTerm[]> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { id: true, content: true, unitType: true },
+        take: 50,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.extractKeyTerms(units, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 5.15: Stance Classification ──────────────────────────────────
+
+  /**
+   * Classify the stance of a unit relative to another
+   */
+  classifyStance: protectedProcedure
+    .input(stanceClassificationSchema)
+    .mutation(async ({ ctx, input }): Promise<StanceClassification> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+
+      return aiService.classifyStance(
+        input.unitContent,
+        input.targetContent,
+        {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        }
+      );
     }),
 });
