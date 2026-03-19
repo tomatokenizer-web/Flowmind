@@ -1,0 +1,53 @@
+Audit and fix Epic 4 of the Flowmind project. Then proceed to start Epic 5.
+
+## PART A: AUDIT AND FIX EPIC 4
+
+Read the following files and fix any issues found:
+
+1. src/components/graph/GraphView.tsx
+   - api.unit.list requires { projectId } but it's being called without it
+   - Fix: use a DEFAULT_PROJECT_ID constant or fetch from session/route. For now use a query param or hardcode a fallback. Check how other pages handle projectId (see src/app/dashboard-app/page.tsx for reference)
+   - Also api.useQueries may not exist in tRPC v11 - check src/trpc/react.tsx for available exports. If useQueries doesn't exist, batch fetch differently.
+
+2. src/components/graph/GlobalGraphCanvas.tsx - read it fully and fix any TypeScript errors
+
+3. src/components/graph/LocalCardArray.tsx - read it fully and fix any issues
+
+4. src/components/graph/GraphControls.tsx - read it fully and fix any issues
+
+5. Check src/server/api/routers/relation-type.ts - make sure relationType.list works correctly with the SystemRelationType model
+
+6. Check prisma/seed.ts - make sure all 23 types are seeded properly with upsert
+
+7. Create individual story status files for Epic 4 in _bmad-output/implementation-artifacts/:
+   - story-4.1.md through story-4.10.md (minimal - just title + Status: complete)
+
+8. Wire GraphView into the app - check src/app/dashboard-app/ layout and page to see if there's a way to switch to graph view. The layout-store has viewMode ('canvas'|'focus'|'graph'). When viewMode is 'graph', the main content area should render GraphView instead of ContextView.
+   Check src/app/(app)/ directory structure and wire it up.
+
+## PART B: EPIC 5 STORIES
+
+Read _bmad-output/planning-artifacts/stories-epic-5.md to get the full Epic 5 spec.
+
+Epic 5 is the AI Integration epic. Key stories:
+- AI type proposals for units
+- AI context summaries (snapshot generation)  
+- AI decomposition suggestions
+- AI relation suggestions
+- Epistemic humility mode
+- AI contribution transparency display
+
+The ANTHROPIC_API_KEY is already set in .env. Use the Anthropic SDK (already installed - check package.json).
+
+Implement as many Epic 5 stories as possible. For each story:
+- Create the service in src/server/services/
+- Create the tRPC procedure
+- Create the UI component
+- Follow existing patterns (Zustand, tRPC, Tailwind, Radix UI, Framer Motion)
+- NO spinners - skeleton loading only
+- Optimistic UI for mutations
+
+## AFTER ALL DONE:
+1. git add -A
+2. git commit -m "feat: Epic 4 audit+fixes, Epic 5 AI integration - type proposals, summaries, decomposition"
+3. openclaw system event --text "Done: Epic 4 fixed, Epic 5 AI features implemented" --mode now

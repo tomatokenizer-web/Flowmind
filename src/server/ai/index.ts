@@ -5,4 +5,14 @@ export { createSafetyGuard } from "./safetyGuard";
 export type { SafetyGuard, SafetyCheckResult, SafetyGuardOptions } from "./safetyGuard";
 
 export { createAIService } from "./aiService";
-export type { AIService, TypeSuggestion, RelationSuggestion, AIServiceContext } from "./aiService";
+export type {
+  AIService,
+  TypeSuggestion,
+  RelationSuggestion,
+  AIServiceContext,
+  UserPurpose,
+  DecompositionBoundary,
+  DecompositionRelationProposal,
+  UnitProposal,
+  DecompositionResult,
+} from "./aiService";

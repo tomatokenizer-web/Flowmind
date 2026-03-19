@@ -2,36 +2,43 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
+import { DecompositionReview } from "~/components/ai/decomposition-review";
 import { CaptureBar } from "./capture-bar";
 
 interface CaptureOverlayProps {
   projectId: string;
+  contextId: string;
 }
 
-export function CaptureOverlay({ projectId }: CaptureOverlayProps) {
+export function CaptureOverlay({ projectId, contextId }: CaptureOverlayProps) {
   const isOpen = useCaptureStore((s) => s.isOpen);
 
   return (
     <AnimatePresence>
-      {isOpen && <CaptureMode projectId={projectId} />}
+      {isOpen && <CaptureMode projectId={projectId} contextId={contextId} />}
     </AnimatePresence>
   );
 }
 
-function CaptureMode({ projectId }: { projectId: string }) {
+function CaptureMode({ projectId, contextId }: { projectId: string; contextId: string }) {
   const {
     mode,
+    phase,
     pendingText,
+    decompositionData,
     isSubmitting,
+    isDecomposing,
     close,
     toggleMode,
     setText,
     submit,
-  } = useCaptureMode({ projectId });
+    handleDecompositionComplete,
+    cancelDecomposition,
+  } = useCaptureMode({ projectId, contextId });
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -113,49 +120,124 @@ function CaptureMode({ projectId }: { projectId: string }) {
         <X className="h-5 w-5" aria-hidden="true" />
       </button>
 
-      {/* Mode toggle */}
-      <div className="absolute left-1/2 top-6 -translate-x-1/2">
-        <ModeToggle mode={mode} onToggle={toggleMode} />
-      </div>
+      {/* Mode toggle - only show in input phase */}
+      {phase === "input" && (
+        <div className="absolute left-1/2 top-6 -translate-x-1/2">
+          <ModeToggle mode={mode} onToggle={toggleMode} />
+        </div>
+      )}
 
-      {/* Center input area */}
+      {/* Phase title - show for decomposing/reviewing */}
+      {phase !== "input" && (
+        <div className="absolute left-1/2 top-6 -translate-x-1/2">
+          <span className="flex items-center gap-2 rounded-full border border-[#0071E3]/20 bg-[#0071E3]/5 px-3 py-1.5 text-sm font-medium text-[#0071E3]">
+            {phase === "decomposing" && (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Analyzing...
+              </>
+            )}
+            {phase === "reviewing" && "Review Decomposition"}
+          </span>
+        </div>
+      )}
+
+      {/* Content area */}
       <div className="w-full max-w-2xl px-6">
-        <textarea
-          ref={textareaRef}
-          value={pendingText}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          placeholder="What are you thinking about?"
-          className="w-full resize-none bg-transparent text-xl leading-relaxed text-[#1D1D1F] placeholder-[#AEAEB2] caret-[#0071E3] outline-none motion-reduce:transition-none"
-          style={{ fontFamily: "var(--font-primary, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif)" }}
-          rows={1}
-          disabled={isSubmitting}
-          aria-label="Thought input"
-        />
+        <AnimatePresence mode="wait">
+          {/* Input phase */}
+          {phase === "input" && (
+            <motion.div
+              key="input"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <textarea
+                ref={textareaRef}
+                value={pendingText}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder="What are you thinking about?"
+                className="w-full resize-none bg-transparent text-xl leading-relaxed text-[#1D1D1F] placeholder-[#AEAEB2] caret-[#0071E3] outline-none motion-reduce:transition-none"
+                style={{ fontFamily: "var(--font-primary, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif)" }}
+                rows={1}
+                disabled={isSubmitting}
+                aria-label="Thought input"
+              />
 
-        {/* Hint text */}
-        <p className="mt-4 text-sm text-[#AEAEB2]">
-          <span className="inline-flex items-center gap-1.5">
-            <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-              Enter
-            </kbd>
-            <span>to capture</span>
-          </span>
-          <span className="mx-2">·</span>
-          <span className="inline-flex items-center gap-1.5">
-            <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-              Shift+Enter
-            </kbd>
-            <span>new line</span>
-          </span>
-          <span className="mx-2">·</span>
-          <span className="inline-flex items-center gap-1.5">
-            <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-              Esc
-            </kbd>
-            <span>close</span>
-          </span>
-        </p>
+              {/* Hint text */}
+              <p className="mt-4 text-sm text-[#AEAEB2]">
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
+                    Enter
+                  </kbd>
+                  <span>to {mode === "organize" ? "decompose" : "capture"}</span>
+                </span>
+                <span className="mx-2">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
+                    Shift+Enter
+                  </kbd>
+                  <span>new line</span>
+                </span>
+                <span className="mx-2">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
+                    Esc
+                  </kbd>
+                  <span>close</span>
+                </span>
+              </p>
+            </motion.div>
+          )}
+
+          {/* Decomposing phase - loading state */}
+          {phase === "decomposing" && (
+            <motion.div
+              key="decomposing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex flex-col items-center gap-4 py-12"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-[#0071E3]" />
+              <p className="text-center text-text-secondary">
+                AI is analyzing your text and proposing thought units...
+              </p>
+            </motion.div>
+          )}
+
+          {/* Reviewing phase - decomposition review */}
+          {phase === "reviewing" && decompositionData && (
+            <motion.div
+              key="reviewing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <DecompositionReview
+                originalText={decompositionData.originalText}
+                purpose={decompositionData.purpose}
+                proposals={decompositionData.proposals}
+                relationProposals={decompositionData.relationProposals}
+                projectId={projectId}
+                contextId={contextId}
+                onComplete={(accepted, rejected) => {
+                  handleDecompositionComplete(accepted, rejected);
+                  close();
+                  announceToScreenReader(
+                    `Decomposition complete. ${accepted} units created, ${rejected} rejected.`
+                  );
+                }}
+                onCancel={() => {
+                  cancelDecomposition();
+                  announceToScreenReader("Decomposition cancelled");
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
