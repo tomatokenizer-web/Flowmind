@@ -38,6 +38,18 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   const openPanel = usePanelStore((s) => s.openPanel);
   const utils = api.useUtils();
 
+  const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate({ projectId: projectId! }),
+  });
+
+  const handleLifecycleAction = React.useCallback(
+    (unitId: string, action: "approve" | "reject" | "reset") => {
+      const targetState = action === "approve" ? "confirmed" : action === "reject" ? "archived" : "draft";
+      lifecycleMutation.mutate({ id: unitId, targetState: targetState as "draft" | "pending" | "confirmed" | "archived" });
+    },
+    [lifecycleMutation],
+  );
+
   const { briefing, isLoading: isBriefingLoading } =
     useContextBriefing(activeContextId);
 
@@ -167,6 +179,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               <UnitCard
                 unit={unit}
                 onClick={handleUnitClick}
+                onLifecycleAction={handleLifecycleAction}
                 onRemoveFromContext={
                   activeContextId
                     ? () =>

@@ -9,6 +9,10 @@ import {
   FileText,
   Star,
   Settings,
+  GitBranch,
+  List,
+  BookOpen,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -31,7 +35,9 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
+  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
   const projectId = useProjectId();
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
@@ -88,14 +94,34 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Bottom nav items */}
-      <div className="border-t border-border p-space-2">
-        <SidebarItem icon={FileText} label="All Thoughts" collapsed={isCollapsed} />
-        <SidebarItem icon={Star} label="Starred" collapsed={isCollapsed} />
-        <Link href="/settings" className={cn(
-          "flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2",
-          "text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors",
-          isCollapsed && "justify-center px-0",
-        )}>
+      <div className="border-t border-border p-space-2 space-y-0.5">
+        {/* All Thoughts — clears context filter */}
+        <button type="button" onClick={() => { setActiveContext(null); setViewMode("canvas"); }}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="All Thoughts">
+          <FileText className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>All Thoughts</span>}
+        </button>
+        {/* View shortcuts */}
+        <button type="button" onClick={() => setViewMode("thread")}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="Thread View">
+          <List className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Thread View</span>}
+        </button>
+        <button type="button" onClick={() => setViewMode("graph")}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="Graph View">
+          <GitBranch className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Graph View</span>}
+        </button>
+        <button type="button" onClick={() => setViewMode("assembly")}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="Assembly View">
+          <BookOpen className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Assembly View</span>}
+        </button>
+        <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}>
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </Link>

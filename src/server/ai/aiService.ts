@@ -18,6 +18,102 @@ export interface RelationSuggestion {
   reasoning: string;
 }
 
+// ─── Story 5.4-5.15 Types ─────────────────────────────────────────────────────
+
+export interface SplitReattributionProposal {
+  relationId: string;
+  assignTo: "A" | "B";
+  rationale: string;
+}
+
+export interface SplitReattributionResult {
+  proposals: SplitReattributionProposal[];
+}
+
+export interface AlternativeFraming {
+  reframedContent: string;
+  newType: string;
+  rationale: string;
+  confidence: number;
+}
+
+export interface CounterArgument {
+  content: string;
+  strength: number;
+  targetsClaim: string;
+  rationale: string;
+}
+
+export interface IdentifiedAssumption {
+  content: string;
+  isExplicit: boolean;
+  importance: "critical" | "moderate" | "minor";
+  rationale: string;
+}
+
+export interface ContradictionPair {
+  unitAId: string;
+  unitBId: string;
+  description: string;
+  severity: "direct" | "tension" | "potential";
+  suggestedResolution: string;
+}
+
+export interface MergeSuggestion {
+  unitIds: string[];
+  mergedContent: string;
+  mergedType: string;
+  rationale: string;
+  confidence: number;
+}
+
+export interface CompletenessAnalysis {
+  score: number; // 0-1
+  missingElements: Array<{
+    type: "evidence" | "counterargument" | "definition" | "example" | "assumption";
+    description: string;
+    priority: "high" | "medium" | "low";
+  }>;
+  suggestions: string[];
+}
+
+export interface ContextSummary {
+  mainThesis: string;
+  keyPoints: string[];
+  openQuestions: string[];
+  conflictingViews: string[];
+}
+
+export interface GeneratedQuestion {
+  content: string;
+  type: "clarifying" | "challenging" | "exploratory" | "connecting";
+  targetUnitId?: string;
+  rationale: string;
+}
+
+export interface NextStepSuggestion {
+  action: string;
+  type: "research" | "define" | "challenge" | "connect" | "expand" | "resolve";
+  priority: "high" | "medium" | "low";
+  relatedUnitIds: string[];
+  rationale: string;
+}
+
+export interface ExtractedTerm {
+  term: string;
+  definition?: string;
+  occurrences: number;
+  importance: "key" | "supporting" | "peripheral";
+  suggestDefine: boolean;
+}
+
+export interface StanceClassification {
+  stance: "support" | "oppose" | "neutral" | "exploring";
+  confidence: number;
+  rationale: string;
+  keyIndicators: string[];
+}
+
 export interface AIServiceContext {
   userId: string;
   sessionId: string;
@@ -534,6 +630,645 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
         proposals,
         relationProposals,
       };
+    },
+
+    // ─── Story 5.4: Unit Split with Relation Re-attribution ─────────────────
+
+    /**
+     * Propose how to reassign relations when splitting a unit into two parts
+     */
+    async proposeSplitReattribution(
+      unitId: string,
+      contentA: string,
+      contentB: string,
+      ctx: AIServiceContext
+    ): Promise<SplitReattributionResult> {
+      // Fetch the unit's existing relations
+      const relations = await db.relation.findMany({
+        where: {
+          OR: [{ sourceUnitId: unitId }, { targetUnitId: unitId }],
+        },
+        include: {
+          sourceUnit: { select: { id: true, content: true, unitType: true } },
+          targetUnit: { select: { id: true, content: true, unitType: true } },
+        },
+      });
+
+      if (relations.length === 0) {
+        return { proposals: [] };
+      }
+
+      const relationsDesc = relations
+        .map((r) => {
+          const isSource = r.sourceUnitId === unitId;
+          const other = isSource ? r.targetUnit : r.sourceUnit;
+          return `[${r.id}] ${r.type} ${isSource ? "→" : "←"} "${other.content.slice(0, 80)}..." (${other.unitType})`;
+        })
+        .join("\n");
+
+      const prompt = `A thought unit is being split into two parts. Help decide which part should inherit each existing relation.
+
+ORIGINAL UNIT is being split into:
+Part A: "${contentA.slice(0, 300)}"
+Part B: "${contentB.slice(0, 300)}"
+
+EXISTING RELATIONS:
+${relationsDesc}
+
+For each relation, determine which part (A or B) should inherit it based on semantic relevance.`;
+
+      const result = await provider.generateStructured<{ proposals: SplitReattributionProposal[] }>(
+        prompt,
+        {
+          temperature: 0.3,
+          maxTokens: 1024,
+          schema: {
+            name: "SplitReattribution",
+            description: "Proposals for reassigning relations after unit split",
+            properties: {
+              proposals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    relationId: { type: "string" },
+                    assignTo: { type: "string", enum: ["A", "B"] },
+                    rationale: { type: "string", maxLength: 150 },
+                  },
+                  required: ["relationId", "assignTo", "rationale"],
+                },
+              },
+            },
+            required: ["proposals"],
+          },
+        }
+      );
+
+      logger.info({ unitId, proposalCount: result.proposals.length }, "Split reattribution proposals generated");
+      return result;
+    },
+
+    // ─── Story 5.5: Alternative Framing ───────────────────────────────────────
+
+    /**
+     * Generate alternative ways to frame a unit's content
+     */
+    async generateAlternativeFraming(
+      content: string,
+      currentType: string,
+      ctx: AIServiceContext
+    ): Promise<AlternativeFraming[]> {
+      const prompt = `Suggest alternative ways to frame or express this thought unit.
+
+Content: "${content.slice(0, 500)}"
+Current type: ${currentType}
+
+Generate 2-3 alternative framings that:
+- Express the same core idea differently
+- Might be categorized as a different unit type
+- Could reveal new perspectives or connections`;
+
+      const result = await provider.generateStructured<{ framings: AlternativeFraming[] }>(prompt, {
+        temperature: 0.6,
+        maxTokens: 768,
+        schema: {
+          name: "AlternativeFramings",
+          description: "Alternative ways to frame the content",
+          properties: {
+            framings: {
+              type: "array",
+              maxItems: 3,
+              items: {
+                type: "object",
+                properties: {
+                  reframedContent: { type: "string", maxLength: 500 },
+                  newType: {
+                    type: "string",
+                    enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"],
+                  },
+                  rationale: { type: "string", maxLength: 150 },
+                  confidence: { type: "number", minimum: 0, maximum: 1 },
+                },
+                required: ["reframedContent", "newType", "rationale", "confidence"],
+              },
+            },
+          },
+          required: ["framings"],
+        },
+      });
+
+      logger.info({ count: result.framings.length }, "Alternative framings generated");
+      return result.framings;
+    },
+
+    // ─── Story 5.6: Counter-Arguments ─────────────────────────────────────────
+
+    /**
+     * Suggest counter-arguments for a claim or argument
+     */
+    async suggestCounterArguments(
+      content: string,
+      unitType: string,
+      ctx: AIServiceContext
+    ): Promise<CounterArgument[]> {
+      const prompt = `Generate thoughtful counter-arguments or challenges to this thought unit.
+
+Content: "${content.slice(0, 500)}"
+Type: ${unitType}
+
+Generate 2-3 counter-arguments that:
+- Challenge the core assertion or assumption
+- Are logically sound and fair
+- Could strengthen the original argument if addressed`;
+
+      const result = await provider.generateStructured<{ counterArguments: CounterArgument[] }>(prompt, {
+        temperature: 0.5,
+        maxTokens: 768,
+        schema: {
+          name: "CounterArguments",
+          description: "Counter-arguments to the content",
+          properties: {
+            counterArguments: {
+              type: "array",
+              maxItems: 3,
+              items: {
+                type: "object",
+                properties: {
+                  content: { type: "string", maxLength: 400 },
+                  strength: { type: "number", minimum: 0, maximum: 1 },
+                  targetsClaim: { type: "string", maxLength: 100 },
+                  rationale: { type: "string", maxLength: 150 },
+                },
+                required: ["content", "strength", "targetsClaim", "rationale"],
+              },
+            },
+          },
+          required: ["counterArguments"],
+        },
+      });
+
+      logger.info({ count: result.counterArguments.length }, "Counter-arguments generated");
+      return result.counterArguments;
+    },
+
+    // ─── Story 5.7: Assumption Identification ─────────────────────────────────
+
+    /**
+     * Identify underlying assumptions in content
+     */
+    async identifyAssumptions(
+      content: string,
+      ctx: AIServiceContext
+    ): Promise<IdentifiedAssumption[]> {
+      const prompt = `Identify the underlying assumptions in this thought unit.
+
+Content: "${content.slice(0, 500)}"
+
+Find both explicit and implicit assumptions that:
+- The argument depends on to be valid
+- May need to be verified or challenged
+- Could affect the conclusion if false`;
+
+      const result = await provider.generateStructured<{ assumptions: IdentifiedAssumption[] }>(prompt, {
+        temperature: 0.4,
+        maxTokens: 768,
+        schema: {
+          name: "Assumptions",
+          description: "Identified assumptions in the content",
+          properties: {
+            assumptions: {
+              type: "array",
+              maxItems: 5,
+              items: {
+                type: "object",
+                properties: {
+                  content: { type: "string", maxLength: 300 },
+                  isExplicit: { type: "boolean" },
+                  importance: { type: "string", enum: ["critical", "moderate", "minor"] },
+                  rationale: { type: "string", maxLength: 150 },
+                },
+                required: ["content", "isExplicit", "importance", "rationale"],
+              },
+            },
+          },
+          required: ["assumptions"],
+        },
+      });
+
+      logger.info({ count: result.assumptions.length }, "Assumptions identified");
+      return result.assumptions;
+    },
+
+    // ─── Story 5.8: Contradiction Detection ───────────────────────────────────
+
+    /**
+     * Detect contradictions between units in a context
+     */
+    async detectContradictions(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<ContradictionPair[]> {
+      if (units.length < 2) return [];
+
+      const unitsDesc = units
+        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .join("\n");
+
+      const prompt = `Analyze these thought units for contradictions or tensions.
+
+Units:
+${unitsDesc}
+
+Identify pairs that:
+- Directly contradict each other
+- Have logical tension
+- Make incompatible assumptions`;
+
+      const result = await provider.generateStructured<{ contradictions: ContradictionPair[] }>(prompt, {
+        temperature: 0.3,
+        maxTokens: 1024,
+        schema: {
+          name: "Contradictions",
+          description: "Detected contradictions between units",
+          properties: {
+            contradictions: {
+              type: "array",
+              maxItems: 5,
+              items: {
+                type: "object",
+                properties: {
+                  unitAId: { type: "string" },
+                  unitBId: { type: "string" },
+                  description: { type: "string", maxLength: 200 },
+                  severity: { type: "string", enum: ["direct", "tension", "potential"] },
+                  suggestedResolution: { type: "string", maxLength: 200 },
+                },
+                required: ["unitAId", "unitBId", "description", "severity", "suggestedResolution"],
+              },
+            },
+          },
+          required: ["contradictions"],
+        },
+      });
+
+      logger.info({ count: result.contradictions.length }, "Contradictions detected");
+      return result.contradictions;
+    },
+
+    // ─── Story 5.9: Merge Suggestion ──────────────────────────────────────────
+
+    /**
+     * Suggest units that could be merged
+     */
+    async suggestMerge(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<MergeSuggestion[]> {
+      if (units.length < 2) return [];
+
+      const unitsDesc = units
+        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .join("\n");
+
+      const prompt = `Analyze these thought units for potential merges.
+
+Units:
+${unitsDesc}
+
+Identify groups that:
+- Express the same idea differently
+- Would be clearer as a single unit
+- Are redundant or overlapping`;
+
+      const result = await provider.generateStructured<{ suggestions: MergeSuggestion[] }>(prompt, {
+        temperature: 0.4,
+        maxTokens: 1024,
+        schema: {
+          name: "MergeSuggestions",
+          description: "Suggestions for merging units",
+          properties: {
+            suggestions: {
+              type: "array",
+              maxItems: 3,
+              items: {
+                type: "object",
+                properties: {
+                  unitIds: { type: "array", items: { type: "string" }, minItems: 2 },
+                  mergedContent: { type: "string", maxLength: 500 },
+                  mergedType: {
+                    type: "string",
+                    enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"],
+                  },
+                  rationale: { type: "string", maxLength: 150 },
+                  confidence: { type: "number", minimum: 0, maximum: 1 },
+                },
+                required: ["unitIds", "mergedContent", "mergedType", "rationale", "confidence"],
+              },
+            },
+          },
+          required: ["suggestions"],
+        },
+      });
+
+      logger.info({ count: result.suggestions.length }, "Merge suggestions generated");
+      return result.suggestions;
+    },
+
+    // ─── Story 5.10: Completeness Analysis ────────────────────────────────────
+
+    /**
+     * Analyze completeness of an argument or context
+     */
+    async analyzeCompleteness(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<CompletenessAnalysis> {
+      const unitsDesc = units
+        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .join("\n");
+
+      const prompt = `Analyze the completeness of this set of thought units as an argument or analysis.
+
+Units:
+${unitsDesc}
+
+Evaluate:
+- What evidence is missing?
+- What counter-arguments should be addressed?
+- What terms need definition?
+- What assumptions need to be made explicit?`;
+
+      const result = await provider.generateStructured<CompletenessAnalysis>(prompt, {
+        temperature: 0.4,
+        maxTokens: 1024,
+        schema: {
+          name: "CompletenessAnalysis",
+          description: "Analysis of argument completeness",
+          properties: {
+            score: { type: "number", minimum: 0, maximum: 1 },
+            missingElements: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  type: { type: "string", enum: ["evidence", "counterargument", "definition", "example", "assumption"] },
+                  description: { type: "string", maxLength: 200 },
+                  priority: { type: "string", enum: ["high", "medium", "low"] },
+                },
+                required: ["type", "description", "priority"],
+              },
+            },
+            suggestions: { type: "array", items: { type: "string", maxLength: 200 } },
+          },
+          required: ["score", "missingElements", "suggestions"],
+        },
+      });
+
+      logger.info({ score: result.score, missingCount: result.missingElements.length }, "Completeness analyzed");
+      return result;
+    },
+
+    // ─── Story 5.11: Context Summary ──────────────────────────────────────────
+
+    /**
+     * Generate a summary of a context's content
+     */
+    async summarizeContext(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<ContextSummary> {
+      const unitsDesc = units
+        .map((u) => `(${u.unitType}) "${u.content.slice(0, 200)}"`)
+        .join("\n");
+
+      const prompt = `Summarize this collection of thought units.
+
+Units:
+${unitsDesc}
+
+Provide:
+- The main thesis or central idea
+- Key supporting points
+- Open questions that remain
+- Any conflicting viewpoints`;
+
+      const result = await provider.generateStructured<ContextSummary>(prompt, {
+        temperature: 0.3,
+        maxTokens: 768,
+        schema: {
+          name: "ContextSummary",
+          description: "Summary of context content",
+          properties: {
+            mainThesis: { type: "string", maxLength: 300 },
+            keyPoints: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 5 },
+            openQuestions: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 3 },
+            conflictingViews: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 3 },
+          },
+          required: ["mainThesis", "keyPoints", "openQuestions", "conflictingViews"],
+        },
+      });
+
+      logger.info("Context summary generated");
+      return result;
+    },
+
+    // ─── Story 5.12: Question Generation ──────────────────────────────────────
+
+    /**
+     * Generate questions to deepen understanding
+     */
+    async generateQuestions(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<GeneratedQuestion[]> {
+      const unitsDesc = units
+        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .join("\n");
+
+      const prompt = `Generate questions to deepen understanding of these thought units.
+
+Units:
+${unitsDesc}
+
+Generate questions that:
+- Clarify ambiguous points
+- Challenge assumptions
+- Explore new directions
+- Connect ideas`;
+
+      const result = await provider.generateStructured<{ questions: GeneratedQuestion[] }>(prompt, {
+        temperature: 0.5,
+        maxTokens: 768,
+        schema: {
+          name: "GeneratedQuestions",
+          description: "Questions to deepen understanding",
+          properties: {
+            questions: {
+              type: "array",
+              maxItems: 5,
+              items: {
+                type: "object",
+                properties: {
+                  content: { type: "string", maxLength: 200 },
+                  type: { type: "string", enum: ["clarifying", "challenging", "exploratory", "connecting"] },
+                  targetUnitId: { type: "string" },
+                  rationale: { type: "string", maxLength: 150 },
+                },
+                required: ["content", "type", "rationale"],
+              },
+            },
+          },
+          required: ["questions"],
+        },
+      });
+
+      logger.info({ count: result.questions.length }, "Questions generated");
+      return result.questions;
+    },
+
+    // ─── Story 5.13: Next Steps ───────────────────────────────────────────────
+
+    /**
+     * Suggest next steps for developing the argument
+     */
+    async suggestNextSteps(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<NextStepSuggestion[]> {
+      const unitsDesc = units
+        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .join("\n");
+
+      const prompt = `Suggest next steps for developing this collection of thought units.
+
+Units:
+${unitsDesc}
+
+Suggest actions that would:
+- Strengthen the argument
+- Fill gaps
+- Resolve contradictions
+- Explore new directions`;
+
+      const result = await provider.generateStructured<{ steps: NextStepSuggestion[] }>(prompt, {
+        temperature: 0.5,
+        maxTokens: 768,
+        schema: {
+          name: "NextSteps",
+          description: "Suggested next steps",
+          properties: {
+            steps: {
+              type: "array",
+              maxItems: 5,
+              items: {
+                type: "object",
+                properties: {
+                  action: { type: "string", maxLength: 200 },
+                  type: { type: "string", enum: ["research", "define", "challenge", "connect", "expand", "resolve"] },
+                  priority: { type: "string", enum: ["high", "medium", "low"] },
+                  relatedUnitIds: { type: "array", items: { type: "string" } },
+                  rationale: { type: "string", maxLength: 150 },
+                },
+                required: ["action", "type", "priority", "relatedUnitIds", "rationale"],
+              },
+            },
+          },
+          required: ["steps"],
+        },
+      });
+
+      logger.info({ count: result.steps.length }, "Next steps suggested");
+      return result.steps;
+    },
+
+    // ─── Story 5.14: Key Term Extraction ──────────────────────────────────────
+
+    /**
+     * Extract key terms from content
+     */
+    async extractKeyTerms(
+      units: Array<{ id: string; content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<ExtractedTerm[]> {
+      const allContent = units.map((u) => u.content).join(" ");
+
+      const prompt = `Extract key terms from this content that may need definition or clarification.
+
+Content: "${allContent.slice(0, 1500)}"
+
+Identify terms that:
+- Are central to the argument
+- May have specialized meaning
+- Could be ambiguous
+- Should be explicitly defined`;
+
+      const result = await provider.generateStructured<{ terms: ExtractedTerm[] }>(prompt, {
+        temperature: 0.3,
+        maxTokens: 768,
+        schema: {
+          name: "ExtractedTerms",
+          description: "Key terms extracted from content",
+          properties: {
+            terms: {
+              type: "array",
+              maxItems: 10,
+              items: {
+                type: "object",
+                properties: {
+                  term: { type: "string", maxLength: 100 },
+                  definition: { type: "string", maxLength: 200 },
+                  occurrences: { type: "number", minimum: 1 },
+                  importance: { type: "string", enum: ["key", "supporting", "peripheral"] },
+                  suggestDefine: { type: "boolean" },
+                },
+                required: ["term", "occurrences", "importance", "suggestDefine"],
+              },
+            },
+          },
+          required: ["terms"],
+        },
+      });
+
+      logger.info({ count: result.terms.length }, "Key terms extracted");
+      return result.terms;
+    },
+
+    // ─── Story 5.15: Stance Classification ────────────────────────────────────
+
+    /**
+     * Classify the stance of a unit relative to another
+     */
+    async classifyStance(
+      unitContent: string,
+      targetContent: string,
+      ctx: AIServiceContext
+    ): Promise<StanceClassification> {
+      const prompt = `Classify the stance of one thought unit relative to another.
+
+Unit A: "${unitContent.slice(0, 400)}"
+
+Unit B (target): "${targetContent.slice(0, 400)}"
+
+Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit B's position.`;
+
+      const result = await provider.generateStructured<StanceClassification>(prompt, {
+        temperature: 0.3,
+        maxTokens: 512,
+        schema: {
+          name: "StanceClassification",
+          description: "Classification of stance between units",
+          properties: {
+            stance: { type: "string", enum: ["support", "oppose", "neutral", "exploring"] },
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+            rationale: { type: "string", maxLength: 200 },
+            keyIndicators: { type: "array", items: { type: "string", maxLength: 100 }, maxItems: 3 },
+          },
+          required: ["stance", "confidence", "rationale", "keyIndicators"],
+        },
+      });
+
+      logger.info({ stance: result.stance, confidence: result.confidence }, "Stance classified");
+      return result;
     },
 
     /**

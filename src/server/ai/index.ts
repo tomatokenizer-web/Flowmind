@@ -15,4 +15,18 @@ export type {
   DecompositionRelationProposal,
   UnitProposal,
   DecompositionResult,
+  // Story 5.4-5.15 Types
+  SplitReattributionProposal,
+  SplitReattributionResult,
+  AlternativeFraming,
+  CounterArgument,
+  IdentifiedAssumption,
+  ContradictionPair,
+  MergeSuggestion,
+  CompletenessAnalysis,
+  ContextSummary,
+  GeneratedQuestion,
+  NextStepSuggestion,
+  ExtractedTerm,
+  StanceClassification,
 } from "./aiService";

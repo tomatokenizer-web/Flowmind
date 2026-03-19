@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { UnitTypeSelector } from "~/components/unit/UnitTypeSelector";
+import { VersionHistory } from "~/components/unit/version-history";
 import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
 import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
 import { ResourceAttachmentStrip, type ResourceAttachment } from "~/components/unit/resource-attachment";
@@ -185,6 +186,11 @@ function ContentTab({
           <ResourceAttachmentStrip resources={unit.resources} />
         </div>
       )}
+
+      {/* Version History */}
+      <div className="border-t border-border pt-3">
+        <VersionHistory unitId={unit.id} currentContent={unit.content} />
+      </div>
     </div>
   );
 }

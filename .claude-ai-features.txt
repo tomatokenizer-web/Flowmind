@@ -1,0 +1,182 @@
+Implement missing AI features 5.4-5.15 in Flowmind. Check ALL existing files first.
+
+Existing: src/server/ai/aiService.ts (has suggestUnitType, suggestRelations, decomposeText, getContributionRatio)
+Existing: src/server/api/routers/ai.ts (has suggestType, suggestRelations, getContributionRatio, decomposeText)
+Existing: src/server/ai/provider.ts (AnthropicProvider)
+Existing: src/server/ai/safetyGuard.ts
+
+## Story 5.4: Unit Split with Relation Re-attribution
+
+Add to src/server/ai/aiService.ts:
+async proposeSplitReattribution(unitId, splitA, splitB, db):
+- Fetch unit's existing relations
+- For each relation, AI proposes which part (A or B) inherits it + rationale
+- Returns: { proposals: { relationId, assignTo: 'A'|'B', rationale }[] }
+
+Add ai.proposeSplitReattribution tRPC procedure to src/server/api/routers/ai.ts:
+- input: { unitId: uuid, contentA: string, contentB: string }
+
+Create src/components/unit/UnitSplitDialog.tsx (Radix Dialog):
+- Text editor showing unit content with draggable split point (textarea with character position slider)
+- "Preview Split" button → shows two preview cards
+- For each existing relation: shows which part AI recommends + rationale
+- User can override (toggle A/B per relation)
+- Confirm: archives original unit, creates two new units, re-attributes relations
+- Wire to api.unit.create x2, api.relation.create for re-attributed relations, api.unit.update original to lifecycle='archived'
+
+## Story 5.5: Branch Potential Score & Exploration Directions
+
+Add to src/server/ai/aiService.ts:
+async suggestExplorationDirections(unitId, contextId, db):
+- Fetch unit content, type, existing relations
+- AI suggests 2-3 exploration directions: { prompt, expectedType, connectedUnitIds }[]
+- Safety guard: check consecutive branch count
+
+Add ai.suggestExplorationDirections tRPC: input { unitId, contextId }
+
+Create src/components/unit/BranchPotentialPopover.tsx:
+- Triggered by clicking branch potential dots on UnitCard
+- Popover showing 2-3 exploration directions
+- Each: prompt text, expected unit type badge, related units preview
+- Clicking direction: creates draft unit with prompt as content + proposed relation back to source unit
+- Wire to api.capture.submit + api.relation.create
+
+Wire into UnitCard: the branchPotential dots (already rendered as ●●●○) should be clickable, open BranchPotentialPopover
+
+## Story 5.6: AI Intervention Intensity Levels
+
+Create src/stores/aiSettingsStore.ts:
+- intensity: 'minimal'|'moderate'|'exploratory'|'generative' (default 'moderate')
+- setIntensity(level)
+- persist to localStorage via zustand/middleware persist
+
+Create src/components/ai/AIIntensitySelector.tsx (Radix RadioGroup):
+- 4 options with icon + label + description:
+  - Minimal: "Alerts on clear logical gaps only"
+  - Moderate: "Suggests types and exploration directions"
+  - Exploratory: "Asks Socratic questions to deepen thinking"
+  - Generative: "Actively generates branch drafts"
+- Wire to aiSettingsStore
+- Show current level as subtle badge in toolbar (next to focus mode button)
+
+Wire intensity into ai.suggestType: if intensity='minimal', skip type suggestions
+Wire intensity into ai.suggestRelations: if intensity='minimal', skip relation suggestions
+
+## Story 5.8: Unit Refinement
+
+Add to src/server/ai/aiService.ts:
+async refineUnit(unitId, content, db):
+- AI improves clarity, grammar, logical structure of content
+- Returns: { original, refined, changes: string[] }
+- Creates version history: v1=original
+
+Add ai.refineUnit tRPC: input { unitId: uuid, content: string }
+
+Create src/components/unit/RefinementView.tsx:
+- Side-by-side diff view (original left, refined right)
+- Changed words highlighted: deletions in red bg, additions in green bg
+- Accept: calls api.unit.update with refined content + api.version.create for original
+- Keep Original: closes without change
+- Edit: makes refined content editable before accepting
+
+Wire "Refine" button into UnitDetailPanel ContentTab (add after the textarea)
+
+## Story 5.9: Tension Detection
+
+Add to src/server/ai/aiService.ts:
+async detectTensions(contextId, db):
+- Fetch all claim units in context (limit 50)
+- Compare pairs using AI for semantic contradiction
+- Returns: { tensions: { unitAId, unitBId, confidence, description }[] }
+- Cache result (store in context.contradictions JSON field)
+
+Add ai.detectTensions tRPC: input { contextId }
+Call this after unit creation if unit is a claim type (non-blocking void).
+
+Create src/components/context/TensionIndicator.tsx:
+- Small red dot shown on UnitCard when unit is in a tension pair
+- Tooltip: "Potential contradiction detected" with link to other unit
+- Wire by fetching tension data from context.contradictions field
+
+Show tensions in ContextView: add a "Contradictions" collapsible section at top when contradictions exist.
+
+## Story 5.10: Epistemic Humility Mode
+
+Add to src/server/ai/aiService.ts:
+async checkEpistemicHumility(content):
+- Classifies if content involves controversial topics (political/ethical/contested_science)
+- Returns: { isControversial, category?: string }
+- Run as part of suggestUnitType flow
+
+Create src/components/ai/EpistemicHumilityCard.tsx:
+- Non-blocking card (fixed bottom-right) when controversial topic detected
+- Title: "This topic has multiple valid perspectives"
+- 3 radio options: "Understand all sides" | "Develop my position" | "Analyze arguments"
+- "Epistemic Humility" badge on AI outputs when active
+- Dismiss button
+
+Wire: after ai.suggestType returns, if content has controversial keywords, show EpistemicHumilityCard
+
+## Story 5.12: Inline Intervention Nudges
+
+Create src/stores/nudgeStore.ts:
+- dismissedNudges: string[] (persisted to localStorage)
+- dismissNudge(id)
+- hasBeenDismissed(id): boolean
+
+Create src/components/ai/InlineNudge.tsx:
+- Subtle card (not blocking) with tip text
+- Dismiss button - permanently suppresses this nudge type
+- Types:
+  - 'unconnected-units': "You have 10+ units without any relations. Try connecting some!"
+  - 'single-type': "Most of your units are the same type. Try adding different perspectives!"
+  - 'no-context': "Your units aren't organized into any context yet."
+
+Wire nudge checks in ContextView: after loading units, check patterns and show relevant nudge
+
+## Story 5.13: AI Suggestion Queue
+
+Create src/stores/aiSuggestionStore.ts (Zustand + persist):
+- suggestions: AISuggestion[] { id, type: 'type'|'relation'|'refinement'|'alert', unitId, content, metadata, createdAt }
+- addSuggestion(suggestion)
+- removeSuggestion(id)
+- pendingCount: number (derived)
+
+Create src/components/ai/SuggestionQueue.tsx:
+- Sidebar panel (slide-in) showing pending suggestions grouped by type
+- Badge count on a Sparkles icon button in sidebar showing pending count
+- Per item: unit preview, suggestion content, Accept/Reject buttons
+- Accept: applies the suggestion (type change, relation create, etc.)
+- "Accept All [Type]" bulk action with 4s undo toast
+- "Reject All" with confirm dialog
+- Wire suggestions to push here instead of showing inline
+
+Add Sparkles badge button to sidebar bottom nav (shows count from aiSuggestionStore)
+
+## Story 5.15: External Knowledge Push
+
+Add to src/server/api/routers/ai.ts:
+ai.searchExternalKnowledge: input { unitId, contextId }
+- Uses AI to generate search keywords from unit content
+- Returns mock results for MVP (real search API deferred): { results: { title, url, snippet, relevanceScore }[] }
+- For MVP: AI generates 3 plausible search queries and returns them as "suggested searches"
+
+Create src/components/ai/ExternalKnowledgePanel.tsx:
+- Panel shown in UnitDetailPanel AI tab (add below type suggestion)
+- "Find related knowledge" button
+- Shows 3 search query suggestions from AI
+- Links to Google search with those queries
+- "Save for later" adds URL to incubation queue
+
+## WIRING:
+
+1. After api.capture.submit succeeds: push type suggestion to aiSuggestionStore
+2. After new unit in context: if it's a claim, run tension detection (void, non-blocking)  
+3. In UnitCard: make branchPotential dots clickable (open BranchPotentialPopover)
+4. In UnitDetailPanel AI tab: show RefinementView trigger + ExternalKnowledgePanel
+5. In sidebar: add Sparkles badge for SuggestionQueue
+
+## AFTER DONE:
+1. git add -A
+2. git commit -m "feat: AI features 5.4-5.15 - unit split, branch potential, refinement, tension detection, epistemic humility, nudges, suggestion queue, external knowledge"
+3. openclaw system event --text "Done: All missing AI features 5.4-5.15 implemented" --mode now

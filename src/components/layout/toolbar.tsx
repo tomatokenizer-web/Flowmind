@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Layout, Focus, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen } from "lucide-react";
+import { Layout, Focus, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -9,6 +9,7 @@ import { useFocusModeStore } from "~/stores/focusModeStore";
 import { Button } from "~/components/ui/button";
 import { Breadcrumb, type BreadcrumbSegment } from "~/components/navigation/Breadcrumb";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
+import { openCommandPalette } from "~/components/search";
 
 const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { mode: "canvas", icon: Layout, label: "Canvas" },
@@ -116,6 +117,13 @@ export function Toolbar({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Search button */}
+      {!focusMode && (
+        <Button variant="ghost" size="icon" onClick={openCommandPalette} aria-label="Search (Cmd+K)" title="Search (⌘K)" className="h-9 w-9">
+          <Search className="h-4 w-4" />
+        </Button>
       )}
 
       {/* Completeness Compass */}

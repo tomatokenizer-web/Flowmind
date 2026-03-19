@@ -1,7 +1,21 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createAIService } from "@/server/ai";
-import type { DecompositionResult } from "@/server/ai";
+import type {
+  DecompositionResult,
+  SplitReattributionResult,
+  AlternativeFraming,
+  CounterArgument,
+  IdentifiedAssumption,
+  ContradictionPair,
+  MergeSuggestion,
+  CompletenessAnalysis,
+  ContextSummary,
+  GeneratedQuestion,
+  NextStepSuggestion,
+  ExtractedTerm,
+  StanceClassification,
+} from "@/server/ai";
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────
 
@@ -23,6 +37,41 @@ const decomposeTextSchema = z.object({
   text: z.string().min(1).max(10000),
   contextId: z.string().uuid().optional(),
   projectId: z.string().uuid(),
+});
+
+// ─── Story 5.4-5.15 Schemas ───────────────────────────────────────────────
+
+const proposeSplitReattributionSchema = z.object({
+  unitId: z.string().uuid(),
+  contentA: z.string().min(1).max(5000),
+  contentB: z.string().min(1).max(5000),
+});
+
+const generateAlternativeFramingSchema = z.object({
+  content: z.string().min(1).max(5000),
+  currentType: z.string(),
+  contextId: z.string().uuid().optional(),
+});
+
+const suggestCounterArgumentsSchema = z.object({
+  content: z.string().min(1).max(5000),
+  unitType: z.string(),
+  contextId: z.string().uuid().optional(),
+});
+
+const identifyAssumptionsSchema = z.object({
+  content: z.string().min(1).max(5000),
+  contextId: z.string().uuid().optional(),
+});
+
+const contextUnitsSchema = z.object({
+  contextId: z.string().uuid(),
+});
+
+const stanceClassificationSchema = z.object({
+  unitContent: z.string().min(1).max(5000),
+  targetContent: z.string().min(1).max(5000),
+  contextId: z.string().uuid().optional(),
 });
 
 // ─── Router ───────────────────────────────────────────────────────────────

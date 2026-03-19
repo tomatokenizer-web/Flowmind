@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { useAssemblyStore } from "~/stores/assemblyStore";
+import { usePanelStore } from "~/stores/panel-store";
 import { Button } from "~/components/ui/button";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType } from "@prisma/client";
@@ -94,7 +95,12 @@ function SortableUnitCard({
           </button>
 
           {/* Content */}
-          <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => openPanel(item.unitId)}
+            className="min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
+            title="Open unit details"
+          >
             {item.slotName && (
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-accent-primary">
                 {item.slotName}
@@ -102,7 +108,7 @@ function SortableUnitCard({
             )}
             <UnitTypeBadge unitType={item.unit.unitType as UnitType} />
             <p className="mt-1.5 line-clamp-3 text-sm text-text-primary">{item.unit.content}</p>
-          </div>
+          </button>
 
           {/* Remove */}
           <button
@@ -205,6 +211,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [localItems, setLocalItems] = React.useState<AssemblyItemData[]>([]);
+  const openPanel = usePanelStore((s) => s.openPanel);
 
   const utils = api.useUtils();
 
