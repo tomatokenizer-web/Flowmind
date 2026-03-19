@@ -5,6 +5,7 @@ import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, X } from "lucide-react";
 import { useSelectionStore } from "~/stores/selectionStore";
+import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { UnitTypeBadge } from "./unit-type-badge";
@@ -96,6 +97,7 @@ export function UnitCard({
   const [isHovered, setIsHovered] = React.useState(false);
   const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const openPanel = usePanelStore((s) => s.openPanel);
   const isSelected = selectedUnitId === unit.id;
 
   const isDraft = unit.lifecycle === "draft";
@@ -289,7 +291,8 @@ export function UnitCard({
               className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                onClick?.(unit); // open detail panel
+                setSelectedUnit(unit.id);
+                openPanel(unit.id);
               }}
             >
               <History className="h-3 w-3" aria-hidden="true" />

@@ -142,6 +142,59 @@ function SortableUnitCard({
 
 // ─── Main Component ───────────────────────────────────────────────
 
+interface UnitBrowserProps {
+  projectId: string;
+  assemblyId: string;
+  existingUnitIds: Set<string>;
+}
+
+function UnitBrowser({ projectId, assemblyId, existingUnitIds }: UnitBrowserProps) {
+  const [search, setSearch] = React.useState("");
+  const utils = api.useUtils();
+
+  const { data: unitsData } = api.unit.list.useQuery({ projectId, limit: 50 });
+  const addUnit = api.assembly.addUnit.useMutation({
+    onSuccess: () => utils.assembly.getById.invalidate({ id: assemblyId }),
+  });
+
+  const filtered = (unitsData?.items ?? []).filter(
+    (u) => !existingUnitIds.has(u.id) &&
+      (search === "" || u.content.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div className="flex h-full w-64 flex-col border-r border-border bg-bg-secondary">
+      <div className="p-3 border-b border-border">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-tertiary">Add Units</p>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search units..."
+          className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+        />
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {filtered.length === 0 ? (
+          <p className="py-4 text-center text-xs text-text-tertiary">
+            {search ? "No matching units" : "All units added"}
+          </p>
+        ) : filtered.map((u) => (
+          <button
+            key={u.id}
+            type="button"
+            onClick={() => addUnit.mutate({ assemblyId, unitId: u.id })}
+            className="w-full rounded-lg bg-bg-primary p-2 text-left text-xs hover:bg-bg-hover transition-colors"
+          >
+            <span className="block capitalize text-accent-primary mb-0.5">{u.unitType}</span>
+            <span className="line-clamp-2 text-text-primary">{u.content}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface AssemblyBoardProps {
   assemblyId: string;
   projectId: string;
@@ -216,7 +269,17 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
   if (!assembly) return null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full">
+      {/* Left rail — unit browser */}
+      {!isPreview && (
+        <UnitBrowser
+          projectId={projectId}
+          assemblyId={assemblyId}
+          existingUnitIds={new Set(localItems.map((i) => i.unitId))}
+        />
+      )}
+
+      <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <div>
@@ -314,6 +377,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
         assemblyId={assemblyId}
         assemblyName={assembly.name}
       />
+      </div>
     </div>
   );
 }

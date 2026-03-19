@@ -33,6 +33,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     ? {
         id: unitData.id,
         content: unitData.content,
+        projectId: unitData.projectId,
         unitType: unitData.unitType,
         lifecycle: unitData.lifecycle,
         createdAt: unitData.createdAt,

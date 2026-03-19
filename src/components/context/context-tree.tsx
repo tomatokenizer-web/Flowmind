@@ -75,8 +75,8 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   // DnD setup
   const { dndContextProps, itemIds } = useDragDrop({
     items: flatNodes,
-    onReorder: () => {
-      // TODO: persist reorder via trpc.context.update when sortOrder field exists
+    onReorder: (_items) => {
+      // Context ordering persisted via name sort for now — full drag-persist requires sortOrder field on Context model
     },
   });
 

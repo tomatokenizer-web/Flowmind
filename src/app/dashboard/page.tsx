@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -10,6 +11,7 @@ import { ContextView } from "~/components/context/context-view";
 import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
 import { CaptureBar } from "~/components/unit/capture-bar";
 import { CaptureOverlay } from "~/components/unit/capture-mode";
+import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 
 export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
@@ -18,6 +20,7 @@ export default function DashboardPage() {
   const activeAssemblyId = useAssemblyStore((s) => s.activeAssemblyId);
   const projectId = useProjectId();
   const isLoading = useProjectLoading();
+  const [createContextOpen, setCreateContextOpen] = React.useState(false);
 
   if (isLoading) {
     return (
@@ -72,6 +75,16 @@ export default function DashboardPage() {
       <CaptureBar />
       {projectId && (
         <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
+      )}
+      {projectId && (
+        <CreateContextDialog
+          open={createContextOpen}
+          onOpenChange={setCreateContextOpen}
+          projectId={projectId}
+          onCreated={(id) => {
+            useSidebarStore.getState().setActiveContext(id);
+          }}
+        />
       )}
     </>
   );
