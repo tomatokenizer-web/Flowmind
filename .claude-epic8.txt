@@ -1,0 +1,162 @@
+You are implementing Epic 8 of the Flowmind project: Feedback Loop & Thought Evolution.
+Project: Next.js 14, tRPC, Prisma, Zustand, Tailwind CSS, Radix UI, Framer Motion.
+Check ALL existing files before creating new ones. The Unit model already has: incubating (Boolean), lifecycle, drift_score fields.
+
+## Story 8.1: Incubation Queue
+
+Create src/server/api/routers/incubation.ts:
+- incubation.list: returns units where incubating=true for userId, ordered by createdAt desc
+- incubation.promote: { unitId, contextId } — adds unit to context, sets incubating=false
+- incubation.snooze: { unitId } — sets lastAccessed to now (so it surfaces again later)
+- incubation.discard: { unitId } — sets lifecycle='archived', incubating=false
+Register in root.ts
+
+Create src/components/incubation/IncubationQueue.tsx:
+- Sidebar panel showing incubating units
+- Each item: content preview, created date, unit type badge
+- Actions: Promote (opens context selector popover), Snooze, Discard
+- Empty state: "No incubating thoughts — you're all caught up!"
+- Badge count in sidebar showing total incubating
+
+Add "auto-incubate" logic to unitService.create: if unit has no relations AND content < 100 chars, set incubating=true automatically (heuristic for incomplete thoughts)
+
+## Story 8.2: Compression — Similar Claim Detection
+
+Create src/server/services/compressionService.ts:
+- findSimilarClaims(contextId, db): finds claim units with similar content using ILIKE or basic string comparison (embedding-based similarity if vector exists)
+  - Groups units with >70% word overlap
+  - Returns: { groups: { units: Unit[], suggestedCore: string }[] }
+- compressClaims(unitIds, coreContent, userId, db): creates core unit, archives originals, transfers relations
+
+Add context.findSimilarClaims tRPC procedure: { contextId }
+Add context.compressClaims: { unitIds: string[], coreContent: string, contextId, projectId }
+
+Create src/components/compression/CompressionSuggestion.tsx:
+- Card showing similar units side-by-side
+- Proposed core unit content (editable)
+- Accept/Reject/Customize buttons
+- "N similar claims found" badge in Context sidebar
+
+## Story 8.3: Orphan Unit Recovery
+
+Create src/server/services/orphanService.ts:
+- findOrphans(userId, db): units with zero unitContexts AND zero assemblyItems
+  - Returns orphan units with: id, content, unitType, lifecycle, createdAt
+- recoverOrphan(unitId, action: 'context'|'incubate'|'archive'|'delete', contextId?, db)
+
+Add unit.findOrphans tRPC procedure
+Add unit.recoverOrphan tRPC procedure: { unitId, action, contextId? }
+
+Create src/components/orphan/OrphanRecovery.tsx:
+- List of orphan units with bulk actions
+- Per-unit: assign to context, incubate, archive, delete
+- Bulk: "Archive all", "Incubate all"
+- Badge in sidebar showing orphan count
+- Accessible from sidebar bottom nav
+
+## Story 8.4: External Knowledge Import
+
+Create src/components/import/ExternalImportDialog.tsx (Radix Dialog):
+- Tabs: URL import / Paste text / (future: file upload)
+- URL tab: input URL, fetches title+description via api.resource.fetchUrlMetadata
+- Paste tab: textarea for pasting external content
+- After content input: connection mode selector (3 options):
+  1. "Connect to current context" — adds to activeContextId
+  2. "Start new context" — prompts for context name
+  3. "Hold in Incubation Queue" — marks as incubating
+- On submit: calls capture.submit with originType='external_excerpt', sourceUrl, sourceTitle
+
+Add resource.fetchUrlMetadata tRPC procedure: { url } — fetches og:title, og:description using a simple fetch (no external API needed, just fetch the URL and parse meta tags)
+
+Add "Import" button to toolbar.
+
+## Story 8.5: Reverse Provenance Tracking
+
+Add resource.getReverseProvenance tRPC procedure: { resourceUnitId }
+- Finds all units where sourceSpan contains parent_input_id matching resourceUnitId
+- Finds all assembly items referencing those units
+- Returns: { derivedUnits: Unit[], assemblies: Assembly[] }
+
+Create src/components/resource/ProvenancePanel.tsx:
+- Tree view: Resource → derived units → assemblies
+- Each node clickable (sets selectedUnitId or navigates to assembly)
+- Shown in Unit Detail Panel when unit.originType contains 'external'
+
+## Story 8.6: Action Unit Completion & Result Records
+
+Add to unitService or create src/server/services/actionService.ts:
+- completeAction(unitId, userId, db):
+  - Sets unit lifecycle to 'complete'
+  - Returns the related decision units (relations with type 'derives_from'|'references')
+
+Add unit.completeAction tRPC procedure: { unitId }
+Returns: { completedUnit, relatedUnits }
+
+Create src/components/action/ActionCompletionSheet.tsx:
+- Slides up from bottom (motion.div fixed bottom-0)
+- Shows: "Action completed! Create a result record?"
+- Pre-filled result content based on action unit
+- Type: observation, originType: direct_write
+- Auto-connects to related decision units
+- Skip button (non-blocking)
+- On confirm: calls capture.submit then relation.create for each related unit
+
+Wire into UnitCard: when unit.unitType === 'action' and lifecycle !== 'complete', show "Complete" button in card footer.
+
+## Story 8.7: Unit Drift Detection
+
+Create src/server/services/driftService.ts:
+- computeDriftScore(unitContent, projectPurpose): simple keyword overlap score (0-1)
+  - If no projectPurpose: return 0 (no drift possible)
+  - Count keyword matches between unit content and project purpose
+  - Score = 1 - (matches / totalKeywords)
+- updateDriftScoresForProject(projectId, db): batch update all units' drift_score
+- getHighDriftUnits(projectId, threshold, db): returns units with drift_score > threshold
+
+Add project.getDriftUnits tRPC procedure: { projectId, threshold?: number }
+Add project.resolveDrift tRPC procedure: { unitId, action: 'keep'|'move'|'branch' }
+
+Create src/components/drift/DriftIndicator.tsx:
+- Small amber indicator shown on UnitCard when drift_score > 0.7
+- Tooltip: "This unit may be drifting from your project purpose"
+- Click: opens drift resolution dialog (keep / move to context / branch project)
+
+Wire drift computation into unit.create onSuccess (non-blocking, void).
+
+## Story 8.8: Branch Project from Drift
+
+Add project.branch tRPC procedure: { sourceProjectId, unitIds: string[], name, purpose }
+- Creates new Project with branchedFrom=sourceProjectId
+- Creates initial Context in new project
+- Moves selected units to new context (updates projectId + creates UnitContext)
+- Sets incubating=false on moved units
+
+Create src/components/drift/BranchProjectDialog.tsx (Radix Dialog):
+- Shows drifted units to include
+- Name + purpose inputs for new project
+- Confirm: calls project.branch
+- On success: shows success toast with link to new project
+
+## Story 8.10: Action Unit External Service Delegation (MVP)
+
+For MVP, implement UI scaffolding only (no real OAuth):
+
+Create src/components/action/DelegationDialog.tsx (Radix Dialog):
+- Categories: Schedule / To-do / Communication / Appointment / Purchase
+- Each category shows service icons (Google Calendar, Todoist, Email, etc.)
+- Shows "Integration coming soon" for each service
+- Pre-fills title from action unit content
+- On "Set up integration": navigates to /settings/integrations (placeholder)
+
+Wire "Delegate" button into UnitCard for action type units.
+
+## WIRE INTO SIDEBAR:
+Update src/components/layout/sidebar.tsx to add bottom nav items:
+- Incubation Queue (with badge count from api.incubation.list)
+- Orphan Recovery (with badge count from api.unit.findOrphans)
+- Import button
+
+## AFTER ALL DONE:
+1. git add -A
+2. git commit -m "feat: Epic 8 complete - incubation queue, compression, orphan recovery, external import, action completion, drift detection, branch project"
+3. openclaw system event --text "Done: Epic 8 complete - feedback loop and thought evolution features built" --mode now

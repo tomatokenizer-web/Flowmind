@@ -16,6 +16,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 import { Button } from "~/components/ui/button";
 import { ContextTree } from "~/components/context/context-tree";
+import { IncubationQueue } from "~/components/incubation/IncubationQueue";
 
 const SIDEBAR_WIDTH = 260;
 const SIDEBAR_COLLAPSED_WIDTH = 60;
@@ -107,6 +108,11 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Context tree */}
       <ContextTree projectId={projectId} collapsed={isCollapsed} />
+
+      {/* Incubation queue */}
+      <div className="border-t border-border">
+        <IncubationQueue collapsed={isCollapsed} />
+      </div>
 
       {/* Bottom nav items */}
       <div className="border-t border-border p-space-2">

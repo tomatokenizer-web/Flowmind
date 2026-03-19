@@ -16,6 +16,7 @@ import { relationTypeRouter } from "@/server/api/routers/relation-type";
 import { aiRouter } from "@/server/api/routers/ai";
 import { searchRouter } from "@/server/api/routers/search";
 import { assemblyRouter } from "@/server/api/routers/assembly";
+import { incubationRouter } from "@/server/api/routers/incubation";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -35,6 +36,7 @@ export const appRouter = createTRPCRouter({
   ai: aiRouter,
   search: searchRouter,
   assembly: assemblyRouter,
+  incubation: incubationRouter,
 });
 
 export type AppRouter = typeof appRouter;
