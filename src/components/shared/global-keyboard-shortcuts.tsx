@@ -6,6 +6,7 @@ import { useLayoutStore } from "~/stores/layout-store";
 import { useCaptureStore } from "~/stores/capture-store";
 import { announceToScreenReader } from "~/lib/accessibility";
 import { KeyboardShortcutsHelp } from "./keyboard-shortcuts-help";
+import { openCommandPalette } from "~/components/search";
 
 /**
  * Registers all global keyboard shortcuts and renders the help overlay.
@@ -27,8 +28,8 @@ export function GlobalKeyboardShortcuts() {
         group: "General",
         global: true,
         action: () => {
-          // Cmd+K is already handled by the CommandPalette component in command.tsx.
-          // This registration is for the shortcut registry / help overlay only.
+          openCommandPalette();
+          announceToScreenReader("Command palette opened");
         },
       },
       {

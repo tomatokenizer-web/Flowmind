@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createContextService } from "@/server/services/contextService";
+import { createThoughtRankService } from "@/server/services/thoughtRankService";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────
 
@@ -138,5 +139,13 @@ export const contextRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const service = createContextService(ctx.db);
       return service.mergeContexts(input);
+    }),
+
+  recomputeThoughtRank: protectedProcedure
+    .input(contextIdSchema)
+    .mutation(async ({ ctx, input }) => {
+      const service = createThoughtRankService(ctx.db);
+      await service.updateThoughtRankForContext(input.id);
+      return { success: true };
     }),
 });

@@ -28,6 +28,7 @@ export interface UnitCardUnit {
   originType?: string;
   sourceSpan?: string | null;
   contexts?: string[];
+  importance?: number;
 }
 
 export interface UnitCardProps {
@@ -306,6 +307,19 @@ export function UnitCard({
           </>
         )}
       </div>
+
+      {/* Importance score bar — subtle indicator at bottom of card */}
+      {(unit.importance ?? 0) > 0 && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-0.5 bg-bg-secondary overflow-hidden rounded-b-card"
+          aria-label={`Importance: ${Math.round((unit.importance ?? 0) * 100)}%`}
+        >
+          <div
+            className="h-full bg-accent-primary/60 transition-all duration-300"
+            style={{ width: `${(unit.importance ?? 0) * 100}%` }}
+          />
+        </div>
+      )}
     </motion.article>
   );
 }

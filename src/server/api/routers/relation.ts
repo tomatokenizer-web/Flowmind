@@ -4,6 +4,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createRelationService } from "@/server/services/relationService";
 import { updateLoopbacksForContext } from "@/server/services/cycleDetectionService";
 import { createUnitMergeService } from "@/server/services/unitMergeService";
+import { createThoughtRankService } from "@/server/services/thoughtRankService";
 
 // ─── Zod Schemas ────────────────────────────────────────────────────
 
@@ -84,6 +85,12 @@ export const relationRouter = createTRPCRouter({
         if (perspective) {
           void updateLoopbacksForContext(ctx.db, perspective.contextId).catch(() => {
             // Non-fatal — cycle detection runs best-effort
+          });
+
+          // Recompute ThoughtRank for the context (non-blocking)
+          const thoughtRankService = createThoughtRankService(ctx.db);
+          void thoughtRankService.updateThoughtRankForContext(perspective.contextId).catch(() => {
+            // Non-fatal — ThoughtRank update runs best-effort
           });
         }
       }

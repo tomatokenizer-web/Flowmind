@@ -183,8 +183,8 @@ export function createSearchService(db: PrismaClient) {
         createdAt: true,
         _count: {
           select: {
-            outgoingRelations: true,
-            incomingRelations: true,
+            relationsAsSource: true,
+            relationsAsTarget: true,
           },
         },
       },
@@ -196,7 +196,7 @@ export function createSearchService(db: PrismaClient) {
     let filtered = units;
     if (filters?.minRelationCount !== undefined || filters?.maxRelationCount !== undefined) {
       filtered = units.filter((u) => {
-        const count = u._count.outgoingRelations + u._count.incomingRelations;
+        const count = u._count.relationsAsSource + u._count.relationsAsTarget;
         if (filters.minRelationCount !== undefined && count < filters.minRelationCount) {
           return false;
         }
@@ -216,7 +216,7 @@ export function createSearchService(db: PrismaClient) {
       matchLayer: "structural" as SearchLayer,
       highlights: query.trim() ? extractHighlights(unit.content, query) : [],
       createdAt: unit.createdAt,
-      relationCount: unit._count.outgoingRelations + unit._count.incomingRelations,
+      relationCount: unit._count.relationsAsSource + unit._count.relationsAsTarget,
     }));
   }
 
@@ -255,8 +255,8 @@ export function createSearchService(db: PrismaClient) {
         createdAt: true,
         _count: {
           select: {
-            outgoingRelations: true,
-            incomingRelations: true,
+            relationsAsSource: true,
+            relationsAsTarget: true,
           },
         },
       },
@@ -273,7 +273,7 @@ export function createSearchService(db: PrismaClient) {
       matchLayer: "temporal" as SearchLayer,
       highlights: query.trim() ? extractHighlights(unit.content, query) : [],
       createdAt: unit.createdAt,
-      relationCount: unit._count.outgoingRelations + unit._count.incomingRelations,
+      relationCount: unit._count.relationsAsSource + unit._count.relationsAsTarget,
     }));
   }
 
@@ -289,15 +289,15 @@ export function createSearchService(db: PrismaClient) {
         id: true,
         _count: {
           select: {
-            outgoingRelations: true,
-            incomingRelations: true,
+            relationsAsSource: true,
+            relationsAsTarget: true,
           },
         },
       },
     });
 
     return new Map(
-      counts.map((u) => [u.id, u._count.outgoingRelations + u._count.incomingRelations]),
+      counts.map((u) => [u.id, u._count.relationsAsSource + u._count.relationsAsTarget]),
     );
   }
 
@@ -351,10 +351,10 @@ export function createSearchService(db: PrismaClient) {
    * Calculate structural match score
    */
   function calculateStructuralScore(
-    unit: { _count: { outgoingRelations: number; incomingRelations: number } },
+    unit: { _count: { relationsAsSource: number; relationsAsTarget: number } },
     filters?: StructuralFilters,
   ): number {
-    const relationCount = unit._count.outgoingRelations + unit._count.incomingRelations;
+    const relationCount = unit._count.relationsAsSource + unit._count.relationsAsTarget;
     // Higher relation count = higher score
     const relationScore = Math.min(1, relationCount / 10);
     // Bonus if matches specific filters
