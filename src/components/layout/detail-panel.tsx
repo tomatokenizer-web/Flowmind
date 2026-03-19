@@ -17,9 +17,9 @@ interface DetailPanelProps {
 }
 
 export function DetailPanel({ className, fullScreenOverlay = false }: DetailPanelProps) {
-  const detailPanelOpen = useLayoutStore((s) => s.detailPanelOpen);
   const setDetailPanelOpen = useLayoutStore((s) => s.setDetailPanelOpen);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
+  const detailPanelOpen = usePanelStore((s) => s.isOpen); // use panelStore as source of truth
   const closePanel = usePanelStore((s) => s.closePanel);
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);

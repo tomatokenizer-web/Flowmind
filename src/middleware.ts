@@ -25,7 +25,8 @@ export async function middleware(req: NextRequest) {
 
   if (!token) {
     const signInUrl = new URL("/sign-in", req.url);
-    signInUrl.searchParams.set("callbackUrl", pathname);
+    // After sign-in, always go to /dashboard (not wherever they were trying to go)
+    signInUrl.searchParams.set("callbackUrl", "/dashboard");
     return NextResponse.redirect(signInUrl);
   }
 
