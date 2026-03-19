@@ -36,8 +36,11 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
+// Stable snapshot — new reference on every change so useSyncExternalStore detects updates
+let cachedSnapshot: ReadonlyMap<string, KeyboardShortcut> = new Map();
+
 function getSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
-  return shortcuts;
+  return cachedSnapshot;
 }
 
 function getServerSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
@@ -46,9 +49,11 @@ function getServerSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
 
 export function registerShortcut(shortcut: KeyboardShortcut): () => void {
   shortcuts.set(shortcut.id, shortcut);
+  cachedSnapshot = new Map(shortcuts);
   emitChange();
   return () => {
     shortcuts.delete(shortcut.id);
+    cachedSnapshot = new Map(shortcuts);
     emitChange();
   };
 }
