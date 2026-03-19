@@ -12,6 +12,7 @@ import type { LifecycleState } from "~/components/unit/lifecycle-indicator";
 import { UnitCard, type UnitCardUnit } from "~/components/unit/unit-card";
 import { UnitCardSkeleton } from "~/components/unit/unit-card-skeleton";
 import { EmptyState } from "~/components/shared/empty-state";
+import { BulkApprovalBar } from "~/components/unit/bulk-approval-bar";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
 import { AddUnitToContext } from "./add-unit-to-context";
@@ -38,6 +39,9 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   const openPanel = usePanelStore((s) => s.openPanel);
   const utils = api.useUtils();
 
+  // Multi-select state for bulk operations
+  const [selectedUnitIds, setSelectedUnitIds] = React.useState<Set<string>>(new Set());
+
   const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
     onSuccess: () => void utils.unit.list.invalidate({ projectId: projectId! }),
   });
@@ -49,6 +53,29 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     },
     [lifecycleMutation],
   );
+
+  // Bulk approve all selected units
+  const handleBulkApprove = React.useCallback(async () => {
+    const promises = Array.from(selectedUnitIds).map((id) =>
+      lifecycleMutation.mutateAsync({ id, targetState: "confirmed" })
+    );
+    await Promise.all(promises);
+    setSelectedUnitIds(new Set());
+  }, [selectedUnitIds, lifecycleMutation]);
+
+  // Bulk reject all selected units
+  const handleBulkReject = React.useCallback(async () => {
+    const promises = Array.from(selectedUnitIds).map((id) =>
+      lifecycleMutation.mutateAsync({ id, targetState: "archived" })
+    );
+    await Promise.all(promises);
+    setSelectedUnitIds(new Set());
+  }, [selectedUnitIds, lifecycleMutation]);
+
+  // Clear multi-selection
+  const handleDismissSelection = React.useCallback(() => {
+    setSelectedUnitIds(new Set());
+  }, []);
 
   const { briefing, isLoading: isBriefingLoading } =
     useContextBriefing(activeContextId);
@@ -63,9 +90,25 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     },
   });
 
+  // Handle unit click - Shift+click for multi-select, normal click opens panel
   const handleUnitClick = React.useCallback(
-    (unit: UnitCardUnit) => {
-      openPanel(unit.id);
+    (unit: UnitCardUnit, event?: React.MouseEvent) => {
+      if (event?.shiftKey) {
+        // Shift+click: toggle selection
+        setSelectedUnitIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(unit.id)) {
+            next.delete(unit.id);
+          } else {
+            next.add(unit.id);
+          }
+          return next;
+        });
+      } else {
+        // Normal click: clear multi-select and open panel
+        setSelectedUnitIds(new Set());
+        openPanel(unit.id);
+      }
     },
     [openPanel],
   );
@@ -175,11 +218,18 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           }
         >
           {cardUnits.map((unit) => (
-            <div key={unit.id} id={`unit-${unit.id}`} role="listitem">
+            <div
+              key={unit.id}
+              id={`unit-${unit.id}`}
+              role="listitem"
+              onClick={(e) => handleUnitClick(unit, e)}
+            >
               <UnitCard
                 unit={unit}
-                onClick={handleUnitClick}
+                selected={selectedUnitIds.has(unit.id)}
+                onClick={() => {/* handled by parent div for event access */}}
                 onLifecycleAction={handleLifecycleAction}
+                projectId={projectId}
                 onRemoveFromContext={
                   activeContextId
                     ? () =>
@@ -194,6 +244,15 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           ))}
         </div>
       )}
+
+      {/* Bulk approval bar for multi-select */}
+      <BulkApprovalBar
+        selectedCount={selectedUnitIds.size}
+        onApproveAll={handleBulkApprove}
+        onRejectAll={handleBulkReject}
+        onDismiss={handleDismissSelection}
+        disabled={lifecycleMutation.isPending}
+      />
     </div>
   );
 }

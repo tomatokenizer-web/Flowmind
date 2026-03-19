@@ -1,0 +1,175 @@
+Fix all remaining UI interaction gaps in Flowmind. Read each file carefully before editing.
+
+## CRITICAL FIXES (1-8):
+
+### 1. BulkApprovalBar — mount in ContextView
+Read src/components/context/context-view.tsx.
+Add multi-select state: selectedUnitIds: Set<string>
+When UnitCard is clicked with Shift held, add to selectedUnitIds instead of opening panel.
+Mount BulkApprovalBar at bottom when selectedUnitIds.size >= 2.
+Wire onApproveAll: calls api.unit.lifecycleTransition for each selected unit (targetState='confirmed')
+Wire onRejectAll: calls api.unit.lifecycleTransition for each (targetState='archived')
+Wire onDismiss: clears selectedUnitIds
+
+### 2. AudioRecorder — wire to capture
+Read src/components/unit/audio-recorder.tsx to understand its interface.
+Add an audio recording button to the CaptureBar (microphone icon).
+When recording completes, AudioRecorder should call api.audio.transcribe then api.capture.submit with the transcription.
+Add AudioRecorder as optional panel at bottom of capture-mode.tsx.
+
+### 3. UnitSplitDialog — wire into UnitCard context menu or detail panel
+Read src/components/unit/UnitSplitDialog.tsx to understand props.
+Add "Split Unit" button to UnitDetailPanel ContentTab (after the Refine button area).
+Wire: opens UnitSplitDialog with the current unit.
+
+### 4. AIInsightsPanel — mount in ContextView
+Read src/components/ai/AIInsightsPanel.tsx.
+Add an "AI Insights" button (Sparkles icon) to the ContextView header area.
+Toggle a sidebar panel showing AIInsightsPanel for the activeContextId.
+Wire onCreateUnit: calls api.capture.submit
+Wire onNavigateToUnit: calls setSelectedUnit + openPanel
+
+### 5. UnitAIActionsMenu — wire into UnitCard
+Read src/components/unit/UnitAIActionsMenu.tsx to understand its interface.
+Add a Sparkles button (small, top-right of card) visible on hover.
+Clicking opens UnitAIActionsMenu dropdown for that unit.
+
+### 6. BranchPotentialPopover — make dots clickable
+Read src/components/unit/unit-card.tsx — find BranchPotentialDots function.
+Wrap the dots in a button that opens a Popover.
+Popover content: calls api.ai.suggestExplorationDirections (add this procedure to ai router if not exists).
+Show 2-3 exploration direction suggestions.
+Each suggestion: click creates draft unit with the prompt + relation back to source.
+
+### 7. Starred filter — wire to ContextView
+Read src/components/context/context-view.tsx and src/hooks/use-context-units.ts.
+Add showStarred: boolean state to ContextView.
+Listen for 'flowmind:show-starred' window event: set showStarred=true.
+When showStarred=true: pass pinned:true filter to unit.list query.
+Add "Starred" heading and a clear button when starred filter is active.
+Update unit.list query in unit router to support pinned filter (check if it already exists).
+
+### 8. Assembly context navigation
+In src/app/dashboard/page.tsx, when switching from assembly view to canvas view, preserve activeContextId (already done via sidebar store). The "Back" button in AssemblyBoard already calls setViewMode('canvas') which should work.
+Also: add unit.list to AssemblyBoard's left rail — when user clicks a unit there, show its content and offer "View in Context" button that calls setActiveContext + setViewMode('canvas').
+
+## MISSING UI (9-18):
+
+### 9. Navigator Panel
+Create src/components/navigator/NavigatorPanel.tsx:
+- Accordion section in sidebar below contexts
+- "Navigators" header with + button to create new navigator
+- List existing navigators: api.navigator.list({ contextId: activeContextId }) — check if router exists in root.ts
+- Click navigator: enters navigator mode (step through units in path order)
+- Create: name input + select units to add
+
+### 10. External Import Dialog
+Create src/components/import/ExternalImportDialog.tsx:
+- Triggered by Import button in sidebar (add one)
+- Tabs: URL / Paste text
+- URL: input + fetch title via simple HEAD request
+- Connection mode: Connect to context / New context / Incubate
+- Submit: api.capture.submit with originType='external_excerpt', sourceUrl
+
+Wire an Import button (Link2 icon or Import icon) to sidebar bottom nav.
+
+### 11. Assembly Template Picker — wire into "New Assembly" creation
+In src/app/dashboard/page.tsx assembly view empty state, add "Create from Template" button.
+Create src/components/assembly/CreateAssemblyDialog.tsx:
+- Modal with two options: blank assembly or from template
+- Template picker: grid showing 4 templates from src/lib/assembly-templates.ts
+- Blank: calls api.assembly.create({ name, projectId })
+- Template: calls api.assembly.create then adds slots as items
+
+Wire "New Assembly" button to open CreateAssemblyDialog.
+Add "New Assembly" to sidebar bottom nav when in assembly view.
+
+### 12. Reasoning Chain — wire into Assembly view
+In AssemblyBoard.tsx header, add "Reasoning Chain" tab/button.
+When clicked: calls api.ai.generateReasoningChain (add to ai router if missing).
+Show chain as vertical steps: unit preview → relation type arrow → next unit.
+
+### 13. AI Prompt Generator — wire into unit selection
+In src/components/panels/UnitDetailPanel.tsx AI tab:
+Add "Generate AI Prompt" button below the type suggestion.
+Calls api.ai.generatePrompt (check if exists in router).
+Shows textarea with generated prompt + Copy button.
+
+### 14. Flow prediction alerts — show on UnitCards
+Create src/components/unit/FlowAlertBadge.tsx:
+- Small amber dot with tooltip when unit has flow alerts
+- Shows: "This claim has no supporting evidence" etc.
+After unit.list loads, for each claim/question unit without relations, compute alert locally (no API call needed):
+  - claim with 0 evidence relations → alert
+  - question with 0 answer relations → alert
+
+Mount FlowAlertBadge inside UnitCard below the content (only for confirmed units).
+
+### 15. Drift score on UnitCard
+In src/components/unit/unit-card.tsx:
+Import DriftIndicator from src/components/drift/DriftIndicator.tsx.
+Show DriftIndicator if unit has driftScore field > 0.7.
+UnitCardUnit interface needs driftScore?: number field.
+Pass driftScore from unit data in context-view.tsx cardUnits mapping.
+
+### 16. Unit pinning/flagging UI
+In UnitCard, add a small pin icon button (Pin icon from lucide) visible on hover.
+onClick: calls api.unit.update({ id, pinned: !unit.pinned })
+Show filled pin icon when pinned=true.
+Same for flagged: flag icon.
+Add pinned and flagged to UnitCardUnit interface.
+
+### 17. AI type suggestion auto-trigger after capture
+In src/hooks/use-capture-mode.ts, after submitMutation.onSuccess:
+If mode is 'capture', trigger api.ai.suggestType.mutate({ content }) (non-blocking).
+Push suggestion to aiSuggestionStore if it exists, otherwise show as toast.
+
+### 18. ThoughtRank display on UnitCard
+UnitCardUnit already has branchPotential field.
+Add importance?: number to UnitCardUnit.
+Map importance from unit data in context-view.tsx.
+Show a subtle bar (2px height, blue, width = importance * 100%) at bottom of card.
+
+## WIRING GAPS (19-25):
+
+### 19. Approve/Reject lifecycle buttons in UnitCard
+In src/components/context/context-view.tsx, wire onLifecycleAction callback:
+Create lifecycleMutation = api.unit.lifecycleTransition.useMutation()
+Pass to UnitCard: onLifecycleAction={(unitId, action) => { 
+  const target = action === 'approve' ? 'confirmed' : action === 'reject' ? 'archived' : 'draft'
+  lifecycleMutation.mutate({ id: unitId, targetState: target })
+}}
+
+### 20. Incubation auto-trigger on unit create
+In src/server/services/unitService.ts create() method:
+After unit is created, if content.length < 100 and no contextId: set incubating=true via db.unit.update.
+
+### 21. Tension detection auto-trigger
+In src/server/api/routers/capture.ts, after unit creation:
+If unitType === 'claim' and contextId exists, void aiService.detectTensions(contextId, db).
+
+### 22. Context snapshot AI generation
+In src/server/api/routers/context.ts getById procedure:
+If context.snapshot === '' and context has > 3 units:
+Trigger background AI snapshot generation (void, non-blocking).
+Add context.generateSnapshot tRPC procedure: calls aiService method to summarize context units.
+
+### 23. Compression suggestions in Context sidebar
+In ContextView, after loading units: if there are 10+ claim units, show a subtle banner:
+"Similar claims detected — Review compressions" with a button.
+Calls api.feedback.findSimilarClaims({ contextId }).
+
+### 24. Navigator router registration
+Check src/server/api/root.ts for navigator router.
+If missing: the navigator router should already exist at src/server/api/routers/navigator.ts (from Epic 6).
+Register it if not already there.
+
+### 25. Search: wire semantic layer
+In src/server/services/searchService.ts, the semantic layer uses pgvector.
+For units without embeddings, fall back to text search.
+Add ai.generateEmbedding procedure that computes and stores embedding for a unit.
+
+## AFTER ALL DONE:
+1. git add -A
+2. git commit -m "fix: all 25 UI interaction gaps - bulk approval, audio recorder, branch potential, flow alerts, drift indicators, pinning, lifecycle buttons, AI triggers"  
+3. openclaw system event --text "Done: All 25 UI interaction gaps fixed - Flowmind fully wired" --mode now

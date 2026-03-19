@@ -3,16 +3,19 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink, X } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors } from "lucide-react";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
+import { api } from "~/trpc/react";
 import { UnitTypeBadge } from "./unit-type-badge";
 import { LifecycleIndicator, type LifecycleState } from "./lifecycle-indicator";
 import { AILifecycleBadge } from "./lifecycle-badge";
 import { AIBadge } from "./ai-badge";
 import { ApproveRejectButtons } from "./approve-reject-buttons";
+import { UnitSplitDialog } from "./UnitSplitDialog";
+import type { SplitReattributionProposal } from "~/server/ai";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -40,6 +43,8 @@ export interface UnitCardProps {
   onLifecycleAction?: (unitId: string, action: "approve" | "reject" | "reset") => void;
   /** When provided, shows "Remove from Context" in the context menu */
   onRemoveFromContext?: () => void;
+  /** Project ID for split functionality - required to create new units */
+  projectId?: string;
   className?: string;
 }
 
@@ -92,13 +97,63 @@ export function UnitCard({
   onClick,
   onLifecycleAction,
   onRemoveFromContext,
+  projectId,
   className,
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
+  const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
   const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
   const openPanel = usePanelStore((s) => s.openPanel);
   const isSelected = selectedUnitId === unit.id;
+
+  const utils = api.useUtils();
+
+  // Mutations for split functionality
+  const createUnit = api.unit.create.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate(),
+  });
+  const lifecycleTransition = api.unit.lifecycleTransition.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate(),
+  });
+
+  // Handle split confirmation - creates two new units and archives the original
+  const handleSplitConfirm = React.useCallback(
+    async (params: {
+      contentA: string;
+      contentB: string;
+      proposals: SplitReattributionProposal[];
+    }) => {
+      if (!projectId) return;
+
+      // Create first split unit (using ai_refined as it's derived from existing content)
+      await createUnit.mutateAsync({
+        content: params.contentA,
+        unitType: unit.unitType,
+        lifecycle: "draft",
+        originType: "ai_refined",
+        sourceSpan: { splitFrom: unit.id, part: "A" },
+        projectId,
+      });
+
+      // Create second split unit
+      await createUnit.mutateAsync({
+        content: params.contentB,
+        unitType: unit.unitType,
+        lifecycle: "draft",
+        originType: "ai_refined",
+        sourceSpan: { splitFrom: unit.id, part: "B" },
+        projectId,
+      });
+
+      // Archive the original unit
+      await lifecycleTransition.mutateAsync({
+        id: unit.id,
+        targetState: "archived",
+      });
+    },
+    [createUnit, lifecycleTransition, unit.id, unit.unitType, projectId]
+  );
 
   const isDraft = unit.lifecycle === "draft";
   const isPending = unit.lifecycle === "pending";
@@ -285,19 +340,37 @@ export function UnitCard({
               </div>
             </div>
 
-            {/* Version history — opens detail panel on history tab */}
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedUnit(unit.id);
-                openPanel(unit.id);
-              }}
-            >
-              <History className="h-3 w-3" aria-hidden="true" />
-              Version history
-            </button>
+            {/* Action buttons row */}
+            <div className="flex items-center gap-3">
+              {/* Version history — opens detail panel on history tab */}
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedUnit(unit.id);
+                  openPanel(unit.id);
+                }}
+              >
+                <History className="h-3 w-3" aria-hidden="true" />
+                Version history
+              </button>
+
+              {/* Split unit button - only shown when projectId is available */}
+              {projectId && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-accent-primary hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSplitDialogOpen(true);
+                  }}
+                >
+                  <Scissors className="h-3 w-3" aria-hidden="true" />
+                  Split
+                </button>
+              )}
+            </div>
 
             {/* Relation list preview placeholder */}
             <div className="border-t border-border pt-3">
@@ -323,6 +396,18 @@ export function UnitCard({
           />
         </div>
       )}
+
+      {/* Split dialog */}
+      <UnitSplitDialog
+        open={splitDialogOpen}
+        onOpenChange={setSplitDialogOpen}
+        unit={{
+          id: unit.id,
+          content: unit.content,
+          unitType: unit.unitType,
+        }}
+        onConfirm={handleSplitConfirm}
+      />
     </motion.article>
   );
 }

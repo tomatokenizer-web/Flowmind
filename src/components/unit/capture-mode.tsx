@@ -7,7 +7,9 @@ import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
 import { DecompositionReview } from "~/components/ai/decomposition-review";
-import { CaptureBar } from "./capture-bar";
+import { AudioRecorder } from "./audio-recorder";
+import { api } from "~/trpc/react";
+import type { AudioRecorderResult } from "~/hooks/use-audio-recorder";
 
 interface CaptureOverlayProps {
   projectId: string;
@@ -41,6 +43,71 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
   } = useCaptureMode({ projectId, contextId });
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Audio recording state from store
+  const showAudioRecorder = useCaptureStore((s) => s.showAudioRecorder);
+  const hideAudioRecorder = useCaptureStore((s) => s.hideAudioRecorder);
+  const [isTranscribing, setIsTranscribing] = React.useState(false);
+
+  const utils = api.useUtils();
+  const uploadAudio = api.audio.upload.useMutation();
+  const transcribeAudio = api.audio.transcribe.useMutation();
+  const submitCapture = api.capture.submit.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate(),
+  });
+
+  // Handle audio recording completion
+  const handleAudioRecordingComplete = React.useCallback(
+    async (result: AudioRecorderResult) => {
+      setIsTranscribing(true);
+      try {
+        // Convert blob to base64
+        const arrayBuffer = await result.blob.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(arrayBuffer).reduce(
+            (data, byte) => data + String.fromCharCode(byte),
+            ""
+          )
+        );
+
+        // Upload audio
+        const uploadResult = await uploadAudio.mutateAsync({
+          base64,
+          mimeType: result.mimeType,
+          duration: result.duration,
+        });
+
+        // Transcribe audio
+        const transcribeResult = await transcribeAudio.mutateAsync({
+          resourceId: uploadResult.id,
+          projectId,
+          decompose: false,
+        });
+
+        // Submit transcription as capture
+        if (transcribeResult.transcription.text) {
+          await submitCapture.mutateAsync({
+            content: transcribeResult.transcription.text,
+            projectId,
+            mode: "capture",
+          });
+          announceToScreenReader("Audio transcribed and captured successfully");
+          close();
+        }
+      } catch (error) {
+        console.error("Audio transcription failed:", error);
+        announceToScreenReader("Audio transcription failed");
+      } finally {
+        setIsTranscribing(false);
+        hideAudioRecorder();
+      }
+    },
+    [uploadAudio, transcribeAudio, submitCapture, projectId, close, hideAudioRecorder]
+  );
+
+  const handleAudioCancel = React.useCallback(() => {
+    hideAudioRecorder();
+  }, [hideAudioRecorder]);
 
   // Auto-focus on mount
   React.useEffect(() => {
@@ -237,8 +304,41 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
               />
             </motion.div>
           )}
+
+          {/* Transcribing phase - loading state */}
+          {isTranscribing && (
+            <motion.div
+              key="transcribing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex flex-col items-center gap-4 py-12"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-[#0071E3]" />
+              <p className="text-center text-text-secondary">
+                Transcribing audio...
+              </p>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
+
+      {/* Audio recorder panel at bottom */}
+      <AnimatePresence>
+        {showAudioRecorder && !isTranscribing && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-6"
+          >
+            <AudioRecorder
+              onRecordingComplete={handleAudioRecordingComplete}
+              onCancel={handleAudioCancel}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

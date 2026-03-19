@@ -26,6 +26,8 @@ interface CaptureState {
   pendingText: string;
   /** Decomposition result when in reviewing phase */
   decompositionData: DecompositionData | null;
+  /** Whether audio recording mode should be shown */
+  showAudioRecorder: boolean;
 
   open: () => void;
   close: () => void;
@@ -37,6 +39,8 @@ interface CaptureState {
   setPhase: (phase: CapturePhase) => void;
   setDecompositionData: (data: DecompositionData | null) => void;
   resetToInput: () => void;
+  openWithAudio: () => void;
+  hideAudioRecorder: () => void;
 }
 
 export const useCaptureStore = create<CaptureState>((set) => ({
@@ -45,13 +49,14 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   phase: "input",
   pendingText: "",
   decompositionData: null,
+  showAudioRecorder: false,
 
-  open: () => set({ isOpen: true, phase: "input" }),
-  close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null }),
+  open: () => set({ isOpen: true, phase: "input", showAudioRecorder: false }),
+  close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false }),
   toggle: () =>
     set((s) =>
       s.isOpen
-        ? { isOpen: false, pendingText: "", phase: "input", decompositionData: null }
+        ? { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false }
         : { isOpen: true, phase: "input" }
     ),
   toggleMode: () =>
@@ -62,4 +67,6 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   setPhase: (phase) => set({ phase }),
   setDecompositionData: (data) => set({ decompositionData: data }),
   resetToInput: () => set({ phase: "input", decompositionData: null, pendingText: "" }),
+  openWithAudio: () => set({ isOpen: true, phase: "input", showAudioRecorder: true }),
+  hideAudioRecorder: () => set({ showAudioRecorder: false }),
 }));
