@@ -11,14 +11,14 @@ export default function SignInPage() {
 
   const handleOAuth = (provider: string) => {
     setIsLoading(provider);
-    void signIn(provider, { callbackUrl: "/" });
+    void signIn(provider, { callbackUrl: "/dashboard-app" });
   };
 
   const handleEmail = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
     setIsLoading("email");
-    void signIn("resend", { email, callbackUrl: "/" }).then(() => {
+    void signIn("resend", { email, callbackUrl: "/dashboard-app" }).then(() => {
       setEmailSent(true);
       setIsLoading(null);
     });
