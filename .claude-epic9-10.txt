@@ -1,0 +1,205 @@
+You are implementing Epics 9 and 10 of the Flowmind project: Projects & Domain Templates + External Integration & Context Export API.
+Project: Next.js 14, tRPC, Prisma, Zustand, Tailwind CSS, Radix UI, Framer Motion.
+Check ALL existing files before creating new ones. Project model already exists in schema.prisma with: id, name, userId, branchedFrom, constraintLevel, templateId fields.
+
+## EPIC 9: Projects & Domain Templates
+
+### Story 9.1: Project CRUD API
+
+Check src/server/api/root.ts for existing project router (there is one: src/server/api/routers/project.ts).
+Extend it with:
+- project.create: { name, description?, purpose?, templateId?, constraintLevel: 'strict'|'guided'|'open' }
+- project.list: returns all projects for userId
+- project.update: { id, name?, description?, constraintLevel? }
+- project.delete: { id }
+- project.getById: { id } returns project with template + context count
+
+### Story 9.2: Domain Template System
+
+Check prisma/schema.prisma for DomainTemplate model. It has: id, name, slug, type, config (Json).
+Check prisma/seed.ts - it may already seed domain templates.
+
+If seed doesn't have templates, add 4 to prisma/seed.ts:
+- software-design: types=[claim,question,evidence,action], scaffold questions about architecture decisions
+- nonfiction-writing: types=[claim,evidence,observation,idea], scaffold questions about thesis and audience
+- investment-decision: types=[claim,evidence,counterargument,assumption,action], scaffold about returns and risks
+- academic-research: types=[claim,question,evidence,definition,observation], scaffold about methodology
+
+Each template config JSON: { scaffoldQuestions: string[], defaultContexts: string[], gapRules: string[], aiGuidePrompts: string[] }
+
+Add relationType.listTemplates tRPC procedure (or add to existing unitType router): returns all domain templates.
+
+Create src/components/project/ProjectCreationDialog.tsx:
+- Radix Dialog for creating a new project
+- Step 1: Name + purpose
+- Step 2: Template picker (grid of 4 template cards + "Freeform" option)
+- Step 3: Constraint level selector (Strict/Guided/Open with descriptions)
+- Creates project via api.project.create
+- On success: redirects to /dashboard with new project active
+
+### Story 9.3: Constraint Levels
+
+Update sidebar project selector to show constraint level badge:
+- Strict = red badge
+- Guided = amber badge  
+- Open = green badge
+
+Add constraint level indicator to dashboard header.
+
+### Story 9.4: Scaffold Units & Gap Detection
+
+Create src/server/services/scaffoldService.ts:
+- createScaffoldUnits(projectId, templateConfig, userId, db): 
+  - Creates draft Units from template.scaffoldQuestions
+  - Each unit: content=question, unitType='question', lifecycle='draft', originType='ai_generated', meta: { scaffold: true }
+  - Creates a default "Main" Context and adds scaffold units to it
+- detectGaps(projectId, templateConfig, db):
+  - Checks which scaffold questions have confirmed units related to them
+  - Returns: { answered: string[], unanswered: string[], completeness: number }
+
+Add project.getGaps tRPC procedure: { projectId }
+Wire scaffold creation into project.create onSuccess (if templateId provided).
+
+Create src/components/project/GapDetectionPanel.tsx:
+- Shows answered (green checkmark) vs unanswered (amber circle) scaffold questions
+- Completeness percentage
+- "Suggested next: [question]" CTA
+
+### Story 9.5: Completeness Compass
+
+Create src/components/project/CompletenessCompass.tsx:
+- Radial SVG progress visualization using unit type breakdown
+- Categories: Claims, Evidence, Questions, Actions (each gets a segment)
+- Shows percentage per category
+- Collapsed: small circular indicator in toolbar (shows overall %)
+- Expanded: popover with full breakdown + action suggestions
+- "What you can create now" section: lists assemblies achievable at current completeness
+
+Add project.getCompletenessStats tRPC procedure: { projectId }
+Returns: { categories: { name, count, target, percentage }[], overall: number, achievableAssemblies: string[] }
+
+### Story 9.6: Freeform-to-Formal Template Export
+
+Add ai.proposeTemplateMapping tRPC procedure: { projectId }
+- AI analyzes units in project
+- Suggests best matching template
+- Returns: { suggestedTemplate, mappings: { unitId, currentType, proposedType, confidence }[] }
+
+Create src/components/project/TemplateMappingDialog.tsx:
+- Shows current vs proposed type for each unit
+- User can accept/reject per unit
+- "Apply Mappings" updates unit types in bulk
+
+### Story 9.7: Enhanced Project Dashboard
+
+Update src/app/dashboard/page.tsx to show project-aware header:
+- Project name + template name + constraint level badge
+- Scaffold progress section (if template active)
+- AI live guide panel (static suggestions based on gaps)
+- Completeness Compass mini indicator in toolbar
+
+Update sidebar project selector to use real api.project.list data.
+
+Create src/components/project/ProjectSelector.tsx:
+- Popover dropdown showing all user projects
+- "New Project" button at bottom
+- Active project highlighted
+- Switch project: updates a projectStore with active project
+
+Create src/stores/projectStore.ts:
+- activeProjectId: string | null
+- setActiveProject(id)
+
+## EPIC 10: External Integration & Context Export API
+
+### Story 10.1: Context Export REST API
+
+Create src/app/api/context/[contextId]/export/route.ts:
+- GET endpoint with format param: 'prompt_package' | 'json' | 'markdown'
+- Auth: Bearer token in Authorization header (check against user's API keys in DB)
+- For now: accept the user's NEXTAUTH_SECRET as the API key for MVP
+- prompt_package: structured AI prompt with background, claims, evidence, questions
+- json: full unit graph with relations
+- markdown: organized by type with headers
+- Query params: format (required), depth (default 2), types (comma-separated filter)
+
+### Story 10.2: AI Prompt Generation
+
+Add ai.generatePrompt tRPC procedure: { unitIds: string[], contextId?: string }
+- Fetches units by IDs
+- Groups by type: claims, evidence, assumptions, questions
+- Returns structured prompt string:
+  ```
+  ## Background
+  [context summary or first observation]
+  
+  ## Key Claims
+  1. [claim 1]
+  2. [claim 2]
+  
+  ## Supporting Evidence
+  - [evidence 1]
+  
+  ## Open Questions
+  - [question 1]
+  ```
+
+Create src/components/ai/PromptGeneratorPanel.tsx:
+- Shows selected units (from selectionStore)
+- "Generate Prompt" button
+- Copyable text area with generated prompt
+- Section toggles (include/exclude claims, evidence, etc.)
+- "Copy to Clipboard" with toast
+
+### Story 10.3: API Key Management
+
+Add ApiKey model to prisma/schema.prisma:
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  keyHash   String   @unique @map("key_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+  lastUsed  DateTime? @map("last_used")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("api_keys")
+}
+Add apiKeys ApiKey[] to User model.
+
+Add apiKey tRPC router (src/server/api/routers/api-key.ts):
+- apiKey.create: { name } - generates random key, stores hash, returns plain key once
+- apiKey.list: returns user's keys (without hash)
+- apiKey.delete: { id }
+Register in root.ts.
+
+Create src/components/settings/ApiKeysPanel.tsx:
+- Lists existing keys with name + created date + last used
+- "Create New Key" button with name input
+- Shows generated key once after creation (copy immediately warning)
+- Delete key with confirmation
+
+### Story 10.4: Data Export
+
+Add export.fullExport tRPC procedure:
+- Exports all user's units, contexts, assemblies, relations as JSON
+- Returns downloadable JSON string
+
+Create src/components/settings/DataExportPanel.tsx:
+- "Export All Data" button
+- Downloads as flowmind-export-YYYY-MM-DD.json
+- "Delete Account" button with confirmation dialog (destructive)
+
+Create src/app/settings/page.tsx:
+- Layout with tabs: Profile, API Keys, Data Export, Integrations
+- Profile: display name, email (read-only)
+- API Keys: ApiKeysPanel
+- Data Export: DataExportPanel
+- Integrations: placeholder for Google Calendar, Todoist, Slack
+
+Add Settings link to sidebar bottom nav.
+
+## AFTER ALL DONE:
+1. npx prisma db push (to add ApiKey model)
+2. git add -A
+3. git commit -m "feat: Epics 9+10 complete - projects, templates, completeness compass, context export API, prompt generation, API keys, settings"
+4. openclaw system event --text "Done: Epics 9 and 10 complete - all epics finished!" --mode now

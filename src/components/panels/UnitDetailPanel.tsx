@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { api } from "~/trpc/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -319,47 +320,92 @@ function MetadataTab({
   );
 }
 
-// ─── Relations Tab (placeholder) ─────────────────────────────────────
+// ─── Relations Tab ────────────────────────────────────────────────────
 
-function RelationsTab() {
+function RelationsTab({ unitId }: { unitId: string }) {
+  const { data: relations = [], isLoading } = api.relation.listByUnit.useQuery(
+    { unitId },
+    { enabled: !!unitId },
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 p-4">
+        {[1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-bg-secondary" />)}
+      </div>
+    );
+  }
+
+  if (relations.length === 0) {
+    return (
+      <EmptyState
+        icon={Link2}
+        headline="No relations yet"
+        description="Connect this Unit to others to see relations here."
+        className="py-12"
+      />
+    );
+  }
+
   return (
-    <EmptyState
-      icon={Link2}
-      headline="No relations yet"
-      description="Relations will appear here when you connect this Unit to others."
-      actionLabel="Learn about Relations"
-      onAction={() => {
-        /* placeholder — wired in Epic 4 */
-      }}
-      className="py-12"
-    />
+    <div className="space-y-2 p-4">
+      {relations.map((rel) => {
+        const other = rel.sourceUnitId === unitId ? rel.targetUnit : rel.sourceUnit;
+        const direction = rel.sourceUnitId === unitId ? "→" : "←";
+        return (
+          <div key={rel.id} className="rounded-lg border border-border bg-bg-primary p-3">
+            <div className="mb-1 flex items-center gap-2 text-xs text-text-tertiary">
+              <span className="font-medium text-accent-primary">{rel.type.replace(/_/g, " ")}</span>
+              <span>{direction}</span>
+              <span className="text-text-tertiary">strength {Math.round(rel.strength * 100)}%</span>
+            </div>
+            <p className="line-clamp-2 text-sm text-text-primary">{other?.content}</p>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
-// ─── AI Tab (placeholder) ────────────────────────────────────────────
+// ─── AI Tab ───────────────────────────────────────────────────────────
 
-function AITab({ branchPotential }: { branchPotential?: number }) {
+function AITab({ unitId, content, branchPotential }: { unitId: string; content: string; branchPotential?: number }) {
   const filled = Math.round((branchPotential ?? 0) * 4);
 
-  return (
-    <div className="space-y-6">
-      <EmptyState
-        icon={Sparkles}
-        headline="AI suggestions coming soon"
-        description="AI suggestions will appear here as you build your knowledge."
-        className="py-12"
-      />
+  const suggestTypeMutation = api.ai.suggestType.useMutation();
 
-      {/* Branch potential placeholder */}
-      <div className="flex items-center justify-center gap-2 text-sm text-text-secondary">
-        <span>Branch Potential</span>
+  return (
+    <div className="space-y-4 p-4">
+      {/* Type suggestion */}
+      <div className="rounded-xl border border-border p-3">
+        <p className="mb-2 text-xs font-medium text-text-secondary uppercase tracking-wide">AI Type Suggestion</p>
+        {suggestTypeMutation.data ? (
+          <div className="text-sm text-text-primary">
+            Suggested: <strong>{suggestTypeMutation.data.suggestion?.unitType}</strong>
+            <span className="ml-2 text-text-tertiary">({Math.round((suggestTypeMutation.data.suggestion?.confidence ?? 0) * 100)}% confidence)</span>
+            <p className="mt-1 text-xs text-text-secondary">{suggestTypeMutation.data.suggestion?.reasoning}</p>
+          </div>
+        ) : (
+          <button
+            onClick={() => suggestTypeMutation.mutate({ content })}
+            disabled={suggestTypeMutation.isPending}
+            className="text-sm text-accent-primary hover:underline disabled:opacity-50"
+          >
+            {suggestTypeMutation.isPending ? "Analyzing..." : "Suggest type for this unit"}
+          </button>
+        )}
+      </div>
+
+      {/* Branch potential */}
+      <div className="flex items-center justify-between rounded-xl border border-border p-3">
+        <span className="text-sm text-text-secondary">Branch Potential</span>
         <span className="inline-flex items-center gap-0.5" aria-label={`Branch potential: ${filled} of 4`}>
           {Array.from({ length: 4 }, (_, i) => (
             <span
               key={i}
               className={cn(
                 "text-base leading-none",
-                i < filled ? "text-text-primary" : "text-text-tertiary",
+                i < filled ? "text-accent-primary" : "text-text-tertiary",
               )}
               aria-hidden="true"
             >
@@ -472,7 +518,7 @@ export function UnitDetailPanel({
               </TabsContent>
 
               <TabsContent value="relations" className="mt-0">
-                <RelationsTab />
+                <RelationsTab unitId={unit.id} />
               </TabsContent>
 
               <TabsContent value="metadata" className="mt-0">
@@ -483,7 +529,7 @@ export function UnitDetailPanel({
               </TabsContent>
 
               <TabsContent value="ai" className="mt-0">
-                <AITab branchPotential={unit.branchPotential} />
+                <AITab unitId={unit.id} content={unit.content} branchPotential={unit.branchPotential} />
               </TabsContent>
             </div>
           </ScrollArea>

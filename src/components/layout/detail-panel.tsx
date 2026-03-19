@@ -60,14 +60,20 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
 
   const handleMetadataChange = React.useCallback(
     (field: keyof MetadataValues, value: string | null) => {
-      // TODO: Wire to tRPC mutation — api.unit.update.mutate({ id, [field]: value })
+      if (!selectedUnitId) return;
+      updateMutation.mutate({ id: selectedUnitId, [field]: value ?? undefined });
     },
-    [],
+    [selectedUnitId, updateMutation],
   );
 
+  const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
+    onSuccess: () => { void utils.unit.getById.invalidate({ id: selectedUnitId! }); },
+  });
+
   const handleLifecycleChange = React.useCallback((lifecycle: string) => {
-    // TODO: Wire to tRPC mutation — api.unit.lifecycleTransition.mutate({ id, targetState })
-  }, []);
+    if (!selectedUnitId) return;
+    lifecycleMutation.mutate({ id: selectedUnitId, targetState: lifecycle as "draft" | "pending" | "confirmed" | "archived" });
+  }, [selectedUnitId, lifecycleMutation]);
 
   // Track element that opened the panel for focus return
   React.useEffect(() => {

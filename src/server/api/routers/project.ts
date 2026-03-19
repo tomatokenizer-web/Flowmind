@@ -1,4 +1,22 @@
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { z } from "zod";
+import { createScaffoldUnits } from "@/server/services/scaffoldService";
+
+// Input schemas
+const createProjectInput = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().optional(),
+  purpose: z.string().optional(),
+  templateId: z.string().uuid().optional(),
+  constraintLevel: z.enum(["strict", "guided", "open"]).default("guided"),
+});
+
+const updateProjectInput = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().optional(),
+  constraintLevel: z.enum(["strict", "guided", "open"]).optional(),
+});
 
 export const projectRouter = createTRPCRouter({
   /**
@@ -29,4 +47,344 @@ export const projectRouter = createTRPCRouter({
 
     return created;
   }),
+
+  /**
+   * Create a new project
+   */
+  create: protectedProcedure
+    .input(createProjectInput)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Create the project
+      const project = await ctx.db.project.create({
+        data: {
+          name: input.name,
+          userId,
+          templateId: input.templateId,
+          constraintLevel: input.constraintLevel,
+          type: input.purpose,
+        },
+        include: {
+          template: true,
+        },
+      });
+
+      // If a template is selected, create scaffold units
+      if (input.templateId && project.template) {
+        const config = project.template.config as {
+          scaffoldQuestions?: Array<{ type: string; content: string; placeholder?: boolean }>;
+        };
+        if (config.scaffoldQuestions) {
+          await createScaffoldUnits(project.id, config, userId, ctx.db);
+        }
+      }
+
+      return {
+        id: project.id,
+        name: project.name,
+        constraintLevel: project.constraintLevel,
+        templateId: project.templateId,
+        templateName: project.template?.name ?? null,
+      };
+    }),
+
+  /**
+   * List all projects for the current user
+   */
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id!;
+
+    const projects = await ctx.db.project.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        constraintLevel: true,
+        templateId: true,
+        createdAt: true,
+        updatedAt: true,
+        template: {
+          select: {
+            name: true,
+            slug: true,
+          },
+        },
+        _count: {
+          select: {
+            contexts: true,
+            units: true,
+          },
+        },
+      },
+    });
+
+    return projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      purpose: p.type,
+      constraintLevel: p.constraintLevel as "strict" | "guided" | "open",
+      templateId: p.templateId,
+      templateName: p.template?.name ?? null,
+      templateSlug: p.template?.slug ?? null,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      contextCount: p._count.contexts,
+      unitCount: p._count.units,
+    }));
+  }),
+
+  /**
+   * Get a single project by ID
+   */
+  getById: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.id, userId },
+        include: {
+          template: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              config: true,
+            },
+          },
+          _count: {
+            select: {
+              contexts: true,
+              units: true,
+              assemblies: true,
+            },
+          },
+        },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      return {
+        id: project.id,
+        name: project.name,
+        purpose: project.type,
+        constraintLevel: project.constraintLevel as "strict" | "guided" | "open",
+        templateId: project.templateId,
+        template: project.template,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        contextCount: project._count.contexts,
+        unitCount: project._count.units,
+        assemblyCount: project._count.assemblies,
+      };
+    }),
+
+  /**
+   * Update a project
+   */
+  update: protectedProcedure
+    .input(updateProjectInput)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Verify ownership
+      const existing = await ctx.db.project.findFirst({
+        where: { id: input.id, userId },
+      });
+
+      if (!existing) {
+        throw new Error("Project not found");
+      }
+
+      const updated = await ctx.db.project.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          constraintLevel: input.constraintLevel,
+        },
+        select: {
+          id: true,
+          name: true,
+          constraintLevel: true,
+        },
+      });
+
+      return updated;
+    }),
+
+  /**
+   * Delete a project
+   */
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Verify ownership
+      const existing = await ctx.db.project.findFirst({
+        where: { id: input.id, userId },
+      });
+
+      if (!existing) {
+        throw new Error("Project not found");
+      }
+
+      // Check if this is the user's only project
+      const projectCount = await ctx.db.project.count({
+        where: { userId },
+      });
+
+      if (projectCount <= 1) {
+        throw new Error("Cannot delete the only project");
+      }
+
+      await ctx.db.project.delete({
+        where: { id: input.id },
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * Get gap detection for a project (scaffold question completion)
+   */
+  getGaps: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+        include: {
+          template: true,
+        },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      if (!project.template) {
+        return {
+          hasTemplate: false,
+          answered: [],
+          unanswered: [],
+          completeness: 1,
+          gapRules: [],
+        };
+      }
+
+      const config = project.template.config as {
+        scaffoldQuestions?: Array<{ type: string; content: string; placeholder?: boolean }>;
+        gapDetectionRules?: string[];
+      };
+
+      if (!config.scaffoldQuestions) {
+        return {
+          hasTemplate: true,
+          answered: [],
+          unanswered: [],
+          completeness: 1,
+          gapRules: config.gapDetectionRules ?? [],
+        };
+      }
+
+      // Get all scaffold units for this project
+      const scaffoldUnits = await ctx.db.unit.findMany({
+        where: {
+          projectId: input.projectId,
+          meta: {
+            path: ["scaffold"],
+            equals: true,
+          },
+        },
+        select: {
+          id: true,
+          content: true,
+          lifecycle: true,
+          meta: true,
+        },
+      });
+
+      // Check which scaffold questions have been answered (confirmed)
+      const answered: string[] = [];
+      const unanswered: string[] = [];
+
+      for (const question of config.scaffoldQuestions) {
+        const matchingUnit = scaffoldUnits.find(
+          (u) => (u.meta as { scaffoldQuestion?: string })?.scaffoldQuestion === question.content
+        );
+
+        if (matchingUnit && matchingUnit.lifecycle === "confirmed") {
+          answered.push(question.content);
+        } else {
+          unanswered.push(question.content);
+        }
+      }
+
+      const total = config.scaffoldQuestions.length;
+      const completeness = total > 0 ? answered.length / total : 1;
+
+      return {
+        hasTemplate: true,
+        answered,
+        unanswered,
+        completeness,
+        gapRules: config.gapDetectionRules ?? [],
+      };
+    }),
+
+  /**
+   * Get completeness stats for a project
+   */
+  getCompletenessStats: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+      });
+
+      if (!project) {
+        throw new Error("Project not found");
+      }
+
+      // Get unit stats by lifecycle
+      const unitStats = await ctx.db.unit.groupBy({
+        by: ["lifecycle"],
+        where: { projectId: input.projectId },
+        _count: true,
+      });
+
+      const stats = {
+        draft: 0,
+        pending: 0,
+        confirmed: 0,
+        deferred: 0,
+        complete: 0,
+        archived: 0,
+        discarded: 0,
+      };
+
+      for (const s of unitStats) {
+        stats[s.lifecycle] = s._count;
+      }
+
+      const total = Object.values(stats).reduce((a, b) => a + b, 0);
+      const active = stats.confirmed + stats.complete;
+      const completeness = total > 0 ? active / total : 0;
+
+      return {
+        total,
+        stats,
+        completeness,
+        hasContent: total > 0,
+      };
+    }),
 });
