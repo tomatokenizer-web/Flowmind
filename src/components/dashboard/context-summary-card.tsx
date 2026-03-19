@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { Boxes, HelpCircle, Clock } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { useSidebarStore } from "~/stores/sidebar-store";
+import { useLayoutStore } from "~/stores/layout-store";
 
 export interface ContextSummaryData {
   id: string;
@@ -32,7 +34,8 @@ interface ContextSummaryCardProps {
 }
 
 export function ContextSummaryCard({ context }: ContextSummaryCardProps) {
-  const router = useRouter();
+  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
 
   return (
     <button
@@ -44,7 +47,10 @@ export function ContextSummaryCard({ context }: ContextSummaryCardProps) {
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
         "motion-reduce:transform-none motion-reduce:transition-none",
       )}
-      onClick={() => router.push(`/dashboard-app/context/${context.id}`)}
+      onClick={() => {
+        setActiveContext(context.id);
+        setViewMode("canvas"); // switch to main view
+      }}
       aria-label={`Open context: ${context.name}`}
     >
       {/* Header */}

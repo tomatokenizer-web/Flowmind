@@ -16,6 +16,8 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { useLayoutStore } from "~/stores/layout-store";
+import { useSidebarStore } from "~/stores/sidebar-store";
+import { usePanelStore } from "~/stores/panel-store";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType } from "@prisma/client";
 
@@ -53,7 +55,9 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const openPanel = usePanelStore((s) => s.openPanel);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
+  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
 
   // Register global open function
   React.useEffect(() => {
@@ -187,6 +191,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
           unitType: r.unitType,
           action: () => {
             setSelectedUnit(r.unitId);
+            openPanel(r.unitId);
             setOpen(false);
           },
         });
@@ -203,6 +208,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
             unitType: unit.unitType,
             action: () => {
               setSelectedUnit(unit.id);
+              openPanel(unit.id);
               setOpen(false);
             },
           });
@@ -219,7 +225,8 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
             icon: Layers,
             section: "Contexts",
             action: () => {
-              // Navigate to context - will need router
+              setActiveContext(ctx.id);
+              setViewMode("canvas");
               setOpen(false);
             },
           });

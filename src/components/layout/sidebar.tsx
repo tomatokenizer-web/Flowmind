@@ -71,38 +71,17 @@ export function Sidebar({ className }: SidebarProps) {
         </Button>
       </div>
 
-      {/* Project selector placeholder */}
-      {/* TODO: Epic 9 — real project selector */}
+      {/* Project name display */}
       <div className="border-b border-border px-space-3 py-space-2">
         {isExpanded ? (
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-space-2 rounded-lg px-space-2 py-[6px]",
-              "text-sm text-text-secondary",
-              "transition-colors duration-fast ease-default",
-              "hover:bg-bg-hover hover:text-text-primary",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
-            )}
-            aria-label="Select project"
-          >
+          <div className={cn("flex w-full items-center gap-space-2 rounded-lg px-space-2 py-[6px]", "text-sm text-text-secondary")}>
             <FolderTree className="h-4 w-4 shrink-0 text-text-tertiary" />
-            <span className="flex-1 truncate text-left">Default Project</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-          </button>
+            <span className="flex-1 truncate text-left">{projectId ? "My Thoughts" : "Loading..."}</span>
+          </div>
         ) : (
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center justify-center rounded-lg py-space-2",
-              "text-text-secondary transition-colors duration-fast",
-              "hover:bg-bg-hover hover:text-text-primary",
-            )}
-            aria-label="Default Project"
-            title="Default Project"
-          >
-            <FolderTree className="h-5 w-5 shrink-0" />
-          </button>
+          <div className="flex w-full items-center justify-center py-space-2" title="My Thoughts">
+            <FolderTree className="h-5 w-5 shrink-0 text-text-tertiary" />
+          </div>
         )}
       </div>
 
