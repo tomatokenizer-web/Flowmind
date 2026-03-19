@@ -12,7 +12,7 @@ const suggestTypeSchema = z.object({
 
 const suggestRelationsSchema = z.object({
   content: z.string().min(1).max(5000),
-  contextId: z.string().uuid(),
+  contextId: z.string().uuid().optional(),
 });
 
 const contributionRatioSchema = z.object({
@@ -21,7 +21,7 @@ const contributionRatioSchema = z.object({
 
 const decomposeTextSchema = z.object({
   text: z.string().min(1).max(10000),
-  contextId: z.string().uuid(),
+  contextId: z.string().uuid().optional(),
   projectId: z.string().uuid(),
 });
 

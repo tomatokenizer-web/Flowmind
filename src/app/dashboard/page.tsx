@@ -6,7 +6,6 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
-import { CaptureBar } from "~/components/unit/capture-bar";
 import { CaptureOverlay } from "~/components/unit/capture-mode";
 
 export default function DashboardPage() {
@@ -30,7 +29,6 @@ export default function DashboardPage() {
         <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
           <GraphView projectId={projectId} />
         </section>
-        <CaptureBar />
         {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
       </>
     );
@@ -42,7 +40,6 @@ export default function DashboardPage() {
         <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
           <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
         </section>
-        <CaptureBar />
         {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
       </>
     );
@@ -51,7 +48,6 @@ export default function DashboardPage() {
   return (
     <>
       <ContextView projectId={projectId} />
-      <CaptureBar />
       {projectId && (
         <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
       )}

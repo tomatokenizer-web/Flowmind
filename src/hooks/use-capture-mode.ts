@@ -75,7 +75,8 @@ export function useCaptureMode({
       setPhase("decomposing");
       await decomposeMutation.mutateAsync({
         text,
-        contextId,
+        // Only pass contextId if it's a valid non-empty UUID
+        contextId: contextId && contextId.length > 0 ? contextId : undefined,
         projectId,
       });
     } else {

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
+import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
@@ -23,19 +24,39 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
-  // TODO: Replace with tRPC query — `api.unit.getById.useQuery({ id: selectedUnitId })`
-  // For now, unit data is null (the panel shows empty state until wired to real data)
-  const unit: UnitDetailData | null = null;
-  const isLoading = false;
+  // Fetch real unit data when a unit is selected
+  const { data: unitData, isLoading } = api.unit.getById.useQuery(
+    { id: selectedUnitId! },
+    { enabled: !!selectedUnitId },
+  );
+  const unit: UnitDetailData | null = unitData
+    ? {
+        id: unitData.id,
+        content: unitData.content,
+        unitType: unitData.unitType,
+        lifecycle: unitData.lifecycle,
+        createdAt: unitData.createdAt,
+        modifiedAt: unitData.modifiedAt,
+        originType: unitData.originType ?? undefined,
+        sourceUrl: unitData.sourceUrl ?? undefined,
+        sourceTitle: unitData.sourceTitle ?? undefined,
+      }
+    : null;
 
   const handleClose = React.useCallback(() => {
     setDetailPanelOpen(false);
     closePanel();
   }, [setDetailPanelOpen, closePanel]);
 
+  const utils = api.useUtils();
+  const updateMutation = api.unit.update.useMutation({
+    onSuccess: () => { void utils.unit.getById.invalidate({ id: selectedUnitId! }); },
+  });
+
   const handleContentChange = React.useCallback((content: string) => {
-    // TODO: Wire to tRPC mutation — api.unit.update.mutate({ id, content })
-  }, []);
+    if (!selectedUnitId) return;
+    updateMutation.mutate({ id: selectedUnitId, content });
+  }, [selectedUnitId, updateMutation]);
 
   const handleMetadataChange = React.useCallback(
     (field: keyof MetadataValues, value: string | null) => {

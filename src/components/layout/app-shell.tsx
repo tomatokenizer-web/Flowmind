@@ -9,6 +9,7 @@ import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { DetailPanel } from "./detail-panel";
 import { CaptureBar } from "~/components/unit/capture-bar";
+import { CommandPalette } from "~/components/search";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -100,6 +101,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+      {/* Global overlays */}
+      <CommandPalette />
     </div>
   );
 }
