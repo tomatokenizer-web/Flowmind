@@ -158,7 +158,6 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Import dialog */}
       <ExternalImportDialog open={importOpen} onOpenChange={setImportOpen} />
-      </div>
     </motion.nav>
   );
 }
