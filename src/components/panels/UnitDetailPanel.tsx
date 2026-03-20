@@ -461,7 +461,7 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
 
 // ─── AI Tab ───────────────────────────────────────────────────────────
 
-function AITab({ unitId, content, branchPotential }: { unitId: string; content: string; branchPotential?: number }) {
+function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: string; content: string; branchPotential?: number; onContentChange?: (c: string) => void }) {
   const filled = Math.round((branchPotential ?? 0) * 4);
   const utils = api.useUtils();
 
@@ -472,7 +472,13 @@ function AITab({ unitId, content, branchPotential }: { unitId: string; content: 
     onError: () => { /* silent fallback */ },
   });
   const updateMutation = api.unit.update.useMutation({
-    onSuccess: () => { void utils.unit.getById.invalidate({ id: unitId }); },
+    onSuccess: (updated) => {
+      void utils.unit.getById.invalidate({ id: unitId });
+      void utils.unit.list.invalidate();
+      onContentChange?.(updated.content);
+      refineMutation.reset();
+    },
+    onError: () => { /* silent */ },
   });
 
   return (
@@ -651,7 +657,7 @@ export function UnitDetailPanel({
               </TabsContent>
 
               <TabsContent value="ai" className="mt-0">
-                <AITab unitId={unit.id} content={unit.content} branchPotential={unit.branchPotential} />
+                <AITab unitId={unit.id} content={unit.content} branchPotential={unit.branchPotential} onContentChange={onContentChange} />
               </TabsContent>
             </div>
           </ScrollArea>
