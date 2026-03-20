@@ -7,6 +7,7 @@ import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Fl
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { BranchPotentialPopover } from "./BranchPotentialPopover";
 import { DriftIndicator } from "~/components/drift/DriftIndicator";
+import { UnitAIActionsMenu } from "./UnitAIActionsMenu";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
@@ -247,6 +248,18 @@ export function UnitCard({
                 {unit.relationCount}
               </span>
             )}
+            {/* AI actions menu */}
+            {variant !== "compact" && (
+              <span onClick={(e) => e.stopPropagation()}>
+                <UnitAIActionsMenu
+                  unit={{ id: unit.id, content: unit.content, unitType: unit.unitType }}
+                  contextId={undefined}
+                  onCreateUnit={() => {}}
+                  onUpdateUnit={() => {}}
+                />
+              </span>
+            )}
+
             {/* Pin button */}
             <button
               type="button"
