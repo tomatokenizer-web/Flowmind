@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { BranchPotentialPopover } from "./BranchPotentialPopover";
+import { DriftIndicator } from "~/components/drift/DriftIndicator";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
@@ -316,6 +317,9 @@ export function UnitCard({
 
             {/* Flow alert */}
             <FlowAlertBadge unitType={unit.unitType} relationCount={unit.relationCount ?? 0} />
+
+            {/* Drift indicator */}
+            <DriftIndicator driftScore={unit.driftScore ?? 0} />
 
             {/* ThoughtRank importance bar */}
             {(unit.importance ?? 0) > 0.1 && (

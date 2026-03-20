@@ -27,6 +27,15 @@ interface ContextViewProps {
 // ─── Component ───────────────────────────────────────────────────────
 
 export function ContextView({ projectId, className }: ContextViewProps) {
+  const [showStarred, setShowStarred] = React.useState(false);
+
+  // Listen for sidebar starred button event
+  React.useEffect(() => {
+    const handler = () => setShowStarred(true);
+    window.addEventListener("flowmind:show-starred", handler);
+    return () => window.removeEventListener("flowmind:show-starred", handler);
+  }, []);
+
   const {
     context,
     units,
@@ -140,13 +149,19 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         lifecycle: unit.lifecycle as LifecycleState,
         createdAt: unit.createdAt,
         branchPotential: (unit as { branchPotential?: number }).branchPotential,
-        relationCount: (unit as { _count?: { perspectives?: number } })._count
-          ?.perspectives,
+        relationCount: (unit as { _count?: { perspectives?: number } })._count?.perspectives,
         originType: unit.originType ?? undefined,
         sourceSpan: (unit as { sourceSpan?: string | null }).sourceSpan,
+        importance: (unit as { importance?: number }).importance,
+        pinned: (unit as { pinned?: boolean }).pinned,
+        flagged: (unit as { flagged?: boolean }).flagged,
+        driftScore: (unit as { driftScore?: number }).driftScore,
       };
     });
   }, [units, perspectiveMap, activeContextId]);
+
+  // Apply starred filter
+  const visibleUnits = showStarred ? cardUnits.filter((u) => u.pinned) : cardUnits;
 
   return (
     <div className={cn("flex flex-col gap-space-4 p-space-4", className)}>
@@ -184,6 +199,14 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         />
       )}
 
+      {/* Starred filter banner */}
+      {showStarred && (
+        <div className="flex items-center justify-between rounded-xl bg-accent-warning/10 px-3 py-2 text-sm">
+          <span className="font-medium text-accent-warning">⭐ Showing starred units only</span>
+          <button onClick={() => setShowStarred(false)} className="text-xs text-text-tertiary hover:text-text-primary">Clear</button>
+        </div>
+      )}
+
       {/* Unit list */}
       {isLoading ? (
         <div
@@ -195,7 +218,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
             <UnitCardSkeleton key={i} />
           ))}
         </div>
-      ) : cardUnits.length === 0 ? (
+      ) : visibleUnits.length === 0 ? (
         <EmptyState
           icon={Layers}
           headline={
@@ -217,7 +240,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               : "All units"
           }
         >
-          {cardUnits.map((unit) => (
+          {visibleUnits.map((unit) => (
             <div
               key={unit.id}
               id={`unit-${unit.id}`}
