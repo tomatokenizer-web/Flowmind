@@ -4,7 +4,6 @@ import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Loader2, ArrowRight } from "lucide-react";
 import { api } from "~/trpc/react";
-import { cn } from "~/lib/utils";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 
@@ -20,10 +19,10 @@ export function BranchPotentialPopover({ unitId, score, children }: BranchPotent
   const projectId = useProjectId();
   const utils = api.useUtils();
 
-  const { data, isLoading } = api.ai.suggestExplorationDirections?.useQuery?.(
-    { unitId, contextId: activeContextId! },
-    { enabled: open && !!activeContextId },
-  ) ?? { data: null, isLoading: false };
+  const { data, isLoading } = api.ai.suggestExplorationDirections.useQuery(
+    { unitId, contextId: activeContextId ?? undefined },
+    { enabled: open },
+  );
 
   const createUnit = api.capture.submit.useMutation({
     onSuccess: () => { void utils.unit.list.invalidate(); setOpen(false); },
@@ -33,22 +32,28 @@ export function BranchPotentialPopover({ unitId, score, children }: BranchPotent
 
   const handleExplore = async (direction: { prompt: string; expectedType: string }) => {
     if (!projectId) return;
-    const newUnit = await createUnit.mutateAsync({
-      content: direction.prompt,
-      projectId,
-      mode: "capture",
-    });
-    if (newUnit?.id) {
-      void createRelation.mutate({
-        sourceUnitId: unitId,
-        targetUnitId: newUnit.id,
-        type: "inspires",
-        strength: 0.7,
-        direction: "one_way",
-        purpose: ["exploration"],
+    try {
+      const newUnit = await createUnit.mutateAsync({
+        content: direction.prompt,
+        projectId,
+        mode: "capture",
       });
+      if (newUnit?.id && activeContextId) {
+        void createRelation.mutate({
+          sourceUnitId: unitId,
+          targetUnitId: newUnit.id,
+          type: "inspires",
+          strength: 0.7,
+          direction: "one_way",
+          purpose: ["exploration"],
+        });
+      }
+    } catch (e) {
+      console.error("Failed to create exploration unit", e);
     }
   };
+
+  const directions = (data as { directions?: { prompt: string; expectedType: string }[] } | undefined)?.directions ?? [];
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -58,20 +63,15 @@ export function BranchPotentialPopover({ unitId, score, children }: BranchPotent
           className="z-50 w-72 rounded-xl border border-border bg-bg-surface p-4 shadow-lg"
           sideOffset={6}
         >
-          <p className="mb-3 text-sm font-medium text-text-primary">
-            Exploration Directions
-          </p>
+          <p className="mb-3 text-sm font-medium text-text-primary">Exploration Directions</p>
           {isLoading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-text-tertiary" />
             </div>
-          ) : data?.directions?.length ? (
+          ) : directions.length > 0 ? (
             <div className="space-y-2">
-              {data.directions.map((d: { prompt: string; expectedType: string }, i: number) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => void handleExplore(d)}
+              {directions.map((d, i) => (
+                <button key={i} type="button" onClick={() => void handleExplore(d)}
                   className="flex w-full items-start gap-2 rounded-lg border border-border p-3 text-left hover:bg-bg-hover transition-colors"
                 >
                   <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-accent-primary" />
@@ -83,7 +83,7 @@ export function BranchPotentialPopover({ unitId, score, children }: BranchPotent
               ))}
             </div>
           ) : (
-            <p className="text-sm text-text-tertiary">No exploration directions yet for this unit.</p>
+            <p className="text-sm text-text-tertiary">Click to get AI exploration suggestions.</p>
           )}
           <Popover.Arrow className="fill-bg-surface" />
         </Popover.Content>

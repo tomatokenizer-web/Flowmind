@@ -500,47 +500,58 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = `${ctx.session.user.id!}-${Date.now()}`;
 
-      // Use generateQuestions as a proxy for exploration directions
+      // Generate exploration directions using AI provider directly
       try {
-        const existingUnits = input.contextId ? await ctx.db.unit.findMany({
-          where: { unitContexts: { some: { contextId: input.contextId } } },
-          select: { id: true, content: true, unitType: true },
-          take: 10,
-        }) : [];
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
 
-        const prompt = `Given this thought unit: "${unit.content.slice(0, 300)}"
-Generate 2-3 exploration directions. Each should be a specific question or prompt that would help develop this thought further.
-Return JSON: { "directions": [{ "prompt": "...", "expectedType": "question|idea|claim|evidence" }] }`;
-
-        const result = await (aiService as any).provider?.generateStructured?.(prompt, {
-          temperature: 0.7,
-          maxTokens: 512,
-          schema: {
-            name: "ExplorationDirections",
-            description: "AI-suggested exploration directions",
-            properties: {
-              directions: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    prompt: { type: "string" },
-                    expectedType: { type: "string" },
+        const result = await provider.generateStructured<{ directions: { prompt: string; expectedType: string }[] }>(
+          `Given this thought unit (type: ${unit.unitType}): "${unit.content.slice(0, 300)}"
+Suggest 2-3 specific exploration directions that would help develop this thought further.`,
+          {
+            temperature: 0.7,
+            maxTokens: 512,
+            schema: {
+              name: "ExplorationDirections",
+              description: "AI-suggested exploration directions",
+              properties: {
+                directions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      prompt: { type: "string", description: "A specific question or prompt to explore" },
+                      expectedType: { type: "string", enum: ["question", "idea", "claim", "evidence", "counterargument"] },
+                    },
+                    required: ["prompt", "expectedType"],
                   },
                 },
               },
+              required: ["directions"],
             },
-          },
-        }) ?? { directions: [] };
+          }
+        );
         return result;
       } catch {
-        return {
-          directions: [
-            { prompt: `What evidence supports: "${unit.content.slice(0, 60)}..."?`, expectedType: "evidence" },
-            { prompt: `What are the counterarguments to this?`, expectedType: "counterargument" },
+        // Fallback directions when AI unavailable
+        const fallbacks: Record<string, { prompt: string; expectedType: string }[]> = {
+          claim: [
+            { prompt: `What evidence supports this claim?`, expectedType: "evidence" },
+            { prompt: `What are the strongest counterarguments?`, expectedType: "counterargument" },
+            { prompt: `What assumptions underlie this?`, expectedType: "assumption" },
+          ],
+          question: [
+            { prompt: `What would a direct answer look like?`, expectedType: "claim" },
+            { prompt: `What related questions does this raise?`, expectedType: "question" },
+            { prompt: `What evidence would help answer this?`, expectedType: "evidence" },
+          ],
+          default: [
             { prompt: `What implications does this have?`, expectedType: "idea" },
+            { prompt: `How does this connect to other ideas?`, expectedType: "observation" },
+            { prompt: `What questions does this raise?`, expectedType: "question" },
           ],
         };
+        return { directions: fallbacks[unit.unitType] ?? fallbacks.default };
       }
     }),
 

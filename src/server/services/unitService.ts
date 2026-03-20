@@ -82,10 +82,10 @@ export function createUnitService(db: PrismaClient) {
         ? input.unitType!
         : suggestUnitType(input.content).unitType;
 
-      // Auto-assigned types get lifecycle=draft so the user must confirm (AC #2)
+      // AI-generated content starts as draft for review; user-written content is confirmed immediately
       const lifecycle =
         input.lifecycle ??
-        (isAiOrigin || !typeExplicitlyProvided ? "draft" : "confirmed");
+        (isAiOrigin ? "draft" : "confirmed");
 
       const aiTrustLevel =
         input.aiTrustLevel ?? (isAiOrigin ? "inferred" : "user_authored");
