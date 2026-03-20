@@ -351,15 +351,20 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
 
   // Search units to link to
   const { data: searchResults } = api.unit.list.useQuery(
-    { projectId: projectId!, limit: 10 },
+    { projectId: projectId!, limit: 50, lifecycle: "confirmed" },
     { enabled: !!projectId && creating },
   );
 
   const createRelation = api.relation.create.useMutation({
     onSuccess: () => {
       void utils.relation.listByUnit.invalidate({ unitId });
+      void utils.unit.list.invalidate();
       setCreating(false);
       setTargetContent("");
+    },
+    onError: (err) => {
+      // Show error to user
+      console.error("Relation creation failed:", err.message);
     },
   });
 
@@ -458,8 +463,13 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
 
 function AITab({ unitId, content, branchPotential }: { unitId: string; content: string; branchPotential?: number }) {
   const filled = Math.round((branchPotential ?? 0) * 4);
+  const utils = api.useUtils();
 
   const suggestTypeMutation = api.ai.suggestType.useMutation();
+  const refineMutation = api.ai.refineUnit.useMutation();
+  const updateMutation = api.unit.update.useMutation({
+    onSuccess: () => { void utils.unit.getById.invalidate({ id: unitId }); },
+  });
 
   return (
     <div className="space-y-4 p-4">
@@ -479,6 +489,27 @@ function AITab({ unitId, content, branchPotential }: { unitId: string; content: 
             className="text-sm text-accent-primary hover:underline disabled:opacity-50"
           >
             {suggestTypeMutation.isPending ? "Analyzing..." : "Suggest type for this unit"}
+          </button>
+        )}
+      </div>
+
+      {/* Refine unit */}
+      <div className="rounded-xl border border-border p-3">
+        <p className="mb-2 text-xs font-medium text-text-secondary uppercase tracking-wide">AI Refinement</p>
+        {refineMutation.data ? (
+          <div className="space-y-2">
+            <div className="rounded-lg bg-bg-secondary p-2 text-xs text-text-secondary line-through">{refineMutation.data.original.slice(0, 100)}</div>
+            <div className="rounded-lg bg-accent-primary/5 border border-accent-primary/20 p-2 text-sm text-text-primary">{refineMutation.data.refined}</div>
+            <div className="flex gap-2">
+              <button onClick={() => updateMutation.mutate({ id: unitId, content: refineMutation.data!.refined })}
+                className="text-xs text-accent-primary hover:underline">Accept</button>
+              <button onClick={() => refineMutation.reset()} className="text-xs text-text-tertiary hover:underline">Discard</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => refineMutation.mutate({ unitId, content })} disabled={refineMutation.isPending}
+            className="text-sm text-accent-primary hover:underline disabled:opacity-50">
+            {refineMutation.isPending ? "Refining..." : "Refine this unit with AI"}
           </button>
         )}
       </div>

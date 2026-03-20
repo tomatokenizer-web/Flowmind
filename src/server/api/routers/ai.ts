@@ -485,4 +485,118 @@ export const aiRouter = createTRPCRouter({
         }
       );
     }),
+
+  // ─── Missing procedures ──────────────────────────────────────────
+
+  suggestExplorationDirections: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid(), contextId: z.string().uuid().optional() }))
+    .query(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findUnique({
+        where: { id: input.unitId },
+        select: { content: true, unitType: true },
+      });
+      if (!unit) return { directions: [] };
+
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id!}-${Date.now()}`;
+
+      // Use generateQuestions as a proxy for exploration directions
+      try {
+        const existingUnits = input.contextId ? await ctx.db.unit.findMany({
+          where: { unitContexts: { some: { contextId: input.contextId } } },
+          select: { id: true, content: true, unitType: true },
+          take: 10,
+        }) : [];
+
+        const prompt = `Given this thought unit: "${unit.content.slice(0, 300)}"
+Generate 2-3 exploration directions. Each should be a specific question or prompt that would help develop this thought further.
+Return JSON: { "directions": [{ "prompt": "...", "expectedType": "question|idea|claim|evidence" }] }`;
+
+        const result = await (aiService as any).provider?.generateStructured?.(prompt, {
+          temperature: 0.7,
+          maxTokens: 512,
+          schema: {
+            name: "ExplorationDirections",
+            description: "AI-suggested exploration directions",
+            properties: {
+              directions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    prompt: { type: "string" },
+                    expectedType: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        }) ?? { directions: [] };
+        return result;
+      } catch {
+        return {
+          directions: [
+            { prompt: `What evidence supports: "${unit.content.slice(0, 60)}..."?`, expectedType: "evidence" },
+            { prompt: `What are the counterarguments to this?`, expectedType: "counterargument" },
+            { prompt: `What implications does this have?`, expectedType: "idea" },
+          ],
+        };
+      }
+    }),
+
+  refineUnit: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid(), content: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = `${ctx.session.user.id!}-${Date.now()}`;
+
+      try {
+        const prompt = `Refine this thought for clarity and coherence. Preserve the core meaning.
+Original: "${input.content}"
+Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
+
+        const getProvider = (await import("@/server/ai/provider")).getAIProvider;
+        const provider = getProvider();
+        const result = await provider.generateStructured<{ refined: string; changes: string[] }>(prompt, {
+          temperature: 0.3,
+          maxTokens: 512,
+          schema: {
+            name: "Refinement",
+            description: "Refined unit content",
+            properties: {
+              refined: { type: "string" },
+              changes: { type: "array", items: { type: "string" } },
+            },
+            required: ["refined", "changes"],
+          },
+        });
+        return { original: input.content, refined: result.refined, changes: result.changes };
+      } catch {
+        return { original: input.content, refined: input.content, changes: [] };
+      }
+    }),
+
+  generatePrompt: protectedProcedure
+    .input(z.object({ unitIds: z.array(z.string().uuid()), contextId: z.string().uuid().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: input.unitIds } },
+        select: { content: true, unitType: true },
+      });
+
+      const byType = units.reduce((acc, u) => {
+        acc[u.unitType] = acc[u.unitType] ?? [];
+        acc[u.unitType]!.push(u.content);
+        return acc;
+      }, {} as Record<string, string[]>);
+
+      const lines: string[] = [];
+      if (byType.claim?.length) lines.push(`## Key Claims\n${byType.claim.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+      if (byType.evidence?.length) lines.push(`## Evidence\n${byType.evidence.map((e) => `- ${e}`).join("\n")}`);
+      if (byType.question?.length) lines.push(`## Open Questions\n${byType.question.map((q) => `- ${q}`).join("\n")}`);
+      if (byType.assumption?.length) lines.push(`## Assumptions\n${byType.assumption.map((a) => `- ${a}`).join("\n")}`);
+      if (byType.observation?.length) lines.push(`## Observations\n${byType.observation.map((o) => `- ${o}`).join("\n")}`);
+
+      return { prompt: lines.join("\n\n"), unitCount: units.length };
+    }),
 });
