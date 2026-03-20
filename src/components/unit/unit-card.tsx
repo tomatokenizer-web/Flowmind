@@ -3,7 +3,9 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag } from "lucide-react";
+import { FlowAlertBadge } from "./FlowAlertBadge";
+import { BranchPotentialPopover } from "./BranchPotentialPopover";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
@@ -33,6 +35,9 @@ export interface UnitCardUnit {
   sourceSpan?: string | null;
   contexts?: string[];
   importance?: number;
+  pinned?: boolean;
+  flagged?: boolean;
+  driftScore?: number;
 }
 
 export interface UnitCardProps {
@@ -108,6 +113,11 @@ export function UnitCard({
   const isSelected = selectedUnitId === unit.id;
 
   const utils = api.useUtils();
+
+  // Pin/flag mutations
+  const updateMutation = api.unit.update.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate(),
+  });
 
   // Mutations for split functionality
   const createUnit = api.unit.create.useMutation({
@@ -236,6 +246,19 @@ export function UnitCard({
                 {unit.relationCount}
               </span>
             )}
+            {/* Pin button */}
+            <button
+              type="button"
+              aria-label={unit.pinned ? "Unpin unit" : "Pin unit"}
+              onClick={(e) => { e.stopPropagation(); updateMutation.mutate({ id: unit.id, pinned: !unit.pinned }); }}
+              className={cn(
+                "inline-flex items-center justify-center rounded p-0.5 transition-colors",
+                unit.pinned ? "text-accent-primary" : "text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-accent-primary",
+              )}
+            >
+              <Pin className="h-3.5 w-3.5" />
+            </button>
+
             {/* Remove from context — shown when onRemoveFromContext is provided */}
             {onRemoveFromContext && (
               <button
@@ -284,8 +307,22 @@ export function UnitCard({
             {/* Lifecycle badge — new AILifecycleBadge for draft/pending/confirmed */}
             <AILifecycleBadge lifecycle={unit.lifecycle} size="sm" />
 
-            {/* Branch potential */}
-            <BranchPotentialDots score={unit.branchPotential ?? 0} />
+            {/* Branch potential — clickable popover */}
+            <BranchPotentialPopover unitId={unit.id} score={unit.branchPotential ?? 0}>
+              <button type="button" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded">
+                <BranchPotentialDots score={unit.branchPotential ?? 0} />
+              </button>
+            </BranchPotentialPopover>
+
+            {/* Flow alert */}
+            <FlowAlertBadge unitType={unit.unitType} relationCount={unit.relationCount ?? 0} />
+
+            {/* ThoughtRank importance bar */}
+            {(unit.importance ?? 0) > 0.1 && (
+              <div className="h-0.5 w-12 rounded-full bg-bg-secondary overflow-hidden" title={`Importance: ${Math.round((unit.importance ?? 0) * 100)}%`}>
+                <div className="h-full bg-accent-primary rounded-full" style={{ width: `${(unit.importance ?? 0) * 100}%` }} />
+              </div>
+            )}
 
             {/* Context tags — placeholder */}
             {unit.contexts?.map((ctx) => (

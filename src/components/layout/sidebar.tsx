@@ -9,6 +9,7 @@ import {
   FileText,
   Star,
   Settings,
+  Link2,
   GitBranch,
   List,
   BookOpen,
@@ -23,6 +24,8 @@ import { useProjectId } from "~/contexts/project-context";
 import { Button } from "~/components/ui/button";
 import { ContextTree } from "~/components/context/context-tree";
 import { ProjectSelector } from "~/components/project/ProjectSelector";
+import { NavigatorPanel } from "~/components/navigator/NavigatorPanel";
+import { ExternalImportDialog } from "~/components/import/ExternalImportDialog";
 import { IncubationQueue } from "~/components/incubation/IncubationQueue";
 
 const SIDEBAR_WIDTH = 260;
@@ -38,7 +41,9 @@ export function Sidebar({ className }: SidebarProps) {
   const setViewMode = useLayoutStore((s) => s.setViewMode);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
   const setActiveContext = useSidebarStore((s) => s.setActiveContext);
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
+  const [importOpen, setImportOpen] = React.useState(false);
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
   const isCollapsed = !sidebarOpen || sidebarWidth === 60;
@@ -88,6 +93,13 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Context tree */}
       <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
+      {/* Navigator panel — shown when context is active */}
+      {isExpanded && activeContextId && (
+        <div className="border-t border-border">
+          <NavigatorPanel contextId={activeContextId} />
+        </div>
+      )}
+
       {/* Incubation queue */}
       <div className="border-t border-border">
         <IncubationQueue collapsed={isCollapsed} />
@@ -132,10 +144,20 @@ export function Sidebar({ className }: SidebarProps) {
           <Star className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Starred</span>}
         </button>
+        <button type="button" onClick={() => setImportOpen(true)}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
+          title="Import External Content">
+          <Link2 className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Import</span>}
+        </button>
         <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}>
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </Link>
+      </div>
+
+      {/* Import dialog */}
+      <ExternalImportDialog open={importOpen} onOpenChange={setImportOpen} />
       </div>
     </motion.nav>
   );
