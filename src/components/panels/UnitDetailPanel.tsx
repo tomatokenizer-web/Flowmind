@@ -465,8 +465,12 @@ function AITab({ unitId, content, branchPotential }: { unitId: string; content: 
   const filled = Math.round((branchPotential ?? 0) * 4);
   const utils = api.useUtils();
 
-  const suggestTypeMutation = api.ai.suggestType.useMutation();
-  const refineMutation = api.ai.refineUnit.useMutation();
+  const suggestTypeMutation = api.ai.suggestType.useMutation({
+    onError: () => { /* silent — user sees nothing happened, can retry */ },
+  });
+  const refineMutation = api.ai.refineUnit.useMutation({
+    onError: () => { /* silent fallback */ },
+  });
   const updateMutation = api.unit.update.useMutation({
     onSuccess: () => { void utils.unit.getById.invalidate({ id: unitId }); },
   });
@@ -484,8 +488,8 @@ function AITab({ unitId, content, branchPotential }: { unitId: string; content: 
           </div>
         ) : (
           <button
-            onClick={() => suggestTypeMutation.mutate({ content })}
-            disabled={suggestTypeMutation.isPending}
+            onClick={() => { if (content?.trim()) suggestTypeMutation.mutate({ content }); }}
+            disabled={suggestTypeMutation.isPending || !content?.trim()}
             className="text-sm text-accent-primary hover:underline disabled:opacity-50"
           >
             {suggestTypeMutation.isPending ? "Analyzing..." : "Suggest type for this unit"}
