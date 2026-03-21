@@ -1,3 +1,5 @@
+> **⚠️ DEPRECATED**: This file uses an earlier story numbering system that differs from `epics.md`. The authoritative story definitions are in `epics.md` and `implementation-artifacts/story-4.*.md`. This file is retained for historical reference only.
+
 ## Epic 4: Relation Graph & Thought Connections
 
 Users can connect Units through 23+ typed relations (argument, creative, structural), visualize connections as an interactive force-directed graph with two-layer zoom (global overview to local card array), detect cycles and loopbacks, create custom reusable relation types, and merge semantically identical Units.

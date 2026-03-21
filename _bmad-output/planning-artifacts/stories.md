@@ -1,3 +1,5 @@
+> **⚠️ DEPRECATED**: This file uses an earlier story numbering system. The authoritative story definitions are in `epics.md` and the individual `implementation-artifacts/story-*.md` files. This file is retained for historical reference only.
+
 # Flowmind User Stories — Epic 1: Foundation & User Access
 
 ## Epic 1: Foundation & User Access

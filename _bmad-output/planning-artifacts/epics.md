@@ -692,6 +692,23 @@ So that I can use Flowmind efficiently regardless of my input method or ability.
 **And** ARIA landmarks, semantic HTML, and skip-to-content link are in place per UX-DR54
 **And** the application targets modern evergreen browsers (Chrome, Safari, Firefox, Edge latest 2 versions) per UX-DR57
 
+### Story 1.10: Trigger.dev Background Job Infrastructure
+
+As a developer,
+I want Trigger.dev configured as the background job processor,
+So that async AI operations (decomposition, embedding, relation inference, ThoughtRank, context snapshots, drift detection) run reliably without blocking the main request cycle.
+
+**Acceptance Criteria:**
+
+**Given** the project needs async background processing for AI-heavy operations
+**When** Trigger.dev is configured
+**Then** the `@trigger.dev/sdk` package is installed and configured with project credentials
+**And** a `trigger.config.ts` file defines the Trigger.dev project configuration
+**And** at least one example job is created (e.g., `generateEmbedding`) that processes a Unit's content and stores the vector in pgvector
+**And** jobs can be triggered from tRPC service layer via Trigger.dev client
+**And** failed jobs are retried up to 3 times with exponential backoff
+**And** environment variables for Trigger.dev API keys are documented in `.env.example`
+
 ---
 
 ## Epic 2: Thought Capture & Unit Management
@@ -906,6 +923,22 @@ So that I can capture ideas verbally when typing is impractical and later naviga
 **Then** each Unit displays an audio timestamp badge (e.g., "🔊 1:23") indicating the position in the source audio
 **And** clicking the timestamp badge opens an inline audio player and plays from that exact position
 **And** the audio Resource Unit's detail view shows the full waveform with clickable timestamp markers for each derived Unit
+
+### Story 2.12: User Settings Page
+
+As a user,
+I want a centralized settings page where I can manage my profile, AI preferences, integrations, and application behavior,
+So that I can customize Flowmind to my workflow preferences.
+
+**Acceptance Criteria:**
+
+**Given** the user is authenticated
+**When** they navigate to Settings (via sidebar or Cmd+,)
+**Then** a settings page is displayed with tabbed sections: Profile, AI Preferences, Integrations, Privacy, Keyboard Shortcuts
+**And** AI Preferences allows configuring default AI Intervention Intensity level and embedding generation toggle
+**And** Integrations tab shows API key management for the Context Export API
+**And** Privacy tab shows data export controls and account deletion
+**And** all settings persist to the user's preferences in the database
 
 ---
 
@@ -1677,6 +1710,23 @@ So that switching between views feels seamless and I never lose my place.
 **And** ARIA live regions announce view changes politely per UX-DR55
 **And** the selection store from Epic 4 (Story 4.9) is extended to support all view types
 
+### Story 6.9: Relation Type Glossary
+
+As a user,
+I want an always-accessible glossary of all relation types with descriptions and examples,
+So that I understand the meaning of each relation type when building connections between my thoughts.
+
+**Acceptance Criteria:**
+
+**Given** the system has 23 system relation types and potentially custom types
+**When** the user clicks the "Relation Types" help icon (accessible from Graph View toolbar, Context Dashboard, and Unit Detail Panel Relations tab)
+**Then** a glossary panel opens showing all available relation types per NFR15
+**And** relation types are grouped by category: Argument-centered (8), Creative/Research (7), Structure/Containment (8)
+**And** each entry shows: type name, icon, color, direction description, and a usage example
+**And** custom relation types are shown in a separate "Custom" section
+**And** a filter input narrows the list by type name or description
+**And** the glossary is keyboard navigable (Tab through entries, Escape to close)
+
 ---
 
 ## Epic 7: Assembly, Composition & Export
@@ -1989,39 +2039,6 @@ So that I can stay focused or consciously expand the scope.
 **And** the Project Dashboard shows an aggregate drift indicator
 **And** the notification follows non-interrupting policy per NFR24
 
-### Story 8.10: Action Unit External Service Delegation & Result Record Flow
-
-As a user,
-I want to delegate Action Units to external services (Google Calendar, Todoist, Slack, etc.) and capture result records when actions complete,
-So that my thought-driven actions flow into my existing tools and real-world outcomes feed back into my knowledge graph.
-
-**Acceptance Criteria:**
-
-**Given** an Action Unit exists (unit_type: "action") with decision-making provenance relations
-**When** the user clicks "Delegate" on the Action Unit
-**Then** a DelegationDialog presents execution type categories (Schedule, To-do, Communication, Appointment/visit, Purchase) per PRD Section 17
-**And** each category maps to specific services: Schedule → Google Calendar/TIMEMINE, To-do → Todoist/Apple Reminders, Communication → Email/KakaoTalk/Slack, Appointment → Google Maps/KakaoMap, Purchase → Coupang/Amazon per PRD Section 17
-**And** the dialog pre-fills relevant fields from the Action Unit's content and AI-extracted metadata (title, date, location, recipient)
-**And** on successful delegation, the Unit metadata gains `linked_calendar_event` or `linked_task` per PRD Appendix A-13
-**And** a service icon badge appears on the UnitCard and the `action_status` updates to "delegated"
-**And** when the user marks the Action Unit as "Complete" (button or `Cmd+Shift+D`)
-**Then** a CompletionFlowSheet slides up proposing a result record Unit per PRD Section 17 ("When an Action is completed, Flowmind proposes creating a result record Unit")
-**And** the result record is pre-filled by AI with `origin_type: "direct_write"` and `unit_type: "observation"` by default
-**And** the result record auto-connects to the original decision-making Units via `derives_from` and `references` relations per FR57
-**And** the user can edit result content and connections before saving, or skip (non-blocking per NFR24)
-**And** completed Actions with result records display a FeedbackLoopIndicator (loop icon ↩) in Graph View and an indented result card in Thread View
-**And** the Context Dashboard shows a "Feedback Loops" metric: "X of Y Action Units have result records"
-**And** a DecisionChainPanel is accessible from any Action Unit via "View Decision Chain →", showing the full provenance path from originating thoughts through the action to its result
-**And** integration configuration (OAuth tokens, API keys) is managed in Settings → Integrations, not in the delegation dialog
-**And** Flowmind tracks delegation but does not manage execution — the external service owns the task lifecycle per PRD design principle
-
-**Technical Notes:**
-- OAuth integration uses Supabase's built-in OAuth provider support where possible
-- External service APIs are called via edge functions to keep secrets server-side
-- Delegation status can be polled or webhook-updated depending on service capability
-- The DecisionChainPanel reuses ReasoningChainUI's traversal logic but with action-specific styling
-- Result record creation reuses the standard Unit creation tRPC procedure with pre-filled fields
-
 ### Story 8.8: Branch Project from Drift Detection
 
 As a user,
@@ -2040,6 +2057,58 @@ So that valuable tangential explorations become their own focused workspace with
 **And** the branched project inherits the original project's template (if any) or can be assigned a different template
 **And** a creation dialog allows the user to name the new project, provide a purpose statement, and confirm which Units to include
 **And** the Branch Project is accessible from the original project's sidebar with a visual branch indicator
+
+### Story 8.9: Energy-Level Metacognitive Feedback
+
+As a user,
+I want to tag my current energy and focus level when capturing thoughts,
+So that the system can surface appropriate activities — e.g., low energy suggests reviewing the incubation queue, high energy suggests tackling complex decomposition or compression work.
+
+**Acceptance Criteria:**
+
+**Given** the user is in the thought capture flow
+**When** they optionally tag their current energy level (low / medium / high)
+**Then** the tag is stored on the capture session and associated with the Units created during that session
+**And** the system uses the energy level to suggest appropriate next activities:
+  - Low energy → surface Incubation Queue for light review or show Orphan Recovery list
+  - Medium energy → suggest Relations editing, Context organization, or Compression review
+  - High energy → prompt complex decomposition, Gap Detection review, or Compression detection run
+**And** the energy tag is optional and non-blocking — users can dismiss without selecting
+**And** energy history is shown as a metadata heatmap in user settings (last 30 days)
+**And** the suggestion is non-interrupting and dismissible per NFR24
+
+### Story 8.10: Action Unit External Service Delegation & Result Record Flow
+
+As a user,
+I want to delegate Action Units to external services (Google Calendar, Todoist, Slack, etc.) and capture result records when actions complete,
+So that my thought-driven actions flow into my existing tools and real-world outcomes feed back into my knowledge graph.
+
+**Acceptance Criteria:**
+
+**Given** an Action Unit exists (unit_type: "action") with decision-making provenance relations
+**When** the user clicks "Delegate" on the Action Unit
+**Then** a DelegationDialog presents execution type categories (Schedule, To-do, Communication, Appointment/visit, Purchase) per PRD Section 17
+**And** each category maps to specific services: Schedule → Google Calendar/TIMEMINE, To-do → Todoist/Apple Reminders, Communication → Email/KakaoTalk/Slack, Appointment → Google Maps/KakaoMap, Purchase → Coupang/Amazon per PRD Section 17
+**And** the dialog pre-fills relevant fields from the Action Unit's content and AI-extracted metadata (title, date, location, recipient)
+**And** on successful delegation, the Unit metadata gains `linked_calendar_event` or `linked_task` per PRD Appendix A-13
+**And** a service icon badge appears on the UnitCard and the `action_status` updates to "delegated"
+**And** when the user marks the Action Unit as "Complete" (button or `Cmd+Shift+D`)
+**Then** a CompletionFlowSheet slides up proposing a result record Unit per PRD Section 17
+**And** the result record is pre-filled by AI with `origin_type: "direct_write"` and `unit_type: "observation"` by default
+**And** the result record auto-connects to the original decision-making Units via `derives_from` and `references` relations per FR57
+**And** the user can edit result content and connections before saving, or skip (non-blocking per NFR24)
+**And** completed Actions with result records display a FeedbackLoopIndicator (loop icon ↩) in Graph View and an indented result card in Thread View
+**And** the Context Dashboard shows a "Feedback Loops" metric: "X of Y Action Units have result records"
+**And** a DecisionChainPanel is accessible from any Action Unit via "View Decision Chain →"
+**And** integration configuration (OAuth tokens, API keys) is managed in Settings → Integrations
+**And** Flowmind tracks delegation but does not manage execution — the external service owns the task lifecycle per PRD design principle
+
+**Technical Notes:**
+- OAuth integration uses Supabase's built-in OAuth provider support where possible
+- External service APIs are called via edge functions to keep secrets server-side
+- Delegation status can be polled or webhook-updated depending on service capability
+- The DecisionChainPanel reuses ReasoningChainUI's traversal logic but with action-specific styling
+- Result record creation reuses the standard Unit creation tRPC procedure with pre-filled fields
 
 ---
 
@@ -2170,10 +2239,12 @@ So that my dashboard reflects the full richness of my project's domain template.
 
 ## Epic 10: External Integration & Context Export API
 
-**Goal:** Users can share their thought structures with external AI tools via the Context Export API, auto-generate structured AI prompts from selected Units, and delegate Action Unit execution to external services.
+**Goal:** Users can share their thought structures with external AI tools via the Context Export API, auto-generate structured AI prompts from selected Units, export all data, and manage privacy controls.
 
-**FRs covered:** FR34, FR55, FR56
+**FRs covered:** FR34, FR55
 **NFRs addressed:** NFR19, NFR20, NFR21
+
+> **Note:** FR56 (Action Unit delegation) is fully covered by Story 8.10 in Epic 8. Story 10.3 was removed to eliminate duplication.
 
 ### Story 10.1: Context Export REST API
 
@@ -2211,24 +2282,7 @@ So that I can leverage my organized thinking as context for AI conversations.
 **And** the prompt format is optimized for readability by AI models (clear section headers, numbered items)
 **And** a "Copy to Clipboard" button copies the prompt with a success toast
 
-### Story 10.3: Action Unit External Service Delegation
-
-As a user,
-I want to delegate Action Unit execution to external services like Google Calendar, Todoist, or Slack,
-So that my thought-driven action items flow into my existing productivity tools.
-
-**Acceptance Criteria:**
-
-**Given** an Action Unit exists (unit_type: "action")
-**When** the user selects "Delegate to External Service"
-**Then** a dialog shows available integrations: Google Calendar (create event), Todoist (create task), Slack (send message) per FR56
-**And** each integration pre-fills relevant fields from the Action Unit's content and metadata
-**And** upon successful delegation, the Action Unit is tagged with the external service reference (URL, ID)
-**And** the delegation is logged in the Unit's metadata for traceability
-**And** integration configuration (API keys, OAuth tokens) is managed in user settings
-**And** execution management is delegatable to external services — Flowmind tracks the delegation but doesn't manage the execution per FR56
-
-### Story 10.4: Data Export & Privacy Controls
+### Story 10.3: Data Export & Privacy Controls
 
 As a user,
 I want to export all my data and control what information is shared externally,

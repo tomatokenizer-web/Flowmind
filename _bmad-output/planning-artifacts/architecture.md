@@ -2991,3 +2991,49 @@ export const appRouter = createTRPCRouter({
   incubation: incubationRouter,
 });
 ```
+
+---
+
+## Implementation Alignment Notes (2026-03-19)
+
+This section documents known deviations between the architecture specification and the actual codebase as of Epic 4 completion.
+
+### Repository Pattern — Partial Adoption
+
+**Spec:** Router → Service → Repository layering is mandatory.
+**Actual:** Only 3 repositories exist (`unitRepository`, `contextRepository`, `resourceRepository`). Most services access Prisma directly.
+**Decision:** Accept partial adoption — repository pattern is enforced for complex query domains (Unit, Context, Resource). Simpler domains access Prisma from services directly. This is an intentional MVP simplification.
+
+### Zustand Stores — Incrementally Added
+
+**Spec:** Cross-view synchronization via Zustand stores.
+**Actual stores:** `capture-store`, `lifecycle-store`, `undo-store`, `sidebar-store`, `panel-store`, `layout-store`.
+**Missing (to be added in later epics):**
+- `selection-store` — cross-view Unit selection sync (Epic 6, Story 6.8)
+- `navigation-purpose-store` — argument/creative/chronological mode (Epic 6, Story 6.2)
+- `ai-suggestion-store` — pending AI suggestion queue (Epic 5, Story 5.14)
+- `graph-store` — already exists from Epic 4 (Story 4.6)
+
+### App Router Structure — Clarification
+
+The routing structure uses Next.js App Router route groups:
+- `(app)/` — authenticated app routes (maps to root `/`)
+- `(auth)/` — auth pages (sign-in, sign-up)
+- `dashboard-app/` — authenticated dashboard entry point
+- `api/` — REST API routes (context export, auth)
+- `settings/` — user settings (to be implemented in Story 2.12)
+
+### Search Infrastructure — MVP Simplification
+
+**Spec (NFR6):** Text search via Typesense/Elasticsearch, vector search via pgvector.
+**Actual (MVP):** PostgreSQL full-text search (`to_tsvector`) + pgvector for semantic search. Typesense/Elasticsearch provisioning is deferred to post-MVP scaling phase.
+
+### Mobile Support — Deferred
+
+**Spec (NFR22):** Mobile Capture Mode with voice input, home screen widget.
+**Status:** Explicitly deferred. No mobile-specific stories exist. The web app is responsive but native mobile features (PWA, widgets) are post-MVP scope.
+
+### Background Jobs — Trigger.dev
+
+**Spec:** Trigger.dev for async AI operations.
+**Status:** `@trigger.dev/sdk` is listed as a dependency. Infrastructure setup story added as Story 1.10. Individual jobs will be created within their respective epic stories (5.4, 5.8, 5.12, 6.5, 8.2, 8.7, 9.4).
