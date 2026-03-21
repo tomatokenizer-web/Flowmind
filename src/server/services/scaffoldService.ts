@@ -50,6 +50,7 @@ export async function createScaffoldUnits(
   // Create units for each scaffold question
   for (let i = 0; i < scaffoldQuestions.length; i++) {
     const question = scaffoldQuestions[i];
+    if (!question) continue;
 
     // Map template unit type to Prisma UnitType enum
     const unitType = mapToUnitType(question.type);

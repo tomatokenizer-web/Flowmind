@@ -242,12 +242,14 @@ export const assemblyRouter = createTRPCRouter({
 
       if (!assembly) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
 
-      const units = assembly.items.map((item) => ({
-        content: item.unit.content,
-        type: item.unit.unitType,
-        slotName: item.slotName,
-        bridgeText: item.bridgeText,
-      }));
+      const units = assembly.items
+        .filter((item) => item.unit !== null)
+        .map((item) => ({
+          content: item.unit!.content,
+          type: item.unit!.unitType,
+          slotName: null as string | null,
+          bridgeText: item.bridgeText,
+        }));
 
       let content = "";
 

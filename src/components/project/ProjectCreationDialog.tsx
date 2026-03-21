@@ -128,13 +128,15 @@ export function ProjectCreationDialog({
         constraintLevel,
       });
     } else {
-      setStep(STEPS[currentStepIndex + 1]);
+      const nextStep = STEPS[currentStepIndex + 1];
+      if (nextStep) setStep(nextStep);
     }
   };
 
   const handleBack = () => {
     if (!isFirstStep) {
-      setStep(STEPS[currentStepIndex - 1]);
+      const prevStep = STEPS[currentStepIndex - 1];
+      if (prevStep) setStep(prevStep);
     }
   };
 

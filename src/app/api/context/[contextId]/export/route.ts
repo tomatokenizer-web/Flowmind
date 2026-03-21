@@ -6,7 +6,7 @@ type ExportFormat = "json" | "markdown" | "prompt_package";
 
 export async function GET(
   req: Request,
-  { params }: { params: { contextId: string } },
+  { params }: { params: Promise<{ contextId: string }> },
 ) {
   // Auth check
   const session = await auth();
@@ -14,6 +14,7 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { contextId } = await params;
   const url = new URL(req.url);
   const format = (url.searchParams.get("format") ?? "json") as ExportFormat;
   const limit = parseInt(url.searchParams.get("limit") ?? "200");
@@ -21,7 +22,7 @@ export async function GET(
   // Fetch context + units
   const context = await db.context.findFirst({
     where: {
-      id: params.contextId,
+      id: contextId,
       project: { userId: session.user.id! },
     },
     include: {

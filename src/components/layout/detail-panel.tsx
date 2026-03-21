@@ -39,8 +39,6 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
         createdAt: unitData.createdAt,
         modifiedAt: unitData.modifiedAt,
         originType: unitData.originType ?? undefined,
-        sourceUrl: unitData.sourceUrl ?? undefined,
-        sourceTitle: unitData.sourceTitle ?? undefined,
       }
     : null;
 

@@ -38,24 +38,26 @@ interface AssemblyItemData {
   id: string;
   unitId: string;
   position: number;
-  slotName: string | null;
+  slotName?: string | null;
   bridgeText: string | null;
   unit: {
     id: string;
     content: string;
     unitType: string;
-    lifecycle: string;
-  };
+    lifecycle?: string;
+  } | null;
 }
 
 function SortableUnitCard({
   item,
   onRemove,
   isDragging,
+  onOpenPanel,
 }: {
   item: AssemblyItemData;
   onRemove: (unitId: string) => void;
   isDragging: boolean;
+  onOpenPanel: (unitId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition } =
     useSortable({ id: item.id });
@@ -98,7 +100,7 @@ function SortableUnitCard({
           {/* Content */}
           <button
             type="button"
-            onClick={() => openPanel(item.unitId)}
+            onClick={() => onOpenPanel(item.unitId)}
             className="min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
             title="Open unit details"
           >
@@ -107,8 +109,8 @@ function SortableUnitCard({
                 {item.slotName}
               </p>
             )}
-            <UnitTypeBadge unitType={item.unit.unitType as UnitType} />
-            <p className="mt-1.5 line-clamp-3 text-sm text-text-primary">{item.unit.content}</p>
+            {item.unit && <UnitTypeBadge unitType={item.unit.unitType as UnitType} />}
+            <p className="mt-1.5 line-clamp-3 text-sm text-text-primary">{item.unit?.content ?? ""}</p>
           </button>
 
           {/* Remove */}
@@ -221,7 +223,10 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
 
   React.useEffect(() => {
     if (assembly?.items) {
-      setLocalItems(assembly.items as AssemblyItemData[]);
+      const validItems = assembly.items
+        .filter((item): item is typeof item & { unitId: string } => item.unitId !== null)
+        .map((item) => item as unknown as AssemblyItemData);
+      setLocalItems(validItems);
     }
   }, [assembly?.items]);
 
@@ -301,8 +306,8 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
           </button>
           <div>
           <h2 className="font-heading text-lg font-semibold text-text-primary">{assembly.name}</h2>
-          {assembly.description && (
-            <p className="text-sm text-text-secondary">{assembly.description}</p>
+          {(assembly as { description?: string }).description && (
+            <p className="text-sm text-text-secondary">{(assembly as { description?: string }).description}</p>
           )}
           <p className="text-xs text-text-tertiary">{localItems.length} units</p>
           </div>
@@ -344,7 +349,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
                       {item.slotName}
                     </h3>
                   )}
-                  <p className="text-base leading-relaxed text-text-primary">{item.unit.content}</p>
+                  <p className="text-base leading-relaxed text-text-primary">{item.unit?.content ?? ""}</p>
                   {bridgeText && (
                     <p className="mt-2 text-sm italic text-text-secondary">{bridgeText}</p>
                   )}
@@ -370,6 +375,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
                     key={item.id}
                     item={item}
                     isDragging={activeId === item.id}
+                    onOpenPanel={openPanel}
                     onRemove={(unitId) =>
                       removeUnitMutation.mutate({ assemblyId, unitId })
                     }
@@ -381,7 +387,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
             <DragOverlay>
               {activeItem && (
                 <div className="rounded-xl border border-accent-primary bg-bg-primary p-4 opacity-80 shadow-lg">
-                  <p className="line-clamp-2 text-sm text-text-primary">{activeItem.unit.content}</p>
+                  <p className="line-clamp-2 text-sm text-text-primary">{activeItem.unit?.content ?? ""}</p>
                 </div>
               )}
             </DragOverlay>

@@ -4,7 +4,6 @@ import * as React from "react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
-import { useDefaultProject } from "~/hooks/use-default-project";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { DetailPanel } from "./detail-panel";
@@ -15,7 +14,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const setSidebarOpen = useLayoutStore((s) => s.setSidebarOpen);
   const focusMode = useFocusModeStore((s) => s.focusMode);
-  const { projectId } = useDefaultProject();
 
   React.useEffect(() => {
     const xl = window.matchMedia("(min-width: 1280px)");
@@ -50,10 +48,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop sidebar — passes real projectId to ContextTree */}
+        {/* Desktop sidebar — uses project context internally */}
         {!focusMode && (
           <div className="hidden lg:block">
-            <Sidebar projectId={projectId} />
+            <Sidebar />
           </div>
         )}
 
@@ -73,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
-          <Sidebar className="w-full" projectId={projectId} />
+          <Sidebar className="w-full" />
         </div>
 
         {/* Main area */}
