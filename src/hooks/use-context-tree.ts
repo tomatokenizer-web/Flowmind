@@ -12,6 +12,7 @@ export interface ContextTreeNode {
   description: string | null;
   parentId: string | null;
   projectId: string;
+  sortOrder: number;
   unitCount: number;
   children: ContextTreeNode[];
 }
@@ -25,6 +26,7 @@ function buildTree(
     description: string | null;
     parentId: string | null;
     projectId: string;
+    sortOrder: number;
     _count: { unitContexts: number };
     children: Array<{ id: string }>;
   }>,
@@ -39,6 +41,7 @@ function buildTree(
       description: ctx.description,
       parentId: ctx.parentId,
       projectId: ctx.projectId,
+      sortOrder: ctx.sortOrder,
       unitCount: ctx._count.unitContexts,
       children: [],
     });
@@ -55,9 +58,9 @@ function buildTree(
     }
   }
 
-  // Sort children alphabetically
+  // Sort children by sortOrder, then by name as tiebreaker
   function sortChildren(nodes: ContextTreeNode[]) {
-    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    nodes.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
     for (const node of nodes) {
       sortChildren(node.children);
     }
@@ -176,6 +179,79 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
     [deleteMutation, activeContextId, setActiveContext],
   );
 
+  const reorderMutation = api.context.reorder.useMutation({
+    // Optimistically reorder contexts in cache immediately on drag end
+    onMutate: async ({ orderedIds, projectId: mutProjectId, parentId }) => {
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await utils.context.list.cancel({ projectId: mutProjectId });
+
+      // Snapshot current cache value for rollback
+      const previousContexts = utils.context.list.getData({ projectId: mutProjectId });
+
+      // Apply optimistic update: reassign sortOrder based on orderedIds
+      if (previousContexts) {
+        utils.context.list.setData({ projectId: mutProjectId }, (old) => {
+          if (!old) return old;
+          // Build a map of id -> new sort order (siblings only)
+          const orderMap = new Map(orderedIds.map((id, idx) => [id, idx]));
+          return old.map((ctx) => {
+            const newOrder = orderMap.get(ctx.id);
+            // Only update sortOrder for contexts being reordered (same parent group)
+            if (newOrder !== undefined && ctx.parentId === (parentId ?? null)) {
+              return { ...ctx, sortOrder: newOrder };
+            }
+            return ctx;
+          });
+        });
+      }
+
+      return { previousContexts, mutProjectId };
+    },
+    // Rollback on error using the snapshot
+    onError: (_err, _vars, context) => {
+      if (context?.previousContexts !== undefined) {
+        utils.context.list.setData(
+          { projectId: context.mutProjectId },
+          context.previousContexts,
+        );
+      }
+    },
+    // Always refetch after settle to sync with server truth
+    onSettled: (_data, _err, { projectId: mutProjectId }) => {
+      void utils.context.list.invalidate({ projectId: mutProjectId });
+    },
+  });
+
+  const moveMutation = api.context.move.useMutation({
+    onSuccess: () => {
+      void utils.context.list.invalidate();
+    },
+  });
+
+  const reorderContexts = useCallback(
+    async (orderedIds: string[], parentId: string | null) => {
+      if (!projectId) return;
+      return reorderMutation.mutateAsync({
+        orderedIds,
+        projectId,
+        parentId,
+      });
+    },
+    [projectId, reorderMutation],
+  );
+
+  const moveContext = useCallback(
+    async (id: string, newParentId: string | null) => {
+      if (!projectId) return;
+      return moveMutation.mutateAsync({
+        id,
+        newParentId,
+        projectId,
+      });
+    },
+    [projectId, moveMutation],
+  );
+
   return {
     tree,
     flatNodes,
@@ -187,6 +263,8 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
     createContext,
     renameContext,
     deleteContext,
+    reorderContexts,
+    moveContext,
     refetch,
   };
 }

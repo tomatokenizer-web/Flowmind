@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useState, useCallback } from "react";
 import {
   DndContext,
@@ -68,6 +69,8 @@ interface UseDragDropReturn<T extends { id: string }> {
   activeId: string | null;
   /** The currently dragged item, or null */
   activeItem: T | null;
+  /** Optimistically reordered items — reflects drag result immediately before server confirms */
+  optimisticItems: T[];
   /** Props to spread on DndContext */
   dndContextProps: {
     sensors: ReturnType<typeof useSensors>;
@@ -87,6 +90,16 @@ export function useDragDrop<T extends { id: string }>({
   onReorder,
 }: UseDragDropOptions<T>): UseDragDropReturn<T> {
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Optimistic local order — immediately reflects drag results
+  const [optimisticItems, setOptimisticItems] = useState<T[]>(items);
+
+  // Keep optimistic items in sync when items prop changes (e.g. after server invalidation)
+  React.useEffect(() => {
+    if (activeId === null) {
+      setOptimisticItems(items);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -111,15 +124,17 @@ export function useDragDrop<T extends { id: string }>({
 
       if (!over || active.id === over.id) return;
 
-      const fromIndex = items.findIndex((item) => item.id === active.id);
-      const toIndex = items.findIndex((item) => item.id === over.id);
+      const fromIndex = optimisticItems.findIndex((item) => item.id === active.id);
+      const toIndex = optimisticItems.findIndex((item) => item.id === over.id);
 
       if (fromIndex === -1 || toIndex === -1) return;
 
-      const reordered = arrayMove(items, fromIndex, toIndex);
+      const reordered = arrayMove(optimisticItems, fromIndex, toIndex);
+      // Apply optimistic UI immediately — server mutation runs in parallel
+      setOptimisticItems(reordered);
       onReorder(reordered, String(active.id), fromIndex, toIndex);
     },
-    [items, onReorder],
+    [optimisticItems, onReorder],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -127,15 +142,16 @@ export function useDragDrop<T extends { id: string }>({
   }, []);
 
   const activeItem = activeId
-    ? items.find((item) => item.id === activeId) ?? null
+    ? optimisticItems.find((item) => item.id === activeId) ?? null
     : null;
 
-  const itemIds = items.map((item) => item.id);
+  const itemIds = optimisticItems.map((item) => item.id);
 
   return {
     sensors,
     activeId,
     activeItem,
+    optimisticItems,
     dndContextProps: {
       sensors,
       collisionDetection: closestCenter,

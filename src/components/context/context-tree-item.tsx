@@ -29,6 +29,8 @@ interface ContextTreeItemProps {
   onAddSubContext: (parentId: string) => void;
   onSplit?: (id: string) => void;
   onMerge?: (id: string) => void;
+  onMove?: (id: string) => void;
+  onKeyboardReorder?: (id: string, direction: "up" | "down") => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ export function ContextTreeItem({
   onAddSubContext,
   onSplit,
   onMerge,
+  onMove,
+  onKeyboardReorder,
 }: ContextTreeItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(node.name);
@@ -98,6 +102,14 @@ export function ContextTreeItem({
         return;
       }
 
+      // Alt+Up / Alt+Down: keyboard reorder
+      if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown") && onKeyboardReorder) {
+        e.preventDefault();
+        e.stopPropagation();
+        void onKeyboardReorder(node.id, e.key === "ArrowUp" ? "up" : "down");
+        return;
+      }
+
       switch (e.key) {
         case "Enter":
         case " ":
@@ -118,7 +130,7 @@ export function ContextTreeItem({
           break;
       }
     },
-    [isEditing, isExpanded, node, onSelect, onToggleExpand, handleRenameConfirm, handleRenameCancel],
+    [isEditing, isExpanded, node, onSelect, onToggleExpand, onKeyboardReorder, handleRenameConfirm, handleRenameCancel],
   );
 
   const startRename = useCallback(() => {
@@ -254,10 +266,12 @@ export function ContextTreeItem({
           <Plus className="mr-2 h-4 w-4" />
           Add Sub-Context
         </ContextMenuItem>
-        <ContextMenuItem disabled>
-          <Move className="mr-2 h-4 w-4" />
-          Move
-        </ContextMenuItem>
+        {onMove && (
+          <ContextMenuItem onSelect={() => onMove(node.id)}>
+            <Move className="mr-2 h-4 w-4" />
+            Move
+          </ContextMenuItem>
+        )}
         {onSplit && (
           <ContextMenuItem onSelect={() => onSplit(node.id)}>
             <Scissors className="mr-2 h-4 w-4" />

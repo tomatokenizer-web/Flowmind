@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { createCompressionService } from "@/server/services/compressionService";
 import { createOrphanService } from "@/server/services/orphanService";
 import { createDriftService } from "@/server/services/driftService";
+import { getAIProvider, generateReflectionPrompts, enforceRateLimit } from "@/server/ai";
 
 export const feedbackRouter = createTRPCRouter({
   // ─── Compression (8.2) ───────────────────────────────────────────
@@ -173,5 +174,122 @@ export const feedbackRouter = createTRPCRouter({
         : [];
 
       return { derivedUnits, assemblies };
+    }),
+
+  // ─── Energy Heatmap (8.9) ──────────────────────────────────────
+  getEnergyDistribution: protectedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Get all units in this context with their energy levels
+      const unitContexts = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        include: {
+          unit: {
+            select: {
+              id: true,
+              content: true,
+              unitType: true,
+              energyLevel: true,
+              importance: true,
+              lifecycle: true,
+              userId: true,
+            },
+          },
+        },
+      });
+
+      // Only include units belonging to the current user
+      const units = unitContexts
+        .map((uc) => uc.unit)
+        .filter((u) => u.userId === userId);
+
+      // Compute distribution stats
+      const total = units.length;
+      const high = units.filter((u) => u.energyLevel === "high").length;
+      const neutral = units.filter((u) => u.energyLevel === "neutral").length;
+      const low = units.filter((u) => u.energyLevel === "low").length;
+      const unset = units.filter((u) => u.energyLevel === null).length;
+
+      // Build cell data for the heatmap
+      const cells = units.map((u) => ({
+        id: u.id,
+        content: u.content.slice(0, 80),
+        unitType: u.unitType,
+        energyLevel: u.energyLevel,
+        importance: u.importance,
+        contentLength: u.content.length,
+        lifecycle: u.lifecycle,
+      }));
+
+      return {
+        cells,
+        stats: {
+          total,
+          high,
+          neutral,
+          low,
+          unset,
+          highPct: total > 0 ? Math.round((high / total) * 100) : 0,
+          neutralPct: total > 0 ? Math.round((neutral / total) * 100) : 0,
+          lowPct: total > 0 ? Math.round((low / total) * 100) : 0,
+          unsetPct: total > 0 ? Math.round((unset / total) * 100) : 0,
+        },
+      };
+    }),
+
+  // ─── Reflection Prompts (8.4) ──────────────────────────────────
+  getReflectionPrompts: protectedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Rate-limit AI calls
+      await enforceRateLimit(ctx.db, userId, "feedback.getReflectionPrompts");
+
+      // Get the context for its name
+      const context = await ctx.db.context.findUnique({
+        where: { id: input.contextId },
+        select: { name: true, projectId: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+
+      // Get units in this context
+      const unitContexts = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        include: {
+          unit: {
+            select: {
+              id: true,
+              content: true,
+              unitType: true,
+              userId: true,
+            },
+          },
+        },
+        take: 30,
+      });
+
+      const units = unitContexts
+        .map((uc) => uc.unit)
+        .filter((u) => u.userId === userId);
+
+      if (units.length === 0) {
+        return [];
+      }
+
+      const provider = getAIProvider();
+      return generateReflectionPrompts(
+        provider,
+        units.map((u) => ({ id: u.id, content: u.content, unitType: u.unitType })),
+        context.name,
+      );
     }),
 });

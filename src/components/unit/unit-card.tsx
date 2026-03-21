@@ -25,6 +25,8 @@ import type { SplitReattributionProposal } from "~/server/ai";
 
 export type UnitCardVariant = "compact" | "standard" | "expanded";
 
+export type Stance = "support" | "oppose" | "neutral" | "exploring";
+
 export interface UnitCardUnit {
   id: string;
   content: string;
@@ -40,6 +42,10 @@ export interface UnitCardUnit {
   pinned?: boolean;
   flagged?: boolean;
   driftScore?: number;
+  /** Perspective stance within the active context */
+  stance?: Stance | null;
+  /** Perspective importance within the active context (0-1) */
+  perspectiveImportance?: number | null;
 }
 
 export interface UnitCardProps {
@@ -68,6 +74,56 @@ const TYPE_BORDER_COLORS: Record<UnitType, string> = {
   assumption:      "border-l-unit-assumption-accent",
   action:          "border-l-unit-action-accent",
 };
+
+// ─── Stance Badge ────────────────────────────────────────────────────
+
+const STANCE_CONFIG: Record<Stance, { label: string; className: string }> = {
+  support:   { label: "Support",   className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
+  oppose:    { label: "Oppose",    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
+  neutral:   { label: "Neutral",   className: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400" },
+  exploring: { label: "Exploring", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
+};
+
+function StanceBadge({ stance }: { stance: Stance }) {
+  const config = STANCE_CONFIG[stance];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        config.className,
+      )}
+      aria-label={`Stance: ${config.label}`}
+    >
+      {config.label}
+    </span>
+  );
+}
+
+// ─── Perspective Importance Badge ────────────────────────────────────
+
+function PerspectiveImportanceBadge({ value }: { value: number }) {
+  // Map 0-1 to 1-5 filled stars
+  const filled = Math.round(value * 5);
+  if (filled === 0) return null;
+
+  return (
+    <span
+      className="inline-flex items-center gap-px text-[10px] leading-none text-accent-warning"
+      aria-label={`Perspective importance: ${filled} of 5`}
+      title={`Importance: ${Math.round(value * 100)}%`}
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <span
+          key={i}
+          className={i < filled ? "text-accent-warning" : "text-text-tertiary/40"}
+          aria-hidden="true"
+        >
+          {i < filled ? "\u2605" : "\u2606"}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // ─── Branch Potential Indicator ──────────────────────────────────────
 
@@ -237,6 +293,12 @@ export function UnitCard({
           <div className="flex items-center gap-2">
             <UnitTypeBadge unitType={unit.unitType} />
             {isDraft && unit.originType === "ai_generated" && <AIBadge />}
+            {unit.stance && unit.stance !== "neutral" && (
+              <StanceBadge stance={unit.stance} />
+            )}
+            {unit.perspectiveImportance != null && unit.perspectiveImportance > 0.1 && (
+              <PerspectiveImportanceBadge value={unit.perspectiveImportance} />
+            )}
           </div>
           <div className="flex items-center gap-2">
             {variant !== "compact" && (unit.relationCount ?? 0) > 0 && (

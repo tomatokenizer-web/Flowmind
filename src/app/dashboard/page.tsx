@@ -11,6 +11,7 @@ import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
 import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
+import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
@@ -73,14 +74,9 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
     </section>
   );
 }
-import { CaptureBar } from "~/components/unit/capture-bar";
-import { CaptureOverlay } from "~/components/unit/capture-mode";
-import { CreateContextDialog } from "~/components/context/CreateContextDialog";
-
 export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
-  const activeContextId = useSidebarStore((s) => s.activeContextId);
   const activeAssemblyId = useAssemblyStore((s) => s.activeAssemblyId);
   const projectId = useProjectId();
   const isLoading = useProjectLoading();
@@ -96,25 +92,17 @@ export default function DashboardPage() {
 
   if (viewMode === "graph") {
     return (
-      <>
-        <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
-          <GraphView projectId={projectId} />
-        </section>
-        <CaptureBar />
-        {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
-      </>
+      <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
+        <GraphView projectId={projectId} />
+      </section>
     );
   }
 
   if (viewMode === "thread") {
     return (
-      <>
-        <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
-          <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
-        </section>
-        <CaptureBar />
-        {projectId && <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />}
-      </>
+      <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
+        <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
+      </section>
     );
   }
 
@@ -127,10 +115,6 @@ export default function DashboardPage() {
   return (
     <>
       <ContextView projectId={projectId} />
-      <CaptureBar />
-      {projectId && (
-        <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
-      )}
       {projectId && (
         <CreateContextDialog
           open={createContextOpen}

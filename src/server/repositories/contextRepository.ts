@@ -43,7 +43,7 @@ export function createContextRepository(db: PrismaClient) {
           parent: true,
           _count: { select: { unitContexts: true, perspectives: true } },
         },
-        orderBy: { name: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       });
     },
 
@@ -88,6 +88,37 @@ export function createContextRepository(db: PrismaClient) {
         where: { contextId },
         include: { unit: true },
         orderBy: { assignedAt: "desc" },
+      });
+    },
+
+    /**
+     * Reorder sibling contexts by updating their sortOrder values.
+     * @param orderedIds - Array of context IDs in the desired order
+     */
+    async reorderSiblings(orderedIds: string[]) {
+      const updates = orderedIds.map((id, index) =>
+        db.context.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      );
+      await db.$transaction(updates);
+    },
+
+    /**
+     * Move a context to a new parent (re-parent).
+     * @param id - The context to move
+     * @param newParentId - The new parent context ID, or null for root level
+     */
+    async moveToParent(id: string, newParentId: string | null) {
+      return db.context.update({
+        where: { id },
+        data: { parentId: newParentId },
+        include: {
+          children: true,
+          parent: true,
+          _count: { select: { unitContexts: true, perspectives: true } },
+        },
       });
     },
   };

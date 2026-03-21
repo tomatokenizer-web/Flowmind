@@ -55,9 +55,13 @@ export const customRelationTypeRouter = createTRPCRouter({
           name: input.name,
           description: input.description,
           projectId: input.projectId,
+          createdById: ctx.session.user.id ?? null,
           scope: input.scope,
           reusable: input.reusable,
           purposeTag: input.purposeTag ?? null,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true } },
         },
       });
 
@@ -70,6 +74,9 @@ export const customRelationTypeRouter = createTRPCRouter({
       return ctx.db.customRelationType.findMany({
         where: { projectId: input.projectId },
         orderBy: { createdAt: "asc" },
+        include: {
+          createdBy: { select: { id: true, name: true } },
+        },
       });
     }),
 
@@ -121,11 +128,16 @@ export const customRelationTypeRouter = createTRPCRouter({
         });
       }
 
-      // Count relations using this custom type
-      const relationsUsingType = await ctx.db.relation.count({
+      // Set affected relations to "untyped" instead of cascade delete
+      const updateResult = await ctx.db.relation.updateMany({
         where: {
           type: customType.name,
           isCustom: true,
+        },
+        data: {
+          type: "untyped",
+          isCustom: false,
+          customName: null,
         },
       });
 
@@ -133,7 +145,7 @@ export const customRelationTypeRouter = createTRPCRouter({
         where: { id: input.id },
       });
 
-      return { deleted: true, relationsUsingType };
+      return { deleted: true, relationsRetyped: updateResult.count };
     }),
 
   listSystemTypes: protectedProcedure

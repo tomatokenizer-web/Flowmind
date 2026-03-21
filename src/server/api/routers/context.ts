@@ -60,6 +60,18 @@ const mergeConflictsSchema = z.object({
   contextIdB: z.string().uuid(),
 });
 
+const reorderContextsSchema = z.object({
+  orderedIds: z.array(z.string().uuid()).min(1),
+  projectId: z.string().uuid(),
+  parentId: z.string().uuid().nullable(),
+});
+
+const moveContextSchema = z.object({
+  id: z.string().uuid(),
+  newParentId: z.string().uuid().nullable(),
+  projectId: z.string().uuid(),
+});
+
 // ─── Router ────────────────────────────────────────────────────────
 
 export const contextRouter = createTRPCRouter({
@@ -139,6 +151,21 @@ export const contextRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const service = createContextService(ctx.db);
       return service.mergeContexts(input);
+    }),
+
+  reorder: protectedProcedure
+    .input(reorderContextsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const service = createContextService(ctx.db);
+      await service.reorderContexts(input.orderedIds, input.projectId, input.parentId);
+      return { success: true };
+    }),
+
+  move: protectedProcedure
+    .input(moveContextSchema)
+    .mutation(async ({ ctx, input }) => {
+      const service = createContextService(ctx.db);
+      return service.moveContext(input.id, input.newParentId, input.projectId);
     }),
 
   recomputeThoughtRank: protectedProcedure

@@ -8,6 +8,8 @@ import {
   ArrowDownNarrowWide,
   Network,
   List,
+  Search,
+  X,
 } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -48,9 +50,9 @@ interface RelationData {
 // ─── Relation category → dot color ────────────────────────────────────
 
 const CATEGORY_COLORS: Record<string, string> = {
-  argument: "#3B82F6",        // blue-500
-  creative_research: "#8B5CF6", // violet-500
-  structure: "#6B7280",        // gray-500
+  argument: "#3B82F6",               // blue-500
+  creative_research: "#8B5CF6",      // violet-500
+  structure_containment: "#6B7280",  // gray-500
 };
 
 function getRelationCategory(type: string): string {
@@ -64,7 +66,7 @@ function getRelationCategory(type: string): string {
   ];
   if (argumentTypes.includes(type)) return "argument";
   if (creativeTypes.includes(type)) return "creative_research";
-  return "structure";
+  return "structure_containment";
 }
 
 // ─── Branch Point Indicator ───────────────────────────────────────────
@@ -122,7 +124,7 @@ interface RelationConnectorProps {
 
 function RelationConnector({ relation, isLastInGroup }: RelationConnectorProps) {
   const category = getRelationCategory(relation.type);
-  const color = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.structure;
+  const color = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.structure_containment;
 
   return (
     <div
@@ -237,9 +239,12 @@ export function ThreadView({
   className,
 }: ThreadViewProps) {
   const [sortOrder, setSortOrder] = React.useState<ThreadSortOrder>("chronological");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [filterType, setFilterType] = React.useState<string | null>(null);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Fetch units for the current context/project
   const { data: unitsData, isLoading } = api.unit.list.useQuery(
@@ -396,10 +401,29 @@ export function ThreadView({
     );
   }, [units, sortOrder, derivationOrder]);
 
+  // Filter units by search query and type
+  const filteredUnits = React.useMemo(() => {
+    let result = sortedUnits;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((u) => u.content.toLowerCase().includes(q));
+    }
+    if (filterType) {
+      result = result.filter((u) => u.unitType === filterType);
+    }
+    return result;
+  }, [sortedUnits, searchQuery, filterType]);
+
+  // Get available unit types for filter dropdown
+  const availableTypes = React.useMemo(() => {
+    const types = new Set(units.map((u) => u.unitType));
+    return Array.from(types).sort();
+  }, [units]);
+
   // Map units to UnitCardUnit format
   const cardUnits: UnitCardUnit[] = React.useMemo(
     () =>
-      sortedUnits.map((u) => ({
+      filteredUnits.map((u) => ({
         id: u.id,
         content: u.content,
         unitType: u.unitType,
@@ -414,7 +438,7 @@ export function ThreadView({
         originType: u.originType ?? undefined,
         sourceSpan: typeof u.sourceSpan === "string" ? u.sourceSpan : null,
       })),
-    [sortedUnits, relationsMap, forkCounts]
+    [filteredUnits, relationsMap, forkCounts]
   );
 
   // Scroll to selected unit
@@ -467,81 +491,122 @@ export function ThreadView({
       role="region"
       aria-label="Thread view - linear reading mode"
     >
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2">
-          <List className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          <span className="text-sm font-medium text-text-primary">
-            Thread View
-          </span>
-          <span className="text-xs text-text-tertiary">
-            ({cardUnits.length} units)
-          </span>
+      {/* Search & Filter Bar */}
+      <div className="border-b border-border px-4 py-2 space-y-2">
+        {/* Search input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" aria-hidden="true" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search units..."
+            className="w-full rounded-lg border border-border bg-bg-primary py-2 pl-9 pr-8 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+            aria-label="Search units in thread"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Sort order toggle */}
-          <TooltipProvider>
-            <div
-              role="radiogroup"
-              aria-label="Sort order"
-              className="flex items-center gap-1 rounded-lg bg-bg-secondary p-1"
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Toggle
-                    size="sm"
-                    pressed={sortOrder === "chronological"}
-                    onPressedChange={() => setSortOrder("chronological")}
-                    aria-label="Chronological order"
-                  >
-                    <Clock className="h-4 w-4" />
-                  </Toggle>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Chronological order</p>
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Toggle
-                    size="sm"
-                    pressed={sortOrder === "derivation"}
-                    onPressedChange={() => setSortOrder("derivation")}
-                    aria-label="Derivation order"
-                  >
-                    <ArrowDownNarrowWide className="h-4 w-4" />
-                  </Toggle>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Derivation order</p>
-                </TooltipContent>
-              </Tooltip>
+        {/* Controls row: type filter, sort, count, graph switch */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {/* Type filter pills */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {availableTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFilterType(filterType === type ? null : type)}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs transition-colors",
+                    filterType === type
+                      ? "bg-accent-primary text-white"
+                      : "bg-bg-secondary text-text-secondary hover:bg-bg-hover",
+                  )}
+                >
+                  {type}
+                </button>
+              ))}
             </div>
-          </TooltipProvider>
+            <span className="text-xs text-text-tertiary">
+              {cardUnits.length}{searchQuery || filterType ? ` / ${units.length}` : ""} units
+            </span>
+          </div>
 
-          {/* Switch to Graph View */}
-          {onSwitchToGraph && (
+          <div className="flex items-center gap-2">
+            {/* Sort order toggle */}
             <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onSwitchToGraph}
-                    className="gap-1.5"
-                  >
-                    <Network className="h-4 w-4" />
-                    <span className="hidden sm:inline">Graph</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Switch to Graph View</p>
-                </TooltipContent>
-              </Tooltip>
+              <div
+                role="radiogroup"
+                aria-label="Sort order"
+                className="flex items-center gap-1 rounded-lg bg-bg-secondary p-1"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Toggle
+                      size="sm"
+                      pressed={sortOrder === "chronological"}
+                      onPressedChange={() => setSortOrder("chronological")}
+                      aria-label="Chronological order"
+                    >
+                      <Clock className="h-4 w-4" />
+                    </Toggle>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Chronological order</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Toggle
+                      size="sm"
+                      pressed={sortOrder === "derivation"}
+                      onPressedChange={() => setSortOrder("derivation")}
+                      aria-label="Derivation order"
+                    >
+                      <ArrowDownNarrowWide className="h-4 w-4" />
+                    </Toggle>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Derivation order</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </TooltipProvider>
-          )}
+
+            {/* Switch to Graph View */}
+            {onSwitchToGraph && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onSwitchToGraph}
+                      className="gap-1.5"
+                    >
+                      <Network className="h-4 w-4" />
+                      <span className="hidden sm:inline">Graph</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Switch to Graph View</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         </div>
       </div>
 

@@ -86,13 +86,15 @@ export function DecompositionReview({
       if (!state || state.status !== "pending") return;
 
       try {
-        // Create the unit
+        // Create the unit with lifecycle "pending" (not "draft") because the user
+        // explicitly accepted it. This also allows relation creation, which the
+        // relation router rejects for "draft" units.
         const unit = await createUnitMutation.mutateAsync({
           content: state.proposal.content,
           projectId,
           unitType: state.proposal.proposedType as UnitType,
           originType: "ai_generated",
-          lifecycle: "draft",
+          lifecycle: "pending",
         });
 
         // Update state with created unit ID
@@ -122,6 +124,13 @@ export function DecompositionReview({
         await utils.unit.list.invalidate();
       } catch (error) {
         console.error("Failed to create unit:", error);
+        // If it's a duplicate conflict, mark as rejected with feedback
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (errMsg.includes("duplicate") || errMsg.includes("CONFLICT") || errMsg.includes("identical content")) {
+          setProposalStates((prev) =>
+            prev.map((p, i) => (i === index ? { ...p, status: "rejected" } : p))
+          );
+        }
       }
     },
     [proposalStates, createUnitMutation, createRelationMutation, projectId, relationProposals, utils]

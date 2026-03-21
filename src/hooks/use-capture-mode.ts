@@ -35,6 +35,7 @@ export function useCaptureMode({
 
   const utils = api.useUtils();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const safetySessionIdRef = useRef<string | undefined>(undefined);
 
   // Standard capture submission (no AI)
   const submitMutation = api.capture.submit.useMutation({
@@ -42,6 +43,13 @@ export function useCaptureMode({
       clearText();
       await utils.unit.list.invalidate();
       onSubmitSuccess?.(data.id);
+    },
+  });
+
+  // Safety session creation mutation
+  const createSafetySessionMutation = api.ai.createSafetySession.useMutation({
+    onSuccess: (data) => {
+      safetySessionIdRef.current = data.sessionId;
     },
   });
 
@@ -59,12 +67,19 @@ export function useCaptureMode({
     },
     onError: (error) => {
       console.error("Decomposition failed:", error);
-      // Fall back to input phase and show error to user
       setPhase("input");
-      const msg = error instanceof Error ? error.message : "AI decomposition failed. Please try again.";
-      setErrorMessage(msg.includes("ANTHROPIC_API_KEY") || msg.includes("API") 
-        ? "AI is unavailable. Check your Anthropic API key in .env." 
-        : "AI decomposition failed. Please try again or use Capture mode.");
+      const msg = error.message ?? "AI decomposition failed. Please try again.";
+      if (msg.includes("credit") || msg.includes("balance") || msg.includes("PRECONDITION_FAILED")) {
+        setErrorMessage("AI credits exhausted. Please add credits at console.anthropic.com.");
+      } else if (msg.includes("API key") || msg.includes("ANTHROPIC_API_KEY") || msg.includes("UNAUTHORIZED")) {
+        setErrorMessage("AI is unavailable. Check your Anthropic API key in .env.");
+      } else if (msg.includes("Rate limit") || msg.includes("TOO_MANY_REQUESTS") || msg.includes("rate limit")) {
+        setErrorMessage("Too many requests. Please wait a moment and try again.");
+      } else if (msg.includes("CONFLICT") || msg.includes("duplicate")) {
+        setErrorMessage("A unit with identical content already exists.");
+      } else {
+        setErrorMessage(`AI decomposition failed: ${msg}`);
+      }
     },
   });
 
@@ -78,6 +93,11 @@ export function useCaptureMode({
     if (currentMode === "organize") {
       // In organize mode, trigger AI decomposition
       setPhase("decomposing");
+      // Create a safety session if one doesn't exist yet for this capture session
+      if (!safetySessionIdRef.current) {
+        const sessionResult = await createSafetySessionMutation.mutateAsync();
+        safetySessionIdRef.current = sessionResult.sessionId;
+      }
       // Validate contextId is a real UUID before passing (empty string breaks Zod validation)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const validContextId = contextId && uuidRegex.test(contextId) ? contextId : undefined;
@@ -85,6 +105,7 @@ export function useCaptureMode({
         text,
         contextId: validContextId,
         projectId,
+        sessionId: safetySessionIdRef.current,
       });
     } else {
       // In capture mode, direct submission
@@ -94,11 +115,12 @@ export function useCaptureMode({
         mode: currentMode,
       });
     }
-  }, [projectId, contextId, submitMutation, decomposeMutation, setPhase]);
+  }, [projectId, contextId, submitMutation, decomposeMutation, createSafetySessionMutation, setPhase]);
 
   // Handle decomposition review completion
   const handleDecompositionComplete = useCallback(
     (acceptedCount: number, rejectedCount: number) => {
+      safetySessionIdRef.current = undefined;
       resetToInput();
       onDecompositionComplete?.(acceptedCount, rejectedCount);
     },
@@ -107,6 +129,7 @@ export function useCaptureMode({
 
   // Cancel decomposition review and return to input
   const cancelDecomposition = useCallback(() => {
+    safetySessionIdRef.current = undefined;
     resetToInput();
   }, [resetToInput]);
 

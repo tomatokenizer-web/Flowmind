@@ -8,13 +8,16 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { arrayMove } from "@dnd-kit/sortable";
 import { cn } from "~/lib/utils";
 import { useDragDrop } from "~/hooks/use-drag-drop";
 import { useContextTree } from "~/hooks/use-context-tree";
+import type { FlattenedNode } from "~/hooks/use-context-tree";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { ContextTreeItem } from "./context-tree-item";
 import { ContextSplitDialog } from "./context-split-dialog";
 import { ContextMergeDialog } from "./context-merge-dialog";
+import { ContextMoveDialog } from "./context-move-dialog";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 
@@ -29,6 +32,7 @@ interface ContextTreeProps {
 
 export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   const {
+    tree,
     flatNodes,
     isLoading,
     activeContextId,
@@ -38,6 +42,8 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
     createContext,
     renameContext,
     deleteContext,
+    reorderContexts,
+    moveContext,
   } = useContextTree({ projectId });
 
   const [isCreating, setIsCreating] = useState(false);
@@ -49,9 +55,13 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   const [mergeSourceId, setMergeSourceId] = useState<string | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
 
+  // Move dialog state
+  const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
+
   const splitTarget = splitTargetId ? flatNodes.find((n) => n.id === splitTargetId) : null;
   const mergeSource = mergeSourceId ? flatNodes.find((n) => n.id === mergeSourceId) : null;
   const mergeTarget = mergeTargetId ? flatNodes.find((n) => n.id === mergeTargetId) : null;
+  const moveTarget = moveTargetId ? flatNodes.find((n) => n.id === moveTargetId) : null;
 
   const handleSplit = useCallback((id: string) => {
     setSplitTargetId(id);
@@ -72,13 +82,70 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
     setMergeTargetId(null);
   }, []);
 
-  // DnD setup
-  const { dndContextProps, itemIds } = useDragDrop({
+  const handleMoveStart = useCallback((id: string) => {
+    setMoveTargetId(id);
+  }, []);
+
+  const handleMoveConfirm = useCallback(
+    async (contextId: string, newParentId: string | null) => {
+      await moveContext(contextId, newParentId);
+      setMoveTargetId(null);
+    },
+    [moveContext],
+  );
+
+  // ─── Reorder helpers ─────────────────────────────────────────────
+
+  /**
+   * Get sibling IDs for a given node (nodes sharing the same parentId).
+   * Returns only IDs of visible (flattened) siblings at the same depth.
+   */
+  const getSiblingIds = useCallback(
+    (node: FlattenedNode): string[] => {
+      return flatNodes
+        .filter((n) => n.parentId === node.parentId && n.depth === node.depth)
+        .map((n) => n.id);
+    },
+    [flatNodes],
+  );
+
+  const handleKeyboardReorder = useCallback(
+    async (nodeId: string, direction: "up" | "down") => {
+      const node = flatNodes.find((n) => n.id === nodeId);
+      if (!node) return;
+
+      const siblingIds = getSiblingIds(node);
+      const currentIndex = siblingIds.indexOf(nodeId);
+      if (currentIndex === -1) return;
+
+      const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+      if (newIndex < 0 || newIndex >= siblingIds.length) return;
+
+      const newOrder = arrayMove(siblingIds, currentIndex, newIndex);
+      await reorderContexts(newOrder, node.parentId);
+    },
+    [flatNodes, getSiblingIds, reorderContexts],
+  );
+
+  // DnD setup — optimisticItems reflects drag result immediately (before server confirms)
+  const { dndContextProps, itemIds, optimisticItems } = useDragDrop({
     items: flatNodes,
-    onReorder: (_items) => {
-      // Context ordering persisted via name sort for now — full drag-persist requires sortOrder field on Context model
+    onReorder: (reorderedItems, activeId, _fromIndex, _toIndex) => {
+      // Find the dragged node to determine its parentId
+      const draggedNode = flatNodes.find((n) => n.id === activeId);
+      if (!draggedNode) return;
+
+      // Extract sibling IDs from the reordered list (same parent + depth)
+      const siblingIds = reorderedItems
+        .filter((n) => n.parentId === draggedNode.parentId && n.depth === draggedNode.depth)
+        .map((n) => n.id);
+
+      void reorderContexts(siblingIds, draggedNode.parentId);
     },
   });
+
+  // Use optimistic order for rendering so the UI updates instantly on drag end
+  const visibleNodes = optimisticItems;
 
   // ─── New context creation ──────────────────────────────────────
 
@@ -120,7 +187,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
 
   const handleAddSubContext = useCallback(
     async (parentId: string) => {
-      // For sub-context, prompt inline — for now create with default name
+      // For sub-context, prompt inline -- for now create with default name
       const name = "New Sub-Context";
       await createContext(name, parentId);
     },
@@ -156,7 +223,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
         >
           <Plus className="h-4 w-4" />
         </Button>
-        {flatNodes.map((node) => (
+        {visibleNodes.map((node) => (
           <ContextTreeItem
             key={node.id}
             node={node}
@@ -170,6 +237,8 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
             onAddSubContext={handleAddSubContext}
             onSplit={handleSplit}
             onMerge={handleMergeStart}
+            onMove={handleMoveStart}
+            onKeyboardReorder={handleKeyboardReorder}
           />
         ))}
       </div>
@@ -252,7 +321,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
             onDragCancel={dndContextProps.onDragCancel}
           >
             <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-              {flatNodes.map((node) => (
+              {visibleNodes.map((node) => (
                 <ContextTreeItem
                   key={node.id}
                   node={node}
@@ -266,13 +335,15 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
                   onAddSubContext={handleAddSubContext}
                   onSplit={handleSplit}
                   onMerge={handleMergeStart}
+                  onMove={handleMoveStart}
+                  onKeyboardReorder={handleKeyboardReorder}
                 />
               ))}
             </SortableContext>
           </DndContext>
 
           {/* Empty state */}
-          {flatNodes.length === 0 && !isCreating && (
+          {visibleNodes.length === 0 && !isCreating && (
             <div className="flex flex-col items-center gap-space-3 py-space-8 text-center">
               <Layers className="h-10 w-10 text-text-tertiary" />
               <p className="text-sm text-text-secondary">No contexts yet</p>
@@ -322,6 +393,19 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
           contextIdB={mergeTarget.id}
           contextNameB={mergeTarget.name}
           projectId={projectId}
+        />
+      )}
+
+      {/* Move Dialog */}
+      {moveTarget && projectId && (
+        <ContextMoveDialog
+          open={!!moveTargetId}
+          onOpenChange={(v) => { if (!v) setMoveTargetId(null); }}
+          contextId={moveTarget.id}
+          contextName={moveTarget.name}
+          currentParentId={moveTarget.parentId}
+          tree={tree}
+          onConfirm={handleMoveConfirm}
         />
       )}
     </div>

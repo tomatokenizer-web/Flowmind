@@ -4,16 +4,13 @@ import * as React from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  FolderTree,
-  FileText,
-  Star,
   Settings,
   Link2,
   GitBranch,
   List,
   BookOpen,
-  Layers,
+  Compass,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -26,7 +23,8 @@ import { ContextTree } from "~/components/context/context-tree";
 import { ProjectSelector } from "~/components/project/ProjectSelector";
 import { NavigatorPanel } from "~/components/navigator/NavigatorPanel";
 import { ExternalImportDialog } from "~/components/import/ExternalImportDialog";
-import { IncubationQueue } from "~/components/incubation/IncubationQueue";
+import { DriftPanel } from "~/components/drift/DriftPanel";
+import { api } from "~/trpc/react";
 
 const SIDEBAR_WIDTH = 260;
 const SIDEBAR_COLLAPSED_WIDTH = 60;
@@ -40,10 +38,16 @@ export function Sidebar({ className }: SidebarProps) {
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
-  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
   const [importOpen, setImportOpen] = React.useState(false);
+
+  // Fetch incubating units count for compact badge
+  const { data: incubatingUnits } = api.incubation.list.useQuery();
+  const incubatingCount = React.useMemo(() => {
+    if (!projectId || !incubatingUnits) return 0;
+    return incubatingUnits.filter((u) => u.projectId === projectId).length;
+  }, [incubatingUnits, projectId]);
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
   const isCollapsed = !sidebarOpen || sidebarWidth === 60;
@@ -93,27 +97,50 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Context tree */}
       <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
-      {/* Navigator panel — shown when context is active */}
+      {/* Navigator panel — separate section from contexts */}
       {isExpanded && activeContextId && (
         <div className="border-t border-border">
           <NavigatorPanel contextId={activeContextId} />
         </div>
       )}
+      {isCollapsed && activeContextId && (
+        <div className="border-t border-border flex items-center justify-center py-2">
+          <Compass className="h-5 w-5 text-text-tertiary" aria-label="Navigators" />
+        </div>
+      )}
 
-      {/* Incubation queue */}
-      <div className="border-t border-border">
-        <IncubationQueue collapsed={isCollapsed} />
-      </div>
+      {/* Spacer to push bottom nav down */}
+      <div className="flex-1" />
 
-      {/* Bottom nav items */}
+      {/* Orphan units indicator (incubating = contextless drafts) */}
+      {incubatingCount > 0 && (
+        <div className={cn(
+          "border-t border-border",
+          isCollapsed ? "flex items-center justify-center py-2" : "px-3 py-2",
+        )}>
+          {isCollapsed ? (
+            <div className="relative" title={`${incubatingCount} orphan units`}>
+              <Sparkles className="h-5 w-5 text-text-tertiary" />
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-warning text-[10px] font-medium text-white">
+                {incubatingCount > 9 ? "9+" : incubatingCount}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-text-tertiary">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>{incubatingCount} orphan unit{incubatingCount !== 1 ? "s" : ""}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Drift detection panel */}
+      {projectId && (
+        <DriftPanel projectId={projectId} collapsed={isCollapsed} />
+      )}
+
+      {/* Bottom nav items — view shortcuts + utilities */}
       <div className="border-t border-border p-space-2 space-y-0.5">
-        {/* All Thoughts — clears context filter */}
-        <button type="button" onClick={() => { setActiveContext(null); setViewMode("canvas"); }}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="All Thoughts">
-          <FileText className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>All Thoughts</span>}
-        </button>
         {/* View shortcuts */}
         <button type="button" onClick={() => setViewMode("thread")}
           className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
@@ -133,17 +160,6 @@ export function Sidebar({ className }: SidebarProps) {
           <BookOpen className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Assembly View</span>}
         </button>
-        <button type="button" onClick={() => {
-            useSidebarStore.getState().setActiveContext(null);
-            useLayoutStore.getState().setViewMode("canvas");
-            // Signal to show only pinned units (stored in a simple flag for now)
-            window.dispatchEvent(new CustomEvent("flowmind:show-starred"));
-          }}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="Starred Units">
-          <Star className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Starred</span>}
-        </button>
         <button type="button" onClick={() => setImportOpen(true)}
           className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
           title="Import External Content">
@@ -159,33 +175,5 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Import dialog */}
       <ExternalImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </motion.nav>
-  );
-}
-
-interface SidebarItemProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  collapsed: boolean;
-}
-
-function SidebarItem({ icon: Icon, label, collapsed }: SidebarItemProps) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2",
-        "text-sm text-text-secondary",
-        "transition-colors duration-fast ease-default",
-        "hover:bg-bg-hover hover:text-text-primary",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
-        "motion-reduce:transition-none",
-        collapsed && "justify-center px-0",
-      )}
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
-    >
-      <Icon className="h-5 w-5 shrink-0" />
-      {!collapsed && <span className="truncate">{label}</span>}
-    </button>
   );
 }

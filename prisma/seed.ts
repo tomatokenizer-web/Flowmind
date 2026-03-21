@@ -110,35 +110,35 @@ const systemRelationTypes = [
   // Structure / Presupposition / Containment-centered (5)
   {
     name: "contains",
-    category: "structure",
+    category: "structure_containment",
     description:
       "A contains B as a component (hierarchical inclusion)",
     sortOrder: 16,
   },
   {
     name: "presupposes",
-    category: "structure",
+    category: "structure_containment",
     description:
       "This Unit requires the other Unit as a prerequisite",
     sortOrder: 17,
   },
   {
     name: "defined_by",
-    category: "structure",
+    category: "structure_containment",
     description:
       "The key concept of this Unit is defined by the other",
     sortOrder: 18,
   },
   {
     name: "grounded_in",
-    category: "structure",
+    category: "structure_containment",
     description:
       "The background context of this Unit lies in the other",
     sortOrder: 19,
   },
   {
     name: "instantiates",
-    category: "structure",
+    category: "structure_containment",
     description:
       "This Unit is a concrete instance of the other's principle or theory",
     sortOrder: 20,
@@ -147,21 +147,21 @@ const systemRelationTypes = [
   // 3 additional structural types
   {
     name: "precedes",
-    category: "structure",
+    category: "structure_containment",
     description:
       "This Unit temporally or logically comes before the other",
     sortOrder: 21,
   },
   {
     name: "supersedes",
-    category: "structure",
+    category: "structure_containment",
     description:
       "This Unit replaces or overrides the other",
     sortOrder: 22,
   },
   {
     name: "complements",
-    category: "structure",
+    category: "structure_containment",
     description:
       "This Unit fills a gap left by the other, together forming a whole",
     sortOrder: 23,

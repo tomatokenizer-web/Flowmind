@@ -120,22 +120,37 @@ enum ResourceType {
   code
 }
 
+enum VersionOriginType {
+  manual
+  ai_suggestion
+  merge
+  split
+  import
+}
+
 // ─── Models ────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime? @map("email_verified")
-  image         String?
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  accounts      Account[]
-  projects      Project[]
-  sessions      Session[]
-  units         Unit[]
-  resources     ResourceUnit[]
-  contextVisits ContextVisit[]
+  id                   String    @id @default(cuid())
+  name                 String?
+  email                String?   @unique
+  emailVerified        DateTime? @map("email_verified")
+  image                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  /// Whether the user has completed the onboarding flow
+  onboardingCompleted  Boolean   @default(false) @map("onboarding_completed")
+  /// The last onboarding step index the user reached (0-based)
+  onboardingStep       Int       @default(0) @map("onboarding_step")
+  accounts             Account[]
+  projects             Project[]
+  sessions             Session[]
+  units                Unit[]
+  resources            ResourceUnit[]
+  contextVisits          ContextVisit[]
+  contextReferences      ContextReference[]
+  customRelationTypes    CustomRelationType[]
+  webhooks               Webhook[]
 
   @@map("users")
 }
@@ -197,6 +212,8 @@ model Project {
   template            DomainTemplate?      @relation(fields: [templateId], references: [id])
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   units               Unit[]
+  tags                Tag[]
+  webhooks            Webhook[]
 
   @@index([userId])
   @@map("projects")
@@ -285,6 +302,7 @@ model Unit {
   resources         UnitResource[]
   unitContexts      UnitContext[]
   contextVisits     ContextVisit[]
+  unitTags          UnitTag[]
 
   @@index([userId])
   @@index([projectId])
@@ -334,6 +352,7 @@ model Relation {
   @@index([sourceUnitId])
   @@index([targetUnitId])
   @@index([type])
+  @@index([sourceUnitId, targetUnitId, type])
   @@map("relations")
 }
 
@@ -352,13 +371,16 @@ model CustomRelationType {
   name        String
   description String   @default("")
   projectId   String   @map("project_id") @db.Uuid
+  createdById String?  @map("created_by_id")
   scope       String   @default("private") @db.VarChar(10)
   reusable    Boolean  @default(false)
   purposeTag  String?  @map("purpose_tag")
   createdAt   DateTime @default(now()) @map("created_at")
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation(fields: [createdById], references: [id])
 
   @@index([projectId])
+  @@index([createdById])
   @@map("custom_relation_types")
 }
 
@@ -371,15 +393,18 @@ model Context {
   snapshot       String            @default("")
   openQuestions  Json              @default("[]") @map("open_questions")
   contradictions Json              @default("[]")
+  sortOrder      Int               @default(0) @map("sort_order")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
   parent         Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
   children       Context[]         @relation("ContextHierarchy")
   project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  navigators     Navigator[]
-  perspectives   UnitPerspective[]
-  unitContexts   UnitContext[]
-  contextVisits  ContextVisit[]
+  navigators       Navigator[]
+  perspectives     UnitPerspective[]
+  unitContexts     UnitContext[]
+  contextVisits    ContextVisit[]
+  sourceReferences ContextReference[] @relation("SourceReferences")
+  targetReferences ContextReference[] @relation("TargetReferences")
 
   @@unique([name, parentId, projectId])
   @@index([projectId])
@@ -419,15 +444,20 @@ model ContextVisit {
 }
 
 model UnitVersion {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId       String   @map("unit_id") @db.Uuid
-  version      Int
-  content      String
-  meta         Json?
-  changeReason String?  @map("change_reason")
-  diffSummary  String?  @map("diff_summary")
-  createdAt    DateTime @default(now()) @map("created_at")
-  unit         Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          String             @map("unit_id") @db.Uuid
+  version         Int
+  content         String
+  meta            Json?
+  changeReason    String?            @map("change_reason")
+  diffSummary     String?            @map("diff_summary")
+  /// How this version was produced (manual edit, AI suggestion, merge, split, or import)
+  versionOrigin   VersionOriginType? @default(manual) @map("version_origin")
+  /// Optional reference to the source range this version was derived from
+  /// (e.g. character offsets within a source document, or a split-source unit ID)
+  sourceSpan      String?            @map("source_span")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  unit            Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@unique([unitId, version])
   @@index([unitId])
@@ -509,4 +539,101 @@ model UnitResource {
   @@index([unitId])
   @@index([resourceId])
   @@map("unit_resources")
+}
+
+// ─── Context Cross-References (Story 3.5) ─────────────────────────────
+
+model ContextReference {
+  id              String   @id @default(cuid())
+  sourceContextId String   @map("source_context_id") @db.Uuid
+  targetContextId String   @map("target_context_id") @db.Uuid
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     String   @map("created_by_id")
+
+  sourceContext   Context  @relation("SourceReferences", fields: [sourceContextId], references: [id], onDelete: Cascade)
+  targetContext   Context  @relation("TargetReferences", fields: [targetContextId], references: [id], onDelete: Cascade)
+  createdBy       User     @relation(fields: [createdById], references: [id])
+
+  @@unique([sourceContextId, targetContextId])
+  @@index([sourceContextId])
+  @@index([targetContextId])
+  @@map("context_references")
+}
+
+// ─── Tags (Story 6.5) ─────────────────────────────────────────────────
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String
+  color     String?
+  projectId String    @map("project_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  units     UnitTag[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@map("tags")
+}
+
+model UnitTag {
+  unitId    String   @map("unit_id") @db.Uuid
+  tagId     String   @map("tag_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  unit      Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([unitId, tagId])
+  @@index([unitId])
+  @@index([tagId])
+  @@map("unit_tags")
+}
+
+// ─── API Rate Limiting ────────────────────────────────────────────────
+
+model RateLimitEntry {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id")
+  endpoint  String   @db.VarChar(100)
+  timestamp DateTime @default(now())
+
+  @@index([userId, endpoint, timestamp])
+  @@map("rate_limit_entries")
+}
+
+// ─── Safety Guard Session (AI rate-limiting) ─────────────────────────
+
+model SafetyGuardSession {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String   @map("user_id")
+  consecutiveBranches   Int      @default(0) @map("consecutive_branches")
+  createdAt             DateTime @default(now()) @map("created_at")
+  lastActivityAt        DateTime @default(now()) @map("last_activity_at")
+
+  @@index([userId])
+  @@index([lastActivityAt])
+  @@map("safety_guard_sessions")
+}
+
+// ─── Webhooks (Story 10.2) ──────────────────────────────────────────
+
+model Webhook {
+  id        String   @id @default(cuid())
+  url       String
+  secret    String
+  events    String[] @default([])
+  active    Boolean  @default(true)
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@map("webhooks")
 }

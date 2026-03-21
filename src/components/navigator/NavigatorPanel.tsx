@@ -7,6 +7,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { usePanelStore } from "~/stores/panel-store";
 import { useSelectionStore } from "~/stores/selectionStore";
+import { toast } from "~/lib/toast";
 
 interface NavigatorPanelProps {
   contextId: string;
@@ -29,8 +30,19 @@ export function NavigatorPanel({ contextId }: NavigatorPanelProps) {
     onSuccess: () => { void utils.navigator.list.invalidate({ contextId }); setActiveNavId(null); },
   });
 
+  const addUnit = api.navigator.addUnit.useMutation({
+    onSuccess: (nav) => {
+      void utils.navigator.list.invalidate({ contextId });
+      toast.success("Unit added to navigator", { description: `Added to "${nav.name}"` });
+    },
+    onError: () => {
+      toast.error("Failed to add unit to navigator");
+    },
+  });
+
   const openPanel = usePanelStore((s) => s.openPanel);
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
 
   const activeNav = navigators.find((n) => n.id === activeNavId);
   const totalSteps = activeNav?.path?.length ?? 0;
@@ -75,17 +87,32 @@ export function NavigatorPanel({ contextId }: NavigatorPanelProps) {
 
       {navigators.map((nav) => (
         <div key={nav.id} className="rounded-lg border border-border bg-bg-primary">
-          <button
-            type="button"
-            onClick={() => setActiveNavId(activeNavId === nav.id ? null : nav.id)}
-            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-hover"
-          >
-            <span className="truncate font-medium">{nav.name}</span>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-tertiary">{nav.path?.length ?? 0} steps</span>
-              <ChevronRight className={cn("h-3.5 w-3.5 text-text-tertiary transition-transform", activeNavId === nav.id && "rotate-90")} />
-            </div>
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setActiveNavId(activeNavId === nav.id ? null : nav.id)}
+              className="flex flex-1 items-center justify-between px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-hover min-w-0"
+            >
+              <span className="truncate font-medium">{nav.name}</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-tertiary">{nav.path?.length ?? 0} steps</span>
+                <ChevronRight className={cn("h-3.5 w-3.5 text-text-tertiary transition-transform", activeNavId === nav.id && "rotate-90")} />
+              </div>
+            </button>
+            <button
+              type="button"
+              title={selectedUnitId ? "Add current unit to this navigator" : "Select a unit first"}
+              disabled={!selectedUnitId || addUnit.isPending}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (selectedUnitId) addUnit.mutate({ navigatorId: nav.id, unitId: selectedUnitId });
+              }}
+              className="mr-2 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-text-tertiary hover:border-accent-primary hover:text-accent-primary disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              aria-label="Add current unit to navigator"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
 
           {activeNavId === nav.id && totalSteps > 0 && (
             <div className="border-t border-border p-2 space-y-1">

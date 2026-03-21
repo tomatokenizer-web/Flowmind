@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createUnitService } from "@/server/services/unitService";
+import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
 import { TRPCError } from "@trpc/server";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────
@@ -125,14 +125,25 @@ export const unitRouter = createTRPCRouter({
     .input(createUnitSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createUnitService(ctx.db);
-      return service.create(
-        {
-          ...input,
-          sourceSpan: input.sourceSpan as Prisma.InputJsonValue | undefined,
-          meta: input.meta as Prisma.InputJsonValue | undefined,
-        },
-        ctx.session.user.id!,
-      );
+      try {
+        return await service.create(
+          {
+            ...input,
+            sourceSpan: input.sourceSpan as Prisma.InputJsonValue | undefined,
+            meta: input.meta as Prisma.InputJsonValue | undefined,
+          },
+          ctx.session.user.id!,
+        );
+      } catch (error) {
+        if (error instanceof DuplicateUnitContentError) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: error.message,
+            cause: { code: error.code, existingUnitId: error.existingUnitId },
+          });
+        }
+        throw error;
+      }
     }),
 
   getById: protectedProcedure

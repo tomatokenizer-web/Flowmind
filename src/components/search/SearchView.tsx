@@ -6,11 +6,11 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
-import type { UnitType } from "@prisma/client";
+import type { UnitType, Lifecycle } from "@prisma/client";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-type SearchLayer = "text" | "structural" | "temporal";
+type SearchLayer = "text" | "structural" | "temporal" | "semantic";
 
 interface SearchViewProps {
   projectId: string;
@@ -64,9 +64,12 @@ function SearchResultItem({
     unitId: string;
     content: string;
     unitType: UnitType;
+    lifecycle: Lifecycle;
     score: number;
     matchLayer: SearchLayer;
     highlights: string[];
+    createdAt: Date;
+    relationCount: number;
   };
   onClick: (unitId: string) => void;
 }) {

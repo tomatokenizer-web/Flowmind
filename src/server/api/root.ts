@@ -21,6 +21,11 @@ import { assemblyRouter } from "@/server/api/routers/assembly";
 import { domainTemplateRouter } from "@/server/api/routers/domain-template";
 import { apiKeyRouter } from "@/server/api/routers/api-key";
 import { navigatorRouter } from "@/server/api/routers/navigator";
+import { chunkRouter } from "@/server/api/routers/chunk";
+import { contextReferenceRouter } from "@/server/api/routers/context-reference";
+import { userRouter } from "@/server/api/routers/user";
+import { tagRouter } from "@/server/api/routers/tag";
+import { webhookRouter } from "@/server/api/routers/webhook";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -45,6 +50,11 @@ export const appRouter = createTRPCRouter({
   domainTemplate: domainTemplateRouter,
   apiKey: apiKeyRouter,
   navigator: navigatorRouter,
+  chunk: chunkRouter,
+  contextReference: contextReferenceRouter,
+  user: userRouter,
+  tag: tagRouter,
+  webhook: webhookRouter,
 });
 
 export type AppRouter = typeof appRouter;

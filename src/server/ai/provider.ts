@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { ZodType } from "zod";
 import { logger } from "../logger";
+import { env } from "@/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -7,15 +9,20 @@ export interface AIGenerateTextOptions {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
+  /** Override the default model for this request (useful for testing) */
+  model?: string;
 }
 
 export interface AIGenerateStructuredOptions<T> extends AIGenerateTextOptions {
+  /** JSON schema description sent to the AI in the prompt */
   schema: {
     name: string;
     description: string;
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /** Zod schema for runtime validation of the AI response */
+  zodSchema: ZodType<T>;
 }
 
 export interface AIProvider {
@@ -30,24 +37,41 @@ export interface AIProvider {
 
 export class AnthropicProvider implements AIProvider {
   private client: Anthropic;
-  private model: string;
+  private defaultModel: string;
 
-  constructor(apiKey?: string, model = "claude-sonnet-4-5") {
+  constructor(apiKey?: string, model?: string) {
+    // Resolve the API key: explicit arg > env config > SDK reads process.env
+    const resolvedKey = apiKey ?? env.ANTHROPIC_API_KEY;
+
+    if (!resolvedKey && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error(
+        "ANTHROPIC_API_KEY is not configured. Set it in your .env file."
+      );
+    }
+
     this.client = new Anthropic({
-      apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY,
+      apiKey: resolvedKey,
     });
-    this.model = model;
+    this.defaultModel = model ?? env.AI_MODEL;
+  }
+
+  /**
+   * Resolve the model to use: per-request override > constructor default > env default.
+   */
+  private resolveModel(requestModel?: string): string {
+    return requestModel ?? this.defaultModel;
   }
 
   async generateText(
     prompt: string,
     options: AIGenerateTextOptions = {}
   ): Promise<string> {
-    const { maxTokens = 1024, temperature = 0.7, systemPrompt } = options;
+    const { maxTokens = 1024, temperature = 0.7, systemPrompt, model } = options;
+    const resolvedModel = this.resolveModel(model);
 
     try {
       const response = await this.client.messages.create({
-        model: this.model,
+        model: resolvedModel,
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,
@@ -57,7 +81,7 @@ export class AnthropicProvider implements AIProvider {
       const textBlock = response.content.find((block) => block.type === "text");
       return textBlock?.type === "text" ? textBlock.text : "";
     } catch (error) {
-      logger.error({ error }, "Anthropic generateText failed");
+      logger.error({ error, model: resolvedModel }, "Anthropic generateText failed");
       throw error;
     }
   }
@@ -66,36 +90,56 @@ export class AnthropicProvider implements AIProvider {
     prompt: string,
     options: AIGenerateStructuredOptions<T>
   ): Promise<T> {
-    const { maxTokens = 2048, temperature = 0.3, systemPrompt, schema } = options;
+    const { maxTokens = 2048, temperature = 0.3, systemPrompt, schema, model } = options;
+    const resolvedModel = this.resolveModel(model);
 
-    const structuredPrompt = `${prompt}
+    const toolName = "structured_output";
 
-Respond with a valid JSON object matching this schema:
-${JSON.stringify(schema, null, 2)}
-
-Return ONLY the JSON object, no additional text or markdown.`;
+    // Build JSON Schema input_schema from the caller-provided schema descriptor
+    const inputSchema: Record<string, unknown> = {
+      type: "object" as const,
+      properties: schema.properties,
+    };
+    if (schema.required) {
+      inputSchema.required = schema.required;
+    }
 
     try {
       const response = await this.client.messages.create({
-        model: this.model,
+        model: resolvedModel,
         max_tokens: maxTokens,
         temperature,
-        system:
-          systemPrompt ??
-          "You are a helpful assistant that responds only with valid JSON.",
-        messages: [{ role: "user", content: structuredPrompt }],
+        system: systemPrompt,
+        messages: [{ role: "user", content: prompt }],
+        tools: [
+          {
+            name: toolName,
+            description: schema.description,
+            input_schema: inputSchema as Anthropic.Messages.Tool["input_schema"],
+          },
+        ],
+        tool_choice: { type: "tool", name: toolName },
       });
 
-      const textBlock = response.content.find((block) => block.type === "text");
-      const text = textBlock?.type === "text" ? textBlock.text : "{}";
+      // Extract the structured result from the tool_use content block
+      const toolUseBlock = response.content.find(
+        (block) => block.type === "tool_use" && block.name === toolName
+      );
 
-      // Extract JSON from potential markdown code blocks
-      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, text];
-      const jsonString = jsonMatch[1]?.trim() ?? text.trim();
+      if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
+        throw new Error(
+          `No tool_use block found in response for schema "${schema.name}"`
+        );
+      }
 
-      return JSON.parse(jsonString) as T;
+      // Zod validation as safety net
+      const validated = options.zodSchema.parse(toolUseBlock.input);
+      return validated;
     } catch (error) {
-      logger.error({ error }, "Anthropic generateStructured failed");
+      logger.error(
+        { error, schemaName: schema.name, model: resolvedModel },
+        "Anthropic generateStructured failed: tool_use extraction or Zod validation error"
+      );
       throw error;
     }
   }
@@ -105,6 +149,10 @@ Return ONLY the JSON object, no additional text or markdown.`;
 
 let defaultProvider: AIProvider | null = null;
 
+/**
+ * Get the default AI provider singleton.
+ * Uses env.AI_MODEL for the default model.
+ */
 export function getAIProvider(): AIProvider {
   if (!defaultProvider) {
     defaultProvider = new AnthropicProvider();
@@ -112,6 +160,24 @@ export function getAIProvider(): AIProvider {
   return defaultProvider;
 }
 
+/**
+ * Replace the default provider (useful for testing with mocks).
+ */
 export function setAIProvider(provider: AIProvider): void {
   defaultProvider = provider;
+}
+
+/**
+ * Reset the cached provider so it re-reads env on next call.
+ * Useful in tests or when env changes at runtime.
+ */
+export function resetAIProvider(): void {
+  defaultProvider = null;
+}
+
+/**
+ * Get the configured embedding model name from env.
+ */
+export function getEmbeddingModel(): string {
+  return env.AI_EMBEDDING_MODEL;
 }

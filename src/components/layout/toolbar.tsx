@@ -1,19 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { Layout, Focus, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search } from "lucide-react";
+import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
+import { usePanelStore } from "~/stores/panel-store";
 import { Button } from "~/components/ui/button";
 import { Breadcrumb, type BreadcrumbSegment } from "~/components/navigation/Breadcrumb";
-import { CompletenessCompass } from "~/components/project/CompletenessCompass";
+// CompletenessCompass removed — percentage is meaningless without project-level objectives
 import { openCommandPalette } from "~/components/search";
+import { api } from "~/trpc/react";
 
 const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { mode: "canvas", icon: Layout, label: "Canvas" },
-  { mode: "focus", icon: Focus, label: "Focus" },
   { mode: "graph", icon: GitBranch, label: "Graph" },
   { mode: "thread", icon: List, label: "Thread" },
   { mode: "assembly", icon: BookOpen, label: "Assembly" },
@@ -38,12 +39,76 @@ export function Toolbar({
   const focusMode = useFocusModeStore((s) => s.focusMode);
   const toggleFocusMode = useFocusModeStore((s) => s.toggleFocusMode);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
+  const panelIsOpen = usePanelStore((s) => s.isOpen);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
 
-  // Default breadcrumb segments
-  const defaultSegments: BreadcrumbSegment[] = [
-    { label: "Home", href: "/dashboard-app" },
-    { label: activeContextId ? "Context" : "Dashboard" },
-  ];
+  // Fetch context name for breadcrumb when a context is active
+  const { data: contextData } = api.context.getById.useQuery(
+    { id: activeContextId! },
+    { enabled: !!activeContextId },
+  );
+
+  // Fetch unit content snippet for breadcrumb when a unit panel is open
+  const { data: unitData } = api.unit.getById.useQuery(
+    { id: selectedUnitId! },
+    { enabled: !!selectedUnitId && panelIsOpen },
+  );
+
+  // View mode label for breadcrumb
+  const viewModeLabel = VIEW_MODES.find((v) => v.mode === viewMode)?.label ?? "Canvas";
+
+  // Build breadcrumb segments with full depth: Home > Context > View > Unit
+  const defaultSegments = React.useMemo((): BreadcrumbSegment[] => {
+    const segs: BreadcrumbSegment[] = [
+      { label: "Home", href: "/dashboard-app", depth: "project" },
+    ];
+
+    if (activeContextId && contextData) {
+      segs.push({
+        label: contextData.name,
+        href: `/context/${activeContextId}`,
+        depth: "context",
+        icon: Layers,
+      });
+    }
+
+    // Add view mode segment when not in default canvas mode
+    if (viewMode !== "canvas") {
+      segs.push({
+        label: viewModeLabel,
+        depth: "view",
+        // If a unit is also selected, this segment gets an href so it's clickable
+        href: panelIsOpen && selectedUnitId ? undefined : undefined,
+      });
+    }
+
+    // Add unit-level segment when detail panel is open
+    if (panelIsOpen && selectedUnitId && unitData) {
+      const unitSnippet =
+        unitData.content.length > 30
+          ? `${unitData.content.slice(0, 30)}...`
+          : unitData.content;
+      segs.push({
+        label: unitSnippet,
+        depth: "unit",
+        icon: FileText,
+      });
+    } else if (!activeContextId && viewMode === "canvas") {
+      // Fallback: just show "Dashboard"
+      segs.push({ label: "Dashboard", depth: "view" });
+    }
+
+    return segs;
+  }, [
+    activeContextId,
+    contextData,
+    viewMode,
+    viewModeLabel,
+    panelIsOpen,
+    selectedUnitId,
+    unitData,
+  ]);
+
   const segments = breadcrumbSegments ?? defaultSegments;
 
   // Keyboard shortcut: Ctrl+Shift+F / Cmd+Shift+F
@@ -80,8 +145,8 @@ export function Toolbar({
         </Button>
       )}
 
-      {/* Breadcrumb */}
-      <Breadcrumb segments={segments} className="flex-1" />
+      {/* Breadcrumb — allow up to 4 visible segments before collapsing */}
+      <Breadcrumb segments={segments} maxVisible={4} className="flex-1" />
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -125,9 +190,6 @@ export function Toolbar({
           <Search className="h-4 w-4" />
         </Button>
       )}
-
-      {/* Completeness Compass */}
-      {!focusMode && <CompletenessCompass />}
 
       {/* Focus Mode toggle */}
       <Button

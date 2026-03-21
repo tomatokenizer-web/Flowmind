@@ -50,11 +50,13 @@ interface AssemblyItemData {
 
 function SortableUnitCard({
   item,
+  assemblyId,
   onRemove,
   isDragging,
   onOpenPanel,
 }: {
   item: AssemblyItemData;
+  assemblyId: string;
   onRemove: (unitId: string) => void;
   isDragging: boolean;
   onOpenPanel: (unitId: string) => void;
@@ -64,6 +66,8 @@ function SortableUnitCard({
 
   const bridgeText = useAssemblyStore((s) => s.bridgeTexts[item.unitId] ?? "");
   const setBridgeText = useAssemblyStore((s) => s.setBridgeText);
+
+  const updateBridgeText = api.assembly.updateBridgeText.useMutation();
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -131,6 +135,13 @@ function SortableUnitCard({
             data-bridge={item.unitId}
             value={bridgeText}
             onChange={(e) => setBridgeText(item.unitId, e.target.value)}
+            onBlur={(e) =>
+              updateBridgeText.mutate({
+                assemblyId,
+                unitId: item.unitId,
+                bridgeText: e.target.value || null,
+              })
+            }
             placeholder="Bridge text (AI-generated or type your own)..."
             rows={2}
             className="w-full resize-none rounded-lg border border-dashed border-border bg-bg-secondary px-3 py-2 text-xs text-text-secondary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary"
@@ -374,6 +385,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
                   <SortableUnitCard
                     key={item.id}
                     item={item}
+                    assemblyId={assemblyId}
                     isDragging={activeId === item.id}
                     onOpenPanel={openPanel}
                     onRemove={(unitId) =>

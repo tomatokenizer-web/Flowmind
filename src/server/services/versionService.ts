@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, VersionOriginType } from "@prisma/client";
 import { eventBus } from "@/server/events/eventBus";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -119,6 +119,30 @@ export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
   return result;
 }
 
+// ─── Provenance options ──────────────────────────────────────────────
+
+export interface VersionProvenanceOptions {
+  /**
+   * How this version was produced.
+   * Defaults to "manual" (user typed/edited the content directly).
+   */
+  versionOrigin?: VersionOriginType;
+  /**
+   * Optional reference to the source range or unit this version was derived
+   * from. Free-form string — callers can encode whatever is meaningful, e.g.:
+   *   - "char:120-350" for a character-offset range in a source document
+   *   - "unit:<uuid>" for a split-source unit reference
+   *   - "import:<filename>" for an imported file
+   */
+  sourceSpan?: string;
+  /**
+   * ID of the user who triggered this version. Used when emitting
+   * the unit.contentChanged event. Optional — omit when not available
+   * in the calling context.
+   */
+  userId?: string;
+}
+
 // ─── Service ────────────────────────────────────────────────────────
 
 export function createVersionService(db: PrismaClient) {
@@ -126,12 +150,17 @@ export function createVersionService(db: PrismaClient) {
     /**
      * Create a version snapshot of a unit's current content.
      * Called automatically before edits by unitService.
+     *
+     * Pass `provenance.versionOrigin` to record how the new version was
+     * produced (manual edit, AI suggestion, merge, split, or import).
+     * Pass `provenance.sourceSpan` to reference the source range or unit.
      */
     async createSnapshot(
       unitId: string,
       content: string,
       meta: unknown,
       changeReason?: string,
+      provenance?: VersionProvenanceOptions,
     ) {
       const latest = await db.unitVersion.findFirst({
         where: { unitId },
@@ -154,7 +183,7 @@ export function createVersionService(db: PrismaClient) {
         }
       }
 
-      return db.unitVersion.create({
+      const snapshot = await db.unitVersion.create({
         data: {
           unit: { connect: { id: unitId } },
           version: nextVersion,
@@ -162,8 +191,20 @@ export function createVersionService(db: PrismaClient) {
           meta: meta as undefined,
           changeReason: changeReason ?? "auto-version before edit",
           diffSummary,
+          versionOrigin: provenance?.versionOrigin ?? "manual",
+          sourceSpan: provenance?.sourceSpan,
         },
       });
+
+      // Emit unit.contentChanged so subscribers (e.g. embedding pipeline,
+      // drift scoring) know the unit content has a new version available.
+      await eventBus.emit({
+        type: "unit.contentChanged",
+        payload: { unitId, userId: provenance?.userId ?? "" },
+        timestamp: new Date(),
+      });
+
+      return snapshot;
     },
 
     /**

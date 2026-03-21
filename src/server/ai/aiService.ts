@@ -2,6 +2,25 @@ import type { PrismaClient } from "@prisma/client";
 import { getAIProvider, type AIProvider } from "./provider";
 import { createSafetyGuard, type SafetyGuard } from "./safetyGuard";
 import { logger } from "../logger";
+import {
+  TypeSuggestionSchema,
+  RelationSuggestionsSchema,
+  PurposeClassificationSchema,
+  DecompositionBoundariesSchema,
+  DecompositionRelationProposalsSchema,
+  SplitReattributionSchema,
+  AlternativeFramingsSchema,
+  CounterArgumentsSchema,
+  AssumptionsSchema,
+  ContradictionsSchema,
+  MergeSuggestionsSchema,
+  CompletenessAnalysisSchema,
+  ContextSummarySchema,
+  GeneratedQuestionsSchema,
+  NextStepsSchema,
+  ExtractedTermsSchema,
+  StanceClassificationSchema,
+} from "./schemas";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -205,6 +224,7 @@ Respond with the most appropriate unit type.`;
       const result = await provider.generateStructured<TypeSuggestion>(prompt, {
         temperature: 0.3,
         maxTokens: 256,
+        zodSchema: TypeSuggestionSchema,
         schema: {
           name: "TypeSuggestion",
           description: "AI suggestion for unit type classification",
@@ -301,6 +321,7 @@ Suggest up to 3 most relevant relations from the new unit to existing units.`;
       }>(prompt, {
         temperature: 0.4,
         maxTokens: 512,
+        zodSchema: RelationSuggestionsSchema,
         schema: {
           name: "RelationSuggestions",
           description: "AI suggestions for unit relations",
@@ -451,6 +472,7 @@ Respond with the most appropriate purpose.`;
         {
           temperature: 0.3,
           maxTokens: 128,
+          zodSchema: PurposeClassificationSchema,
           schema: {
             name: "PurposeClassification",
             description: "Classification of user's cognitive purpose",
@@ -492,6 +514,7 @@ For each unit, provide:
         {
           temperature: 0.4,
           maxTokens: 1024,
+          zodSchema: DecompositionBoundariesSchema,
           schema: {
             name: "DecompositionBoundaries",
             description: "Proposed boundaries for text decomposition",
@@ -584,6 +607,7 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
         }>(relationPrompt, {
           temperature: 0.4,
           maxTokens: 768,
+          zodSchema: DecompositionRelationProposalsSchema,
           schema: {
             name: "RelationProposals",
             description: "Proposed relations between new and existing units",
@@ -682,6 +706,7 @@ For each relation, determine which part (A or B) should inherit it based on sema
         {
           temperature: 0.3,
           maxTokens: 1024,
+          zodSchema: SplitReattributionSchema,
           schema: {
             name: "SplitReattribution",
             description: "Proposals for reassigning relations after unit split",
@@ -731,6 +756,7 @@ Generate 2-3 alternative framings that:
       const result = await provider.generateStructured<{ framings: AlternativeFraming[] }>(prompt, {
         temperature: 0.6,
         maxTokens: 768,
+        zodSchema: AlternativeFramingsSchema,
         schema: {
           name: "AlternativeFramings",
           description: "Alternative ways to frame the content",
@@ -784,6 +810,7 @@ Generate 2-3 counter-arguments that:
       const result = await provider.generateStructured<{ counterArguments: CounterArgument[] }>(prompt, {
         temperature: 0.5,
         maxTokens: 768,
+        zodSchema: CounterArgumentsSchema,
         schema: {
           name: "CounterArguments",
           description: "Counter-arguments to the content",
@@ -832,6 +859,7 @@ Find both explicit and implicit assumptions that:
       const result = await provider.generateStructured<{ assumptions: IdentifiedAssumption[] }>(prompt, {
         temperature: 0.4,
         maxTokens: 768,
+        zodSchema: AssumptionsSchema,
         schema: {
           name: "Assumptions",
           description: "Identified assumptions in the content",
@@ -887,6 +915,7 @@ Identify pairs that:
       const result = await provider.generateStructured<{ contradictions: ContradictionPair[] }>(prompt, {
         temperature: 0.3,
         maxTokens: 1024,
+        zodSchema: ContradictionsSchema,
         schema: {
           name: "Contradictions",
           description: "Detected contradictions between units",
@@ -943,6 +972,7 @@ Identify groups that:
       const result = await provider.generateStructured<{ suggestions: MergeSuggestion[] }>(prompt, {
         temperature: 0.4,
         maxTokens: 1024,
+        zodSchema: MergeSuggestionsSchema,
         schema: {
           name: "MergeSuggestions",
           description: "Suggestions for merging units",
@@ -1001,6 +1031,7 @@ Evaluate:
       const result = await provider.generateStructured<CompletenessAnalysis>(prompt, {
         temperature: 0.4,
         maxTokens: 1024,
+        zodSchema: CompletenessAnalysisSchema,
         schema: {
           name: "CompletenessAnalysis",
           description: "Analysis of argument completeness",
@@ -1024,81 +1055,77 @@ Evaluate:
         },
       });
 
-      logger.info({ score: result.score, missingCount: result.missingElements.length }, "Completeness analyzed");
+      logger.info({ score: result.score }, "Completeness analyzed");
       return result;
     },
 
-    // ─── Story 5.11: Context Summary ──────────────────────────────────────────
+    // ─── Story 5.11: Context Summary ──────────────────────────────────────
 
-    /**
-     * Generate a summary of a context's content
-     */
     async summarizeContext(
       units: Array<{ id: string; content: string; unitType: string }>,
       ctx: AIServiceContext
-    ): Promise<ContextSummary> {
+    ): Promise<import("./types").ContextSummary> {
       const unitsDesc = units
-        .map((u) => `(${u.unitType}) "${u.content.slice(0, 200)}"`)
+        .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
 
-      const prompt = `Summarize this collection of thought units.
+      const prompt = `Summarize the following set of thought units into a coherent context summary.
 
 Units:
 ${unitsDesc}
 
 Provide:
-- The main thesis or central idea
-- Key supporting points
-- Open questions that remain
-- Any conflicting viewpoints`;
+- A main thesis statement
+- Key points
+- Open questions
+- Conflicting views`;
 
-      const result = await provider.generateStructured<ContextSummary>(prompt, {
-        temperature: 0.3,
-        maxTokens: 768,
+      const result = await provider.generateStructured<import("./types").ContextSummary>(prompt, {
+        temperature: 0.4,
+        maxTokens: 1024,
+        zodSchema: ContextSummarySchema,
         schema: {
           name: "ContextSummary",
-          description: "Summary of context content",
+          description: "Summary of context units",
           properties: {
             mainThesis: { type: "string", maxLength: 300 },
             keyPoints: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 5 },
-            openQuestions: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 3 },
+            openQuestions: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 5 },
             conflictingViews: { type: "array", items: { type: "string", maxLength: 200 }, maxItems: 3 },
           },
           required: ["mainThesis", "keyPoints", "openQuestions", "conflictingViews"],
         },
       });
 
-      logger.info("Context summary generated");
+      logger.info("Context summarized");
       return result;
     },
 
-    // ─── Story 5.12: Question Generation ──────────────────────────────────────
+    // ─── Story 5.12: Question Generation ────────────────────────────────────
 
-    /**
-     * Generate questions to deepen understanding
-     */
     async generateQuestions(
       units: Array<{ id: string; content: string; unitType: string }>,
       ctx: AIServiceContext
-    ): Promise<GeneratedQuestion[]> {
+    ): Promise<import("./types").GeneratedQuestion[]> {
       const unitsDesc = units
-        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
 
-      const prompt = `Generate questions to deepen understanding of these thought units.
+      const prompt = `Generate probing questions to deepen understanding of these thought units.
 
 Units:
 ${unitsDesc}
 
 Generate questions that:
-- Clarify ambiguous points
+- Clarify ambiguities
 - Challenge assumptions
-- Explore new directions
-- Connect ideas`;
+- Explore connections
+- Push reasoning deeper`;
 
-      const result = await provider.generateStructured<{ questions: GeneratedQuestion[] }>(prompt, {
-        temperature: 0.5,
+      const result = await provider.generateStructured<{ questions: import("./types").GeneratedQuestion[] }>(prompt, {
+        temperature: 0.6,
         maxTokens: 768,
+        zodSchema: GeneratedQuestionsSchema,
         schema: {
           name: "GeneratedQuestions",
           description: "Questions to deepen understanding",
@@ -1111,8 +1138,8 @@ Generate questions that:
                 properties: {
                   content: { type: "string", maxLength: 200 },
                   type: { type: "string", enum: ["clarifying", "challenging", "exploratory", "connecting"] },
-                  targetUnitId: { type: "string" },
                   rationale: { type: "string", maxLength: 150 },
+                  relatedUnitIds: { type: "array", items: { type: "string" } },
                 },
                 required: ["content", "type", "rationale"],
               },
@@ -1126,33 +1153,30 @@ Generate questions that:
       return result.questions;
     },
 
-    // ─── Story 5.13: Next Steps ───────────────────────────────────────────────
+    // ─── Story 5.13: Next Steps ─────────────────────────────────────────────
 
-    /**
-     * Suggest next steps for developing the argument
-     */
     async suggestNextSteps(
       units: Array<{ id: string; content: string; unitType: string }>,
       ctx: AIServiceContext
-    ): Promise<NextStepSuggestion[]> {
+    ): Promise<import("./types").NextStepSuggestion[]> {
       const unitsDesc = units
-        .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
+        .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
 
-      const prompt = `Suggest next steps for developing this collection of thought units.
+      const prompt = `Suggest actionable next steps for developing this argument or analysis.
 
 Units:
 ${unitsDesc}
 
-Suggest actions that would:
-- Strengthen the argument
-- Fill gaps
-- Resolve contradictions
+Suggest steps that:
+- Address gaps in reasoning
+- Strengthen existing claims
 - Explore new directions`;
 
-      const result = await provider.generateStructured<{ steps: NextStepSuggestion[] }>(prompt, {
+      const result = await provider.generateStructured<{ steps: import("./types").NextStepSuggestion[] }>(prompt, {
         temperature: 0.5,
         maxTokens: 768,
+        zodSchema: NextStepsSchema,
         schema: {
           name: "NextSteps",
           description: "Suggested next steps",
@@ -1166,10 +1190,9 @@ Suggest actions that would:
                   action: { type: "string", maxLength: 200 },
                   type: { type: "string", enum: ["research", "define", "challenge", "connect", "expand", "resolve"] },
                   priority: { type: "string", enum: ["high", "medium", "low"] },
-                  relatedUnitIds: { type: "array", items: { type: "string" } },
                   rationale: { type: "string", maxLength: 150 },
                 },
-                required: ["action", "type", "priority", "relatedUnitIds", "rationale"],
+                required: ["action", "type", "priority", "rationale"],
               },
             },
           },
@@ -1181,20 +1204,17 @@ Suggest actions that would:
       return result.steps;
     },
 
-    // ─── Story 5.14: Key Term Extraction ──────────────────────────────────────
+    // ─── Story 5.14: Key Term Extraction ────────────────────────────────────
 
-    /**
-     * Extract key terms from content
-     */
     async extractKeyTerms(
       units: Array<{ id: string; content: string; unitType: string }>,
       ctx: AIServiceContext
-    ): Promise<ExtractedTerm[]> {
+    ): Promise<import("./types").ExtractedTerm[]> {
       const allContent = units.map((u) => u.content).join(" ");
 
       const prompt = `Extract key terms from this content that may need definition or clarification.
 
-Content: "${allContent.slice(0, 1500)}"
+Content: ${allContent.slice(0, 1500)}
 
 Identify terms that:
 - Are central to the argument
@@ -1202,9 +1222,10 @@ Identify terms that:
 - Could be ambiguous
 - Should be explicitly defined`;
 
-      const result = await provider.generateStructured<{ terms: ExtractedTerm[] }>(prompt, {
+      const result = await provider.generateStructured<{ terms: import("./types").ExtractedTerm[] }>(prompt, {
         temperature: 0.3,
         maxTokens: 768,
+        zodSchema: ExtractedTermsSchema,
         schema: {
           name: "ExtractedTerms",
           description: "Key terms extracted from content",
@@ -1233,27 +1254,25 @@ Identify terms that:
       return result.terms;
     },
 
-    // ─── Story 5.15: Stance Classification ────────────────────────────────────
+    // ─── Story 5.15: Stance Classification ──────────────────────────────────
 
-    /**
-     * Classify the stance of a unit relative to another
-     */
     async classifyStance(
       unitContent: string,
       targetContent: string,
       ctx: AIServiceContext
-    ): Promise<StanceClassification> {
+    ): Promise<import("./types").StanceClassification> {
       const prompt = `Classify the stance of one thought unit relative to another.
 
-Unit A: "${unitContent.slice(0, 400)}"
+Unit A: ${unitContent.slice(0, 400)}
 
-Unit B (target): "${targetContent.slice(0, 400)}"
+Unit B (target): ${targetContent.slice(0, 400)}
 
 Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit B's position.`;
 
-      const result = await provider.generateStructured<StanceClassification>(prompt, {
+      const result = await provider.generateStructured<import("./types").StanceClassification>(prompt, {
         temperature: 0.3,
         maxTokens: 512,
+        zodSchema: StanceClassificationSchema,
         schema: {
           name: "StanceClassification",
           description: "Classification of stance between units",

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
+import { eventBus } from "@/server/events/eventBus";
 
 export interface MergePreview {
   sourceUnit: { id: string; content: string };
@@ -14,6 +15,7 @@ export interface MergeInput {
   sourceUnitId: string; // will be archived
   targetUnitId: string; // survives
   keepContent: "source" | "target";
+  userId?: string; // who triggered the merge
 }
 
 export function createUnitMergeService(db: PrismaClient) {
@@ -179,6 +181,17 @@ export function createUnitMergeService(db: PrismaClient) {
           where: { id: sourceUnitId },
           data: { lifecycle: "archived", meta: { mergedInto: targetUnitId } },
         });
+      });
+
+      // Emit unit.merged event
+      await eventBus.emit({
+        type: "unit.merged",
+        payload: {
+          sourceUnitId,
+          targetUnitId,
+          userId: input.userId ?? "system",
+        },
+        timestamp: new Date(),
       });
 
       return { merged: true, targetUnitId };

@@ -79,6 +79,22 @@ export function createUnitRepository(db: PrismaClient) {
     async createVersion(data: Prisma.UnitVersionCreateInput) {
       return db.unitVersion.create({ data });
     },
+
+    /**
+     * Find the first non-archived unit in `projectId` whose content is an
+     * exact (case-sensitive) match for `content`.
+     * Used by the duplicate-content check in unitService.create().
+     */
+    async findByExactContent(projectId: string, content: string) {
+      return db.unit.findFirst({
+        where: {
+          projectId,
+          content,
+          lifecycle: { not: "archived" },
+        },
+        select: { id: true, content: true, lifecycle: true },
+      });
+    },
   };
 }
 

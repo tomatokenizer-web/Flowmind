@@ -87,8 +87,13 @@ export function createRelationService(db: PrismaClient) {
         },
       });
 
-      // Notify both units that they were updated (a relation was added)
+      // Emit relation.created event and notify both affected units
       await Promise.allSettled([
+        eventBus.emit({
+          type: "relation.created",
+          payload: { relationId: relation.id, userId, relation },
+          timestamp: new Date(),
+        }),
         eventBus.emit({
           type: "unit.updated",
           payload: { unitId: input.sourceUnitId, userId },
@@ -104,7 +109,7 @@ export function createRelationService(db: PrismaClient) {
       return relation;
     },
 
-    async update(id: string, data: UpdateRelationInput) {
+    async update(id: string, data: UpdateRelationInput, userId?: string) {
       const existing = await db.relation.findUnique({ where: { id } });
 
       if (!existing) {
@@ -114,7 +119,7 @@ export function createRelationService(db: PrismaClient) {
         });
       }
 
-      return db.relation.update({
+      const updated = await db.relation.update({
         where: { id },
         data: {
           ...(data.strength !== undefined ? { strength: data.strength } : {}),
@@ -131,9 +136,17 @@ export function createRelationService(db: PrismaClient) {
           },
         },
       });
+
+      await eventBus.emit({
+        type: "relation.updated",
+        payload: { relationId: id, userId: userId ?? existing.sourceUnitId, changes: data },
+        timestamp: new Date(),
+      });
+
+      return updated;
     },
 
-    async delete(id: string) {
+    async delete(id: string, userId?: string) {
       const existing = await db.relation.findUnique({ where: { id } });
 
       if (!existing) {
@@ -143,7 +156,15 @@ export function createRelationService(db: PrismaClient) {
         });
       }
 
-      return db.relation.delete({ where: { id } });
+      const deleted = await db.relation.delete({ where: { id } });
+
+      await eventBus.emit({
+        type: "relation.deleted",
+        payload: { relationId: id, userId: userId ?? existing.sourceUnitId },
+        timestamp: new Date(),
+      });
+
+      return deleted;
     },
 
     async listByUnit(unitId: string, contextId?: string) {
@@ -168,6 +189,96 @@ export function createRelationService(db: PrismaClient) {
         },
         orderBy: { strength: "desc" },
       });
+    },
+
+    /**
+     * Fetch the subgraph around a hub unit up to a given depth.
+     * Returns all unique relations discovered and the set of unit IDs at each depth layer.
+     */
+    async neighborsByDepth(
+      hubId: string,
+      depth: number,
+      contextId?: string,
+    ): Promise<{
+      relations: Array<{
+        id: string;
+        sourceUnitId: string;
+        targetUnitId: string;
+        type: string;
+        strength: number;
+        direction: string;
+      }>;
+      /** unitIds grouped by depth layer (0 = hub, 1 = direct neighbors, etc.) */
+      layers: string[][];
+    }> {
+      const clampedDepth = Math.max(1, Math.min(3, depth));
+      const seenRelationIds = new Set<string>();
+      const seenUnitIds = new Set<string>([hubId]);
+      const allRelations: Array<{
+        id: string;
+        sourceUnitId: string;
+        targetUnitId: string;
+        type: string;
+        strength: number;
+        direction: string;
+      }> = [];
+      const layers: string[][] = [[hubId]];
+
+      let frontier = [hubId];
+
+      for (let d = 0; d < clampedDepth; d++) {
+        if (frontier.length === 0) break;
+
+        // Fetch relations for all frontier nodes in one query
+        const contextFilter = contextId
+          ? { perspective: { contextId } }
+          : {};
+
+        const relations = await db.relation.findMany({
+          where: {
+            OR: [
+              { sourceUnitId: { in: frontier } },
+              { targetUnitId: { in: frontier } },
+            ],
+            ...contextFilter,
+          },
+          select: {
+            id: true,
+            sourceUnitId: true,
+            targetUnitId: true,
+            type: true,
+            strength: true,
+            direction: true,
+          },
+          orderBy: { strength: "desc" },
+        });
+
+        const nextFrontier = new Set<string>();
+
+        for (const r of relations) {
+          if (seenRelationIds.has(r.id)) continue;
+          seenRelationIds.add(r.id);
+          allRelations.push(r);
+
+          // Discover new unit IDs
+          if (!seenUnitIds.has(r.sourceUnitId)) {
+            seenUnitIds.add(r.sourceUnitId);
+            nextFrontier.add(r.sourceUnitId);
+          }
+          if (!seenUnitIds.has(r.targetUnitId)) {
+            seenUnitIds.add(r.targetUnitId);
+            nextFrontier.add(r.targetUnitId);
+          }
+        }
+
+        const layerIds = Array.from(nextFrontier);
+        if (layerIds.length > 0) {
+          layers.push(layerIds);
+        }
+        frontier = layerIds;
+      }
+
+      return { relations: allRelations, layers };
     },
 
     async listBetween(sourceUnitId: string, targetUnitId: string) {

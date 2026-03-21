@@ -133,6 +133,7 @@ export function formatShortcut(shortcut: string): string {
   const mod = modifierKey();
   return shortcut
     .replace(/mod\+/gi, `${mod}+`)
+    .replace(/ctrl\+/gi, "Ctrl+")
     .replace(/\+([a-z0-9])/gi, (_m, key: string) => `+${key.toUpperCase()}`)
     .replace(/\+/g, "")
     .replace("Escape", "Esc");

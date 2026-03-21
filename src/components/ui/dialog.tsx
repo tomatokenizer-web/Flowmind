@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "./button";
@@ -33,37 +33,35 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    <AnimatePresence>
-      <DialogOverlay />
-      <DialogPrimitive.Content ref={ref} asChild {...props}>
-        <motion.div
+    <DialogOverlay />
+    <DialogPrimitive.Content ref={ref} asChild {...props}>
+      <motion.div
+        className={cn(
+          "fixed left-1/2 top-1/2 z-50 w-full max-w-lg",
+          "bg-bg-primary border border-border rounded-card p-6",
+          "shadow-modal",
+          "focus:outline-none",
+          className,
+        )}
+        initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+        animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+        exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+      >
+        {children}
+        <DialogPrimitive.Close
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 w-full max-w-lg",
-            "bg-bg-primary border border-border rounded-card p-6",
-            "shadow-modal",
-            "focus:outline-none",
-            className,
+            "absolute right-4 top-4 rounded-lg p-1",
+            "text-text-tertiary hover:text-text-primary hover:bg-bg-hover",
+            "transition-colors duration-fast",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
           )}
-          initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-          animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
-          exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          aria-label="Close"
         >
-          {children}
-          <DialogPrimitive.Close
-            className={cn(
-              "absolute right-4 top-4 rounded-lg p-1",
-              "text-text-tertiary hover:text-text-primary hover:bg-bg-hover",
-              "transition-colors duration-fast",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
-            )}
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </DialogPrimitive.Close>
-        </motion.div>
-      </DialogPrimitive.Content>
-    </AnimatePresence>
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      </motion.div>
+    </DialogPrimitive.Content>
   </DialogPortal>
 ));
 DialogContent.displayName = "DialogContent";

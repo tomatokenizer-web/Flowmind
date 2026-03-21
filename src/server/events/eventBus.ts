@@ -1,4 +1,4 @@
-import type { Unit } from "@prisma/client";
+import type { Unit, Relation } from "@prisma/client";
 
 // ─── Event Types ───────────────────────────────────────────────────
 
@@ -7,21 +7,38 @@ export type UnitEventType =
   | "unit.updated"
   | "unit.archived"
   | "unit.deleted"
-  | "unit.lifecycleChanged";
+  | "unit.lifecycleChanged"
+  | "unit.merged"
+  | "unit.contentChanged";
 
 export type ResourceEventType =
   | "resource.created"
   | "resource.deleted";
 
-export type AppEventType = UnitEventType | ResourceEventType;
+export type RelationEventType =
+  | "relation.created"
+  | "relation.updated"
+  | "relation.deleted";
+
+export type AppEventType = UnitEventType | ResourceEventType | RelationEventType;
 
 export interface UnitEvent {
-  type: UnitEventType;
+  type: Exclude<UnitEventType, "unit.merged">;
   payload: {
     unitId: string;
     userId: string;
     unit?: Unit;
     changes?: Partial<Unit>;
+  };
+  timestamp: Date;
+}
+
+export interface UnitMergedEvent {
+  type: "unit.merged";
+  payload: {
+    sourceUnitId: string;
+    targetUnitId: string;
+    userId: string;
   };
   timestamp: Date;
 }
@@ -35,7 +52,18 @@ export interface ResourceEvent {
   timestamp: Date;
 }
 
-export type AppEvent = UnitEvent | ResourceEvent;
+export interface RelationEvent {
+  type: RelationEventType;
+  payload: {
+    relationId: string;
+    userId: string;
+    relation?: Relation;
+    changes?: Partial<Relation>;
+  };
+  timestamp: Date;
+}
+
+export type AppEvent = UnitEvent | UnitMergedEvent | ResourceEvent | RelationEvent;
 
 type EventHandler = (event: AppEvent) => void | Promise<void>;
 

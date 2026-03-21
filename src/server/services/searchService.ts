@@ -1,9 +1,10 @@
 import type { PrismaClient, UnitType, Lifecycle } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { generateEmbedding } from "@/server/ai/embedding";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-export type SearchLayer = "text" | "structural" | "temporal";
+export type SearchLayer = "text" | "structural" | "temporal" | "semantic";
 
 export interface SearchOptions {
   contextId?: string;
@@ -96,6 +97,18 @@ export function createSearchService(db: PrismaClient) {
       );
       for (const r of temporalResults) {
         mergeResult(results, r, "temporal");
+      }
+    }
+
+    // Semantic layer: vector similarity search via pgvector
+    if (layers.includes("semantic") && query.trim()) {
+      const semanticResults = await searchSemanticLayer(
+        query,
+        projectId,
+        limit,
+      );
+      for (const r of semanticResults) {
+        mergeResult(results, r, "semantic");
       }
     }
 
@@ -274,6 +287,65 @@ export function createSearchService(db: PrismaClient) {
       highlights: query.trim() ? extractHighlights(unit.content, query) : [],
       createdAt: unit.createdAt,
       relationCount: unit._count.relationsAsSource + unit._count.relationsAsTarget,
+    }));
+  }
+
+  /**
+   * Semantic layer search using pgvector cosine similarity.
+   *
+   * Generates an embedding for the query text, then finds the closest
+   * unit embeddings using the `<=>` (cosine distance) operator.
+   * Only units that already have an embedding stored are considered.
+   */
+  async function searchSemanticLayer(
+    query: string,
+    projectId: string,
+    limit: number,
+  ): Promise<SearchResult[]> {
+    const queryEmbedding = await generateEmbedding(query);
+    if (!queryEmbedding) {
+      // No embedding provider configured — skip semantic search
+      return [];
+    }
+    const vectorLiteral = `[${queryEmbedding.join(",")}]`;
+
+    const rows = await db.$queryRaw<
+      Array<{
+        id: string;
+        content: string;
+        unit_type: UnitType;
+        lifecycle: Lifecycle;
+        created_at: Date;
+        similarity: number;
+      }>
+    >`
+      SELECT
+        id,
+        content,
+        unit_type,
+        lifecycle,
+        created_at,
+        1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
+      FROM "units"
+      WHERE project_id = ${projectId}::uuid
+        AND embedding IS NOT NULL
+      ORDER BY embedding <=> ${vectorLiteral}::vector
+      LIMIT ${limit}
+    `;
+
+    const unitIds = rows.map((r) => r.id);
+    const relationCounts = await getRelationCounts(unitIds);
+
+    return rows.map((row) => ({
+      unitId: row.id,
+      content: row.content,
+      unitType: row.unit_type,
+      lifecycle: row.lifecycle,
+      score: Number(row.similarity),
+      matchLayer: "semantic" as SearchLayer,
+      highlights: [],
+      createdAt: row.created_at,
+      relationCount: relationCounts.get(row.id) ?? 0,
     }));
   }
 

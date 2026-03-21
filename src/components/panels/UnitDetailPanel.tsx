@@ -3,7 +3,6 @@
 import * as React from "react";
 import { api } from "~/trpc/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   FileText,
@@ -15,7 +14,10 @@ import {
   ExternalLink,
   History,
   Paperclip,
+  Compass,
+  ChevronDown,
 } from "lucide-react";
+import { RichTextEditor } from "~/components/editor/RichTextEditor";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -27,8 +29,11 @@ import { VersionHistory } from "~/components/unit/version-history";
 import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
 import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
 import { ResourceAttachmentStrip, type ResourceAttachment } from "~/components/unit/resource-attachment";
+import { AudioDetailView } from "~/components/unit/audio-detail-view";
 import { EmptyState } from "~/components/shared/empty-state";
 import { usePanelStore, type DetailTab } from "~/stores/panel-store";
+import { useSidebarStore } from "~/stores/sidebar-store";
+import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -86,13 +91,12 @@ function ContentTab({
   }, [unit.id, unit.content]);
 
   const handleContentChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      setLocalContent(value);
+    (html: string) => {
+      setLocalContent(html);
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        onContentChange?.(value);
+        onContentChange?.(html);
       }, 1000);
     },
     [onContentChange],
@@ -105,19 +109,15 @@ function ContentTab({
     };
   }, []);
 
-  // Save on blur
-  const handleBlur = useCallback(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
-    if (localContent !== unit.content) {
-      onContentChange?.(localContent);
-    }
-  }, [localContent, unit.content, onContentChange]);
+  // Filter audio resources for the audio detail view
+  const audioResources = (unit.resources ?? []).filter(
+    (r) => r.resourceType === "audio",
+  );
 
-  const wordCount = localContent.trim().split(/\s+/).filter(Boolean).length;
-  const charCount = localContent.length;
+  // Strip HTML tags for word/char counts
+  const plainText = localContent.replace(/<[^>]*>/g, "");
+  const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+  const charCount = plainText.length;
 
   return (
     <div className="space-y-4">
@@ -127,21 +127,31 @@ function ContentTab({
         <AILifecycleBadge lifecycle={unit.lifecycle as "draft" | "pending" | "confirmed"} size="sm" />
       </div>
 
-      {/* Content editor (plain textarea — Tiptap wired in Task 3 full) */}
+      {/* Audio detail view — shown when unit has audio resources */}
+      {audioResources.length > 0 && (
+        <div className="space-y-3">
+          {audioResources.map((resource) => (
+            <AudioDetailView
+              key={resource.id}
+              src={resource.url}
+              title={resource.fileName ?? "Audio recording"}
+              duration={
+                typeof resource.metadata?.duration === "number"
+                  ? resource.metadata.duration
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Rich text editor (Tiptap) */}
       <div className="space-y-1">
-        <textarea
-          value={localContent}
+        <RichTextEditor
+          content={localContent}
           onChange={handleContentChange}
-          onBlur={handleBlur}
-          className={cn(
-            "w-full min-h-[200px] resize-y rounded-lg border border-border bg-bg-primary p-3",
-            "text-sm text-text-primary leading-relaxed",
-            "placeholder:text-text-tertiary",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-1",
-            "motion-reduce:transition-none",
-          )}
+          editable
           placeholder="Write your thought..."
-          aria-label="Unit content"
         />
         <div className="flex items-center justify-between text-[11px] text-text-tertiary px-1">
           <span>{wordCount} words</span>
@@ -569,6 +579,58 @@ const TAB_CONFIG: { value: DetailTab; label: string; Icon: React.ElementType }[]
   { value: "ai", label: "AI", Icon: Sparkles },
 ];
 
+// ─── Add to Navigator ────────────────────────────────────────────────
+
+function AddToNavigatorRow({ unitId }: { unitId: string }) {
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
+  const utils = api.useUtils();
+
+  const { data: navigators = [] } = api.navigator.list.useQuery(
+    { contextId: activeContextId! },
+    { enabled: !!activeContextId },
+  );
+
+  const addUnit = api.navigator.addUnit.useMutation({
+    onSuccess: (nav) => {
+      void utils.navigator.list.invalidate({ contextId: activeContextId! });
+      toast.success("Unit added to navigator", { description: `Added to "${nav.name}"` });
+    },
+    onError: () => {
+      toast.error("Failed to add unit to navigator");
+    },
+  });
+
+  if (!activeContextId || navigators.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-space-4 py-2 shrink-0">
+      <Compass className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+      <span className="text-xs text-text-secondary">Add to navigator</span>
+      <div className="relative ml-auto">
+        <select
+          defaultValue=""
+          disabled={addUnit.isPending}
+          onChange={(e) => {
+            const navId = e.target.value;
+            if (navId) {
+              addUnit.mutate({ navigatorId: navId, unitId });
+              e.target.value = "";
+            }
+          }}
+          className="appearance-none rounded-md border border-border bg-bg-primary py-1 pl-2 pr-6 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary disabled:opacity-50 cursor-pointer hover:bg-bg-hover"
+          aria-label="Select navigator to add this unit to"
+        >
+          <option value="" disabled>Pick one…</option>
+          {navigators.map((nav) => (
+            <option key={nav.id} value={nav.id}>{nav.name}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-tertiary" aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
 // ─── UnitDetailPanel ─────────────────────────────────────────────────
 
 export function UnitDetailPanel({
@@ -601,6 +663,9 @@ export function UnitDetailPanel({
           <X className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Add to Navigator action — shown when a unit is open */}
+      {!isLoading && unit && <AddToNavigatorRow unitId={unit.id} />}
 
       {/* Loading state */}
       {isLoading && <PanelSkeleton />}

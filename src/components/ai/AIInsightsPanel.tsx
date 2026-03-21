@@ -126,6 +126,7 @@ export function AIInsightsPanel({
           <SummaryView
             data={summaryQuery.data}
             isLoading={summaryQuery.isLoading}
+            error={summaryQuery.error?.message}
           />
         )}
 
@@ -133,6 +134,7 @@ export function AIInsightsPanel({
           <CompletenessView
             data={completenessMutation.data}
             isLoading={completenessMutation.isPending}
+            error={completenessMutation.error?.message}
             onRun={() => runAnalysis("completeness")}
           />
         )}
@@ -141,6 +143,7 @@ export function AIInsightsPanel({
           <ContradictionsView
             data={contradictionsMutation.data}
             isLoading={contradictionsMutation.isPending}
+            error={contradictionsMutation.error?.message}
             onRun={() => runAnalysis("contradictions")}
             onNavigate={onNavigateToUnit}
           />
@@ -150,6 +153,7 @@ export function AIInsightsPanel({
           <MergeView
             data={mergeMutation.data}
             isLoading={mergeMutation.isPending}
+            error={mergeMutation.error?.message}
             onRun={() => runAnalysis("merge")}
           />
         )}
@@ -158,6 +162,7 @@ export function AIInsightsPanel({
           <QuestionsView
             data={questionsMutation.data}
             isLoading={questionsMutation.isPending}
+            error={questionsMutation.error?.message}
             onRun={() => runAnalysis("questions")}
             onCreateUnit={onCreateUnit}
           />
@@ -167,6 +172,7 @@ export function AIInsightsPanel({
           <NextStepsView
             data={nextStepsMutation.data}
             isLoading={nextStepsMutation.isPending}
+            error={nextStepsMutation.error?.message}
             onRun={() => runAnalysis("nextSteps")}
           />
         )}
@@ -175,6 +181,7 @@ export function AIInsightsPanel({
           <TermsView
             data={termsMutation.data}
             isLoading={termsMutation.isPending}
+            error={termsMutation.error?.message}
             onRun={() => runAnalysis("terms")}
             onCreateUnit={onCreateUnit}
           />
@@ -189,11 +196,14 @@ export function AIInsightsPanel({
 function SummaryView({
   data,
   isLoading,
+  error,
 }: {
   data?: ContextSummary;
   isLoading: boolean;
+  error?: string;
 }) {
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} />;
   if (!data) return <EmptyState message="Loading summary..." />;
 
   return (
@@ -245,16 +255,19 @@ function SummaryView({
 function CompletenessView({
   data,
   isLoading,
+  error,
   onRun,
 }: {
   data?: CompletenessAnalysis;
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Analyze Completeness" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data) return null;
 
   const scoreColor =
@@ -325,18 +338,21 @@ function CompletenessView({
 function ContradictionsView({
   data,
   isLoading,
+  error,
   onRun,
   onNavigate,
 }: {
   data?: ContradictionPair[];
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
   onNavigate?: (unitId: string) => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Detect Contradictions" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-8">
@@ -405,16 +421,19 @@ function ContradictionsView({
 function MergeView({
   data,
   isLoading,
+  error,
   onRun,
 }: {
   data?: MergeSuggestion[];
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Find Merge Candidates" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data || data.length === 0) {
     return (
       <div className="text-center py-8">
@@ -462,18 +481,21 @@ function MergeView({
 function QuestionsView({
   data,
   isLoading,
+  error,
   onRun,
   onCreateUnit,
 }: {
   data?: GeneratedQuestion[];
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
   onCreateUnit?: (content: string, type: string) => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Generate Questions" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data || data.length === 0) return null;
 
   const typeColors: Record<string, string> = {
@@ -521,16 +543,19 @@ function QuestionsView({
 function NextStepsView({
   data,
   isLoading,
+  error,
   onRun,
 }: {
   data?: NextStepSuggestion[];
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Suggest Next Steps" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data || data.length === 0) return null;
 
   const priorityColors: Record<string, string> = {
@@ -569,18 +594,21 @@ function NextStepsView({
 function TermsView({
   data,
   isLoading,
+  error,
   onRun,
   onCreateUnit,
 }: {
   data?: ExtractedTerm[];
   isLoading: boolean;
+  error?: string;
   onRun: () => void;
   onCreateUnit?: (content: string, type: string) => void;
 }) {
-  if (!data && !isLoading) {
+  if (!data && !isLoading && !error) {
     return <RunButton label="Extract Key Terms" onRun={onRun} />;
   }
   if (isLoading) return <LoadingState />;
+  if (error) return <AIErrorState message={error} onRetry={onRun} />;
   if (!data || data.length === 0) return null;
 
   const importanceColors: Record<string, string> = {
@@ -657,6 +685,26 @@ function LoadingState() {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="text-center py-8 text-text-secondary text-sm">{message}</div>
+  );
+}
+
+function AIErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const isApiKey = message.includes("API") || message.includes("api-key") || message.includes("authentication");
+  return (
+    <div className="py-6 px-4 text-center">
+      <AlertTriangle className="h-6 w-6 mx-auto text-red-400 mb-2" />
+      <div className="text-red-400 text-sm font-medium mb-2">AI request failed</div>
+      <p className="text-xs text-text-secondary mb-3">
+        {isApiKey
+          ? "The Anthropic API key is missing or invalid. Update ANTHROPIC_API_KEY in your .env file."
+          : message}
+      </p>
+      {onRetry && (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createAIService } from "@/server/ai";
+import { createAIService, generateSessionId, createSafetyGuard, enforceRateLimit } from "@/server/ai";
+import { TRPCError } from "@trpc/server";
 import type {
   DecompositionResult,
   SplitReattributionResult,
@@ -16,17 +17,24 @@ import type {
   ExtractedTerm,
   StanceClassification,
 } from "@/server/ai";
+import {
+  ExplorationDirectionsSchema,
+  RefinementSchema,
+} from "@/server/ai/schemas";
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────
 
 const suggestTypeSchema = z.object({
   content: z.string().min(1).max(5000),
   contextId: z.string().uuid().optional(),
+  /** Optional client-provided session ID for consecutive branch tracking */
+  sessionId: z.string().uuid().optional(),
 });
 
 const suggestRelationsSchema = z.object({
   content: z.string().min(1).max(5000),
   contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 const contributionRatioSchema = z.object({
@@ -37,6 +45,7 @@ const decomposeTextSchema = z.object({
   text: z.string().min(1).max(10000),
   contextId: z.string().uuid().optional(),
   projectId: z.string().uuid(),
+  sessionId: z.string().uuid().optional(),
 });
 
 // ─── Story 5.4-5.15 Schemas ───────────────────────────────────────────────
@@ -45,45 +54,91 @@ const proposeSplitReattributionSchema = z.object({
   unitId: z.string().uuid(),
   contentA: z.string().min(1).max(5000),
   contentB: z.string().min(1).max(5000),
+  sessionId: z.string().uuid().optional(),
 });
 
 const generateAlternativeFramingSchema = z.object({
   content: z.string().min(1).max(5000),
   currentType: z.string(),
   contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 const suggestCounterArgumentsSchema = z.object({
   content: z.string().min(1).max(5000),
   unitType: z.string(),
   contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 const identifyAssumptionsSchema = z.object({
   content: z.string().min(1).max(5000),
   contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 const contextUnitsSchema = z.object({
   contextId: z.string().uuid(),
+  sessionId: z.string().uuid().optional(),
 });
 
 const stanceClassificationSchema = z.object({
   unitContent: z.string().min(1).max(5000),
   targetContent: z.string().min(1).max(5000),
   contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+});
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a session ID for safety guard tracking.
+ *
+ * If the client provides a sessionId (from a prior createSafetySession call),
+ * use it so that consecutive branch counting works across requests.
+ * Otherwise, generate a cryptographically random one-time ID.
+ */
+function resolveSessionId(clientSessionId?: string): string {
+  return clientSessionId ?? generateSessionId();
+}
+
+// ─── Rate-Limited Procedure ──────────────────────────────────────────────
+
+/**
+ * A protectedProcedure with sliding-window rate limiting applied.
+ * The endpoint name is derived from the tRPC path (e.g. "ai.suggestType").
+ * When the limit is exceeded, a TOO_MANY_REQUESTS error is thrown with
+ * retry-after information.
+ */
+const rateLimitedProcedure = protectedProcedure.use(async ({ ctx, path, next }) => {
+  const userId = ctx.session.user.id;
+  if (!userId) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  await enforceRateLimit(ctx.db, userId, path);
+  return next();
 });
 
 // ─── Router ───────────────────────────────────────────────────────────────
 
 export const aiRouter = createTRPCRouter({
-  suggestType: protectedProcedure
+  /**
+   * Create a DB-backed safety guard session.
+   * Clients should call this once when entering a context editing view
+   * and reuse the returned sessionId for all AI requests in that session.
+   */
+  createSafetySession: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const guard = createSafetyGuard(ctx.db);
+      const sessionId = await guard.createSession(ctx.session.user.id!);
+      return { sessionId };
+    }),
+
+  suggestType: rateLimitedProcedure
     .input(suggestTypeSchema)
     .mutation(async ({ ctx, input }) => {
       const aiService = createAIService(ctx.db);
-
-      // Generate a session ID from user ID + timestamp (simplified)
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const suggestion = await aiService.suggestUnitType(input.content, {
         userId: ctx.session.user.id!,
@@ -97,11 +152,11 @@ export const aiRouter = createTRPCRouter({
       };
     }),
 
-  suggestRelations: protectedProcedure
+  suggestRelations: rateLimitedProcedure
     .input(suggestRelationsSchema)
     .mutation(async ({ ctx, input }) => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context
       const existingUnits = await ctx.db.unit.findMany({
@@ -136,7 +191,7 @@ export const aiRouter = createTRPCRouter({
       };
     }),
 
-  getContributionRatio: protectedProcedure
+  getContributionRatio: rateLimitedProcedure
     .input(contributionRatioSchema)
     .query(async ({ ctx, input }) => {
       const aiService = createAIService(ctx.db);
@@ -147,11 +202,11 @@ export const aiRouter = createTRPCRouter({
    * Decompose text into multiple units with proposed relations.
    * Returns proposals for user review - NOT saved to DB yet.
    */
-  decomposeText: protectedProcedure
+  decomposeText: rateLimitedProcedure
     .input(decomposeTextSchema)
     .mutation(async ({ ctx, input }): Promise<DecompositionResult> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context for relation suggestions
       const existingUnits = await ctx.db.unit.findMany({
@@ -170,18 +225,47 @@ export const aiRouter = createTRPCRouter({
         orderBy: { createdAt: "desc" },
       });
 
-      const result = await aiService.decomposeText(
-        input.text,
-        input.contextId ?? "",
-        existingUnits,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-          contextId: input.contextId,
-        }
-      );
+      try {
+        const result = await aiService.decomposeText(
+          input.text,
+          input.contextId ?? "",
+          existingUnits,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          }
+        );
 
-      return result;
+        return result;
+      } catch (error: unknown) {
+        // Transform Anthropic SDK errors into user-friendly tRPC errors
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const errStr = JSON.stringify(error);
+
+        if (errMsg.includes("credit") || errMsg.includes("balance") || errStr.includes("credit") || errStr.includes("balance")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Anthropic API credit balance is too low. Please add credits at console.anthropic.com.",
+          });
+        }
+        if (errMsg.includes("invalid_api_key") || errMsg.includes("401") || errMsg.includes("authentication")) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Invalid Anthropic API key. Check ANTHROPIC_API_KEY in your .env file.",
+          });
+        }
+        if (errMsg.includes("rate_limit") || errMsg.includes("429")) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: "Anthropic API rate limit reached. Please wait a moment and try again.",
+          });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `AI decomposition failed: ${errMsg}`,
+        });
+      }
     }),
 
   // ─── Story 5.4: Unit Split with Relation Re-attribution ─────────────────
@@ -189,11 +273,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Propose how to reassign relations when splitting a unit into two parts
    */
-  proposeSplitReattribution: protectedProcedure
+  proposeSplitReattribution: rateLimitedProcedure
     .input(proposeSplitReattributionSchema)
     .mutation(async ({ ctx, input }): Promise<SplitReattributionResult> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       return aiService.proposeSplitReattribution(
         input.unitId,
@@ -211,11 +295,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Generate alternative ways to frame a unit's content
    */
-  generateAlternativeFraming: protectedProcedure
+  generateAlternativeFraming: rateLimitedProcedure
     .input(generateAlternativeFramingSchema)
     .mutation(async ({ ctx, input }): Promise<AlternativeFraming[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       return aiService.generateAlternativeFraming(
         input.content,
@@ -233,11 +317,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Suggest counter-arguments for a claim or argument
    */
-  suggestCounterArguments: protectedProcedure
+  suggestCounterArguments: rateLimitedProcedure
     .input(suggestCounterArgumentsSchema)
     .mutation(async ({ ctx, input }): Promise<CounterArgument[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       return aiService.suggestCounterArguments(
         input.content,
@@ -255,11 +339,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Identify underlying assumptions in content
    */
-  identifyAssumptions: protectedProcedure
+  identifyAssumptions: rateLimitedProcedure
     .input(identifyAssumptionsSchema)
     .mutation(async ({ ctx, input }): Promise<IdentifiedAssumption[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       return aiService.identifyAssumptions(input.content, {
         userId: ctx.session.user.id!,
@@ -273,11 +357,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Detect contradictions between units in a context
    */
-  detectContradictions: protectedProcedure
+  detectContradictions: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<ContradictionPair[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -301,11 +385,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Suggest units that could be merged
    */
-  suggestMerge: protectedProcedure
+  suggestMerge: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<MergeSuggestion[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -329,11 +413,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Analyze completeness of an argument or context
    */
-  analyzeCompleteness: protectedProcedure
+  analyzeCompleteness: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<CompletenessAnalysis> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -357,11 +441,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Generate a summary of a context's content
    */
-  summarizeContext: protectedProcedure
+  summarizeContext: rateLimitedProcedure
     .input(contextUnitsSchema)
     .query(async ({ ctx, input }): Promise<ContextSummary> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -385,11 +469,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Generate questions to deepen understanding
    */
-  generateQuestions: protectedProcedure
+  generateQuestions: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<GeneratedQuestion[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -413,11 +497,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Suggest next steps for developing the argument
    */
-  suggestNextSteps: protectedProcedure
+  suggestNextSteps: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<NextStepSuggestion[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -441,11 +525,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Extract key terms from context units
    */
-  extractKeyTerms: protectedProcedure
+  extractKeyTerms: rateLimitedProcedure
     .input(contextUnitsSchema)
     .mutation(async ({ ctx, input }): Promise<ExtractedTerm[]> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       const units = await ctx.db.unit.findMany({
         where: {
@@ -469,11 +553,11 @@ export const aiRouter = createTRPCRouter({
   /**
    * Classify the stance of a unit relative to another
    */
-  classifyStance: protectedProcedure
+  classifyStance: rateLimitedProcedure
     .input(stanceClassificationSchema)
     .mutation(async ({ ctx, input }): Promise<StanceClassification> => {
       const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id}-${Date.now()}`;
+      const sessionId = resolveSessionId(input.sessionId);
 
       return aiService.classifyStance(
         input.unitContent,
@@ -488,7 +572,7 @@ export const aiRouter = createTRPCRouter({
 
   // ─── Missing procedures ──────────────────────────────────────────
 
-  suggestExplorationDirections: protectedProcedure
+  suggestExplorationDirections: rateLimitedProcedure
     .input(z.object({ unitId: z.string().uuid(), contextId: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
       const unit = await ctx.db.unit.findUnique({
@@ -496,9 +580,6 @@ export const aiRouter = createTRPCRouter({
         select: { content: true, unitType: true },
       });
       if (!unit) return { directions: [] };
-
-      const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id!}-${Date.now()}`;
 
       // Generate exploration directions using AI provider directly
       try {
@@ -511,6 +592,7 @@ Suggest 2-3 specific exploration directions that would help develop this thought
           {
             temperature: 0.7,
             maxTokens: 512,
+            zodSchema: ExplorationDirectionsSchema,
             schema: {
               name: "ExplorationDirections",
               description: "AI-suggested exploration directions",
@@ -555,12 +637,9 @@ Suggest 2-3 specific exploration directions that would help develop this thought
       }
     }),
 
-  refineUnit: protectedProcedure
+  refineUnit: rateLimitedProcedure
     .input(z.object({ unitId: z.string().uuid(), content: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const aiService = createAIService(ctx.db);
-      const sessionId = `${ctx.session.user.id!}-${Date.now()}`;
-
       try {
         const prompt = `Refine this thought for clarity and coherence. Preserve the core meaning.
 Original: "${input.content}"
@@ -571,6 +650,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
         const result = await provider.generateStructured<{ refined: string; changes: string[] }>(prompt, {
           temperature: 0.3,
           maxTokens: 512,
+          zodSchema: RefinementSchema,
           schema: {
             name: "Refinement",
             description: "Refined unit content",

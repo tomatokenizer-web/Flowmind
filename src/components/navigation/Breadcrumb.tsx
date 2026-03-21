@@ -9,11 +9,17 @@ import { cn } from "~/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
+export type BreadcrumbDepth = "project" | "context" | "unit" | "view";
+
 export interface BreadcrumbSegment {
   /** Display label */
   label: string;
   /** Navigation href — omit for current (last) segment */
   href?: string;
+  /** Semantic depth level for styling and accessibility */
+  depth?: BreadcrumbDepth;
+  /** Optional icon to render before the label */
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
 interface BreadcrumbProps {
@@ -24,6 +30,14 @@ interface BreadcrumbProps {
 }
 
 // ─── Single segment ──────────────────────────────────────────────────
+
+/** Depth-based style accents for breadcrumb items */
+const DEPTH_STYLES: Record<BreadcrumbDepth, string> = {
+  project: "text-accent-primary",
+  context: "text-accent-secondary",
+  unit: "text-accent-warning",
+  view: "text-text-secondary",
+};
 
 function BreadcrumbItem({
   segment,
@@ -38,12 +52,25 @@ function BreadcrumbItem({
     ? `${segment.label.slice(0, MAX_LABEL_LEN)}…`
     : segment.label;
 
+  const Icon = segment.icon;
+  const depthAccent = isCurrent && segment.depth ? DEPTH_STYLES[segment.depth] : undefined;
+
+  const labelContent = (
+    <span className="inline-flex items-center gap-1">
+      {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+      {displayLabel}
+    </span>
+  );
+
   const inner = isCurrent ? (
     <span
-      className="max-w-[180px] truncate font-medium text-text-primary"
+      className={cn(
+        "max-w-[180px] truncate font-medium text-text-primary",
+        depthAccent,
+      )}
       aria-current="page"
     >
-      {displayLabel}
+      {labelContent}
     </span>
   ) : segment.href ? (
     <Link
@@ -54,11 +81,11 @@ function BreadcrumbItem({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-1 rounded",
       )}
     >
-      {displayLabel}
+      {labelContent}
     </Link>
   ) : (
     <span className="max-w-[180px] truncate text-text-secondary">
-      {displayLabel}
+      {labelContent}
     </span>
   );
 

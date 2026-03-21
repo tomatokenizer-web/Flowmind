@@ -93,6 +93,60 @@ export function createContextService(db: PrismaClient) {
       return repo.getUnitsForContext(contextId);
     },
 
+    /**
+     * Reorder sibling contexts within the same parent.
+     * @param orderedIds - Array of context IDs in desired display order
+     * @param projectId - Project ID to verify ownership
+     * @param parentId - Parent context ID (null for root-level)
+     */
+    async reorderContexts(orderedIds: string[], projectId: string, parentId: string | null) {
+      // Validate all IDs belong to the same parent scope
+      const siblings = await repo.findMany(projectId, parentId);
+      const siblingIds = new Set(siblings.map((s) => s.id));
+      for (const id of orderedIds) {
+        if (!siblingIds.has(id)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Context ${id} does not belong to the specified parent scope`,
+          });
+        }
+      }
+      await repo.reorderSiblings(orderedIds);
+    },
+
+    /**
+     * Move a context to a new parent (re-parent).
+     */
+    async moveContext(id: string, newParentId: string | null, projectId: string) {
+      const existing = await repo.findById(id);
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+
+      // Prevent moving a context into itself or its own descendants
+      if (newParentId) {
+        let current = newParentId;
+        const visited = new Set<string>();
+        while (current) {
+          if (current === id) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Cannot move a context into its own descendant",
+            });
+          }
+          if (visited.has(current)) break;
+          visited.add(current);
+          const parent = await repo.findById(current);
+          current = parent?.parentId ?? "";
+        }
+      }
+
+      // Validate unique name in new scope
+      await validateUniqueName(existing.name, projectId, newParentId, id);
+
+      return repo.moveToParent(id, newParentId);
+    },
+
     async getMergeConflicts(contextIdA: string, contextIdB: string) {
       // Find units that exist in both contexts
       const [unitsA, unitsB] = await Promise.all([

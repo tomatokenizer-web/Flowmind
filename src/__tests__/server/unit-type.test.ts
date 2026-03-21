@@ -81,6 +81,7 @@ function createMockPrisma() {
   return {
     unit: {
       create: vi.fn().mockResolvedValue(mockUnit),
+      findFirst: vi.fn().mockResolvedValue(null),
       findUnique: vi.fn().mockResolvedValue({ ...mockUnit, perspectives: [], versions: [] }),
       findMany: vi.fn().mockResolvedValue([mockUnit]),
       update: vi.fn().mockResolvedValue(mockUnit),

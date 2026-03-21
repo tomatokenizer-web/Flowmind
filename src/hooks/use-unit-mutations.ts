@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { api } from "~/trpc/react";
 import { useUndoStore } from "~/stores/undo-store";
 import type { UnitSnapshot } from "~/lib/undo-actions";
+import { broadcastChange } from "~/lib/cross-tab-sync";
 
 /**
  * Wraps unit tRPC mutations with undo stack integration.
@@ -32,6 +33,7 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
       });
       void utils.unit.list.invalidate();
       void utils.unit.hasAny.invalidate();
+      broadcastChange("unit.created", { entityId: unit.id, projectId });
     },
   });
 
@@ -48,8 +50,9 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
 
   // ── Update ──────────────────────────────────────────────────────────
   const updateMutation = api.unit.update.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void utils.unit.list.invalidate();
+      broadcastChange("unit.updated", { entityId: variables.id, projectId });
     },
   });
 
@@ -76,9 +79,10 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
 
   // ── Delete ──────────────────────────────────────────────────────────
   const deleteMutation = api.unit.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void utils.unit.list.invalidate();
       void utils.unit.hasAny.invalidate();
+      broadcastChange("unit.deleted", { entityId: variables.id, projectId });
     },
   });
 
@@ -97,8 +101,9 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
 
   // ── Reorder ─────────────────────────────────────────────────────────
   const reorderMutation = api.unit.reorder.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void utils.unit.list.invalidate();
+      broadcastChange("unit.reordered", { entityId: variables.unitId, projectId });
     },
   });
 

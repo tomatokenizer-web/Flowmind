@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
@@ -130,71 +131,84 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     return () => document.removeEventListener("keydown", handleTab);
   }, [detailPanelOpen, fullScreenOverlay]);
 
+  const panelContent = (
+    <UnitDetailPanel
+      unit={unit}
+      isLoading={isLoading}
+      onClose={handleClose}
+      onContentChange={handleContentChange}
+      onMetadataChange={handleMetadataChange}
+      onLifecycleChange={handleLifecycleChange}
+    />
+  );
+
+  // Overlay mode (tablet / mobile)
   if (fullScreenOverlay) {
     return (
-      <>
-        {/* Backdrop */}
+      <AnimatePresence>
         {detailPanelOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/20 transition-opacity duration-slow ease-default motion-reduce:transition-none"
-            onClick={handleClose}
-            aria-hidden="true"
-          />
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="detail-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/20"
+              onClick={handleClose}
+              aria-hidden="true"
+            />
+            <motion.aside
+              key="detail-overlay"
+              ref={panelRef}
+              role="complementary"
+              aria-label="Detail panel"
+              tabIndex={-1}
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className={cn(
+                "fixed inset-y-0 right-0 z-50 w-full bg-bg-primary shadow-modal",
+                "focus-visible:outline-none",
+                "md:w-[360px]",
+                className,
+              )}
+            >
+              {panelContent}
+            </motion.aside>
+          </>
         )}
-        <aside
+      </AnimatePresence>
+    );
+  }
+
+  // Inline slide-in (desktop) with Framer Motion
+  return (
+    <AnimatePresence initial={false}>
+      {detailPanelOpen && (
+        <motion.aside
+          key="detail-inline"
           ref={panelRef}
           role="complementary"
           aria-label="Detail panel"
           tabIndex={-1}
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: PANEL_WIDTH, opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={{ type: "spring", damping: 28, stiffness: 280 }}
           className={cn(
-            "fixed inset-y-0 right-0 z-50 w-full bg-bg-primary shadow-modal",
-            "transition-transform duration-slow ease-default",
+            "h-full shrink-0 overflow-hidden border-l border-border bg-bg-primary",
             "focus-visible:outline-none",
-            "motion-reduce:transition-none",
-            "md:w-[360px]",
-            detailPanelOpen ? "translate-x-0" : "translate-x-full",
             className,
           )}
         >
-          <UnitDetailPanel
-            unit={unit}
-            isLoading={isLoading}
-            onClose={handleClose}
-            onContentChange={handleContentChange}
-            onMetadataChange={handleMetadataChange}
-            onLifecycleChange={handleLifecycleChange}
-          />
-        </aside>
-      </>
-    );
-  }
-
-  // Inline slide-in (desktop)
-  return (
-    <aside
-      ref={panelRef}
-      role="complementary"
-      aria-label="Detail panel"
-      tabIndex={-1}
-      className={cn(
-        "h-full shrink-0 overflow-hidden border-l border-border bg-bg-primary",
-        "transition-[width] duration-slow ease-default",
-        "focus-visible:outline-none",
-        "motion-reduce:transition-none",
-        className,
+          <div className="h-full" style={{ width: PANEL_WIDTH }}>
+            {panelContent}
+          </div>
+        </motion.aside>
       )}
-      style={{ width: detailPanelOpen ? PANEL_WIDTH : 0 }}
-    >
-      <div className="h-full" style={{ width: PANEL_WIDTH }}>
-        <UnitDetailPanel
-          unit={unit}
-          isLoading={isLoading}
-          onClose={handleClose}
-          onContentChange={handleContentChange}
-          onMetadataChange={handleMetadataChange}
-          onLifecycleChange={handleLifecycleChange}
-        />
-      </div>
-    </aside>
+    </AnimatePresence>
   );
 }

@@ -2,10 +2,16 @@
 
 import * as React from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Download, Copy, FileText, Presentation, Mail, Hash } from "lucide-react";
+import { X, Download, Copy, FileText, Presentation, Mail, Hash, FileDown } from "lucide-react";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 
 type ExportFormat = "essay" | "presentation" | "email" | "social";
 
@@ -109,6 +115,21 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
 
           {/* Actions */}
           <div className="mt-4 flex justify-end gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button variant="ghost" disabled>
+                      <FileDown className="h-4 w-4" />
+                      PDF
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Coming soon</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button variant="ghost" onClick={handleCopy} disabled={!exportData?.content}>
               <Copy className="h-4 w-4" />
               {copied ? "Copied!" : "Copy"}

@@ -151,6 +151,7 @@ export function UnitAIActionsMenu({
           <FramingResults
             data={framingMutation.data}
             isLoading={framingMutation.isPending}
+            error={framingMutation.error?.message}
             onApply={(f) => {
               onUpdateUnit?.(unit.id, { content: f.reframedContent, unitType: f.newType });
               setActiveDialog(null);
@@ -178,6 +179,7 @@ export function UnitAIActionsMenu({
           <CounterResults
             data={counterMutation.data}
             isLoading={counterMutation.isPending}
+            error={counterMutation.error?.message}
             onCreateNew={(c) => {
               onCreateUnit?.(c.content, "counterargument");
               setActiveDialog(null);
@@ -201,6 +203,7 @@ export function UnitAIActionsMenu({
           <AssumptionsResults
             data={assumptionsMutation.data}
             isLoading={assumptionsMutation.isPending}
+            error={assumptionsMutation.error?.message}
             onCreateNew={(a) => {
               onCreateUnit?.(a.content, "assumption");
               setActiveDialog(null);
@@ -224,6 +227,7 @@ export function UnitAIActionsMenu({
           <StanceResults
             data={stanceMutation.data}
             isLoading={stanceMutation.isPending}
+            error={stanceMutation.error?.message}
           />
         </DialogContent>
       </Dialog>
@@ -236,15 +240,18 @@ export function UnitAIActionsMenu({
 function FramingResults({
   data,
   isLoading,
+  error,
   onApply,
   onCreateNew,
 }: {
   data?: AlternativeFraming[];
   isLoading: boolean;
+  error?: string;
   onApply: (f: AlternativeFraming) => void;
   onCreateNew: (f: AlternativeFraming) => void;
 }) {
   if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
   if (!data || data.length === 0) return <EmptyState />;
 
   return (
@@ -283,13 +290,16 @@ function FramingResults({
 function CounterResults({
   data,
   isLoading,
+  error,
   onCreateNew,
 }: {
   data?: CounterArgument[];
   isLoading: boolean;
+  error?: string;
   onCreateNew: (c: CounterArgument) => void;
 }) {
   if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
   if (!data || data.length === 0) return <EmptyState />;
 
   return (
@@ -328,13 +338,16 @@ function CounterResults({
 function AssumptionsResults({
   data,
   isLoading,
+  error,
   onCreateNew,
 }: {
   data?: IdentifiedAssumption[];
   isLoading: boolean;
+  error?: string;
   onCreateNew: (a: IdentifiedAssumption) => void;
 }) {
   if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
   if (!data || data.length === 0) return <EmptyState />;
 
   const importanceColors: Record<string, string> = {
@@ -375,11 +388,14 @@ function AssumptionsResults({
 function StanceResults({
   data,
   isLoading,
+  error,
 }: {
   data?: StanceClassification;
   isLoading: boolean;
+  error?: string;
 }) {
   if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
   if (!data) return <EmptyState />;
 
   const stanceColors: Record<string, string> = {
@@ -442,6 +458,20 @@ function EmptyState() {
   return (
     <div className="text-center py-8 text-text-secondary text-sm">
       No results found
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  const isApiKey = message.includes("API") || message.includes("api-key") || message.includes("authentication");
+  return (
+    <div className="py-6 px-4 text-center">
+      <div className="text-red-400 text-sm font-medium mb-2">AI request failed</div>
+      <p className="text-xs text-text-secondary">
+        {isApiKey
+          ? "The Anthropic API key is missing or invalid. Update ANTHROPIC_API_KEY in your .env file."
+          : message}
+      </p>
     </div>
   );
 }

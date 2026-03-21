@@ -37,9 +37,20 @@ const listByUnitSchema = z.object({
   contextId: z.string().uuid().optional(),
 });
 
+const listByUnitsSchema = z.object({
+  unitIds: z.array(z.string().uuid()).max(100),
+  contextId: z.string().uuid().optional(),
+});
+
 const listBetweenSchema = z.object({
   sourceUnitId: z.string().uuid(),
   targetUnitId: z.string().uuid(),
+});
+
+const neighborsByDepthSchema = z.object({
+  hubId: z.string().uuid(),
+  depth: z.number().int().min(1).max(3).default(1),
+  contextId: z.string().uuid().optional(),
 });
 
 // ─── Router ─────────────────────────────────────────────────────────
@@ -103,14 +114,14 @@ export const relationRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       const service = createRelationService(ctx.db);
-      return service.update(id, data);
+      return service.update(id, data, ctx.session.user.id);
     }),
 
   delete: protectedProcedure
     .input(idSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createRelationService(ctx.db);
-      return service.delete(input.id);
+      return service.delete(input.id, ctx.session.user.id);
     }),
 
   listByUnit: protectedProcedure
@@ -118,6 +129,40 @@ export const relationRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const service = createRelationService(ctx.db);
       return service.listByUnit(input.unitId, input.contextId);
+    }),
+
+  listByUnits: protectedProcedure
+    .input(listByUnitsSchema)
+    .query(async ({ ctx, input }) => {
+      if (input.unitIds.length === 0) return [];
+      const idSet = new Set(input.unitIds);
+      const rows = await ctx.db.relation.findMany({
+        where: {
+          OR: [
+            { sourceUnitId: { in: input.unitIds } },
+            { targetUnitId: { in: input.unitIds } },
+          ],
+          ...(input.contextId
+            ? { perspective: { contextId: input.contextId } }
+            : {}),
+        },
+        include: {
+          sourceUnit: { select: { id: true, content: true, unitType: true } },
+          targetUnit: { select: { id: true, content: true, unitType: true } },
+        },
+        orderBy: { strength: "desc" },
+      });
+      // Only return relations where at least one endpoint is in the requested set
+      return rows.filter(
+        (r) => idSet.has(r.sourceUnitId) || idSet.has(r.targetUnitId),
+      );
+    }),
+
+  neighborsByDepth: protectedProcedure
+    .input(neighborsByDepthSchema)
+    .query(async ({ ctx, input }) => {
+      const service = createRelationService(ctx.db);
+      return service.neighborsByDepth(input.hubId, input.depth, input.contextId);
     }),
 
   listBetween: protectedProcedure
@@ -144,6 +189,6 @@ export const relationRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const service = createUnitMergeService(ctx.db);
-      return service.merge(input);
+      return service.merge({ ...input, userId: ctx.session.user.id! });
     }),
 });

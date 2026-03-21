@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
 
 const publicRoutes = new Set(["/", "/sign-in"]);
 
@@ -17,15 +16,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check session token (works on Edge runtime)
-  const token = await getToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // With database sessions, the session token is stored in a cookie
+  // (not a JWT). Check for the session cookie directly.
+  const sessionToken =
+    req.cookies.get("__Secure-authjs.session-token")?.value ??
+    req.cookies.get("authjs.session-token")?.value ??
+    req.cookies.get("next-auth.session-token")?.value;
 
-  if (!token) {
+  if (!sessionToken) {
     const signInUrl = new URL("/sign-in", req.url);
-    // After sign-in, always go to /dashboard (not wherever they were trying to go)
     signInUrl.searchParams.set("callbackUrl", "/dashboard");
     return NextResponse.redirect(signInUrl);
   }

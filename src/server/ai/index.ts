@@ -1,12 +1,14 @@
-export { getAIProvider, setAIProvider, AnthropicProvider } from "./provider";
+export { getAIProvider, setAIProvider, resetAIProvider, getEmbeddingModel, AnthropicProvider } from "./provider";
 export type { AIProvider, AIGenerateTextOptions, AIGenerateStructuredOptions } from "./provider";
 
-export { createSafetyGuard } from "./safetyGuard";
+export { createSafetyGuard, generateSessionId } from "./safetyGuard";
 export type { SafetyGuard, SafetyCheckResult, SafetyGuardOptions } from "./safetyGuard";
 
 export { createAIService } from "./aiService";
+export type { AIService } from "./aiService";
+
+// All domain types re-exported from the types module
 export type {
-  AIService,
   TypeSuggestion,
   RelationSuggestion,
   AIServiceContext,
@@ -15,7 +17,6 @@ export type {
   DecompositionRelationProposal,
   UnitProposal,
   DecompositionResult,
-  // Story 5.4-5.15 Types
   SplitReattributionProposal,
   SplitReattributionResult,
   AlternativeFraming,
@@ -29,4 +30,26 @@ export type {
   NextStepSuggestion,
   ExtractedTerm,
   StanceClassification,
-} from "./aiService";
+  ReflectionPrompt,
+} from "./types";
+
+// Domain module exports (for direct imports if needed)
+export { suggestUnitType, classifyStance, extractKeyTerms } from "./classification";
+export { decomposeText } from "./decomposition";
+export { proposeSplitReattribution } from "./split";
+export {
+  suggestRelations,
+  generateAlternativeFraming,
+  suggestCounterArguments,
+  identifyAssumptions,
+} from "./suggestion";
+export { detectContradictions, analyzeCompleteness, summarizeContext } from "./analysis";
+export { suggestMerge, generateQuestions, suggestNextSteps } from "./guidance";
+export { generateReflectionPrompts } from "./reflection";
+
+// Shared utilities
+export { sanitizeUserContent, PROMPT_INJECTION_GUARD } from "./utils";
+
+// Rate limiting
+export { checkRateLimit, enforceRateLimit, getRateLimitConfig } from "./rate-limiter";
+export type { RateLimitConfig, RateLimitResult } from "./rate-limiter";

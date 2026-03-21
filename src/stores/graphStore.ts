@@ -2,6 +2,12 @@ import { create } from "zustand";
 
 export type GraphLayer = "global" | "local";
 
+export interface MiniMapNode {
+  x: number;
+  y: number;
+  unitType: string;
+}
+
 interface GraphState {
   layer: GraphLayer;
   selectedNodeId: string | null;
@@ -13,6 +19,7 @@ interface GraphState {
     unitTypes: string[];
     relationCategories: string[];
   };
+  miniMapNodes: MiniMapNode[];
 
   setLayer: (layer: GraphLayer) => void;
   setSelectedNode: (id: string | null) => void;
@@ -23,6 +30,7 @@ interface GraphState {
   toggleUnitTypeFilter: (unitType: string) => void;
   toggleRelationCategoryFilter: (category: string) => void;
   resetFilters: () => void;
+  setMiniMapNodes: (nodes: MiniMapNode[]) => void;
 }
 
 export const useGraphStore = create<GraphState>((set) => ({
@@ -36,6 +44,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     unitTypes: [],
     relationCategories: [],
   },
+  miniMapNodes: [],
 
   setLayer: (layer) => set({ layer }),
   setSelectedNode: (id) => set({ selectedNodeId: id }),
@@ -62,4 +71,6 @@ export const useGraphStore = create<GraphState>((set) => ({
 
   resetFilters: () =>
     set({ filters: { unitTypes: [], relationCategories: [] } }),
+
+  setMiniMapNodes: (nodes) => set({ miniMapNodes: nodes }),
 }));

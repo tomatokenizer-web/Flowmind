@@ -2,10 +2,12 @@
 
 import { Layers } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { ContributionTransparency } from "~/components/ai";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
 interface ContextHeaderProps {
+  contextId: string;
   name: string;
   snapshot: string;
   unitCount: number;
@@ -40,6 +42,7 @@ export function ContextHeaderSkeleton({ className }: { className?: string }) {
 // ─── Component ───────────────────────────────────────────────────────
 
 export function ContextHeader({
+  contextId,
   name,
   snapshot,
   unitCount,
@@ -87,6 +90,9 @@ export function ContextHeader({
           {perspectiveCount} {perspectiveCount === 1 ? "perspective" : "perspectives"}
         </span>
       </div>
+
+      {/* AI contribution transparency */}
+      <ContributionTransparency contextId={contextId} variant="compact" />
     </section>
   );
 }

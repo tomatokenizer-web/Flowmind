@@ -14,7 +14,7 @@ const lifecycleEnum = z.enum([
   "complete", "archived", "discarded",
 ]);
 
-const searchLayerEnum = z.enum(["text", "structural", "temporal"]);
+const searchLayerEnum = z.enum(["text", "structural", "temporal", "semantic"]);
 
 const searchQuerySchema = z.object({
   query: z.string().max(500),
@@ -61,6 +61,33 @@ export const searchRouter = createTRPCRouter({
           createdAfter: input.createdAfter,
           createdBefore: input.createdBefore,
           sortOrder: input.sortOrder,
+        },
+      );
+
+      return results;
+    }),
+
+  /**
+   * Dedicated semantic search endpoint.
+   * Generates an embedding for the query and returns the most similar units.
+   */
+  semantic: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(1).max(500),
+        projectId: z.string().uuid(),
+        limit: z.number().int().min(1).max(100).default(20),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const service = createSearchService(ctx.db);
+
+      const results = await service.search(
+        input.query,
+        {
+          projectId: input.projectId,
+          layers: ["semantic"],
+          limit: input.limit,
         },
       );
 

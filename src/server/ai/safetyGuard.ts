@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { PrismaClient } from "@prisma/client";
 import { logger } from "../logger";
 
@@ -20,6 +21,8 @@ export interface SafetyGuardOptions {
   maxUnitsPerRequest?: number;
   maxConsecutiveBranches?: number;
   aiRatioWarningThreshold?: number;
+  /** Sessions inactive longer than this (ms) are considered expired. Default: 30 minutes */
+  sessionTtlMs?: number;
 }
 
 // ─── Safety Guard Service ─────────────────────────────────────────────────
@@ -28,11 +31,19 @@ const DEFAULT_OPTIONS: Required<SafetyGuardOptions> = {
   maxUnitsPerRequest: 3,
   maxConsecutiveBranches: 3,
   aiRatioWarningThreshold: 0.4,
+  sessionTtlMs: 30 * 60 * 1000, // 30 minutes
 };
 
-// In-memory session tracking for consecutive branch generations
-// In production, this would be stored in Redis or similar
-const sessionBranchCounts = new Map<string, number>();
+/**
+ * Generate a cryptographically random session ID.
+ *
+ * Previous implementation used `Date.now()` which is predictable and
+ * collides when two requests arrive within the same millisecond.
+ * crypto.randomUUID() provides 122 bits of randomness (RFC 4122 v4).
+ */
+export function generateSessionId(): string {
+  return randomUUID();
+}
 
 export function createSafetyGuard(
   db: PrismaClient,
@@ -41,6 +52,21 @@ export function createSafetyGuard(
   const config = { ...DEFAULT_OPTIONS, ...options };
 
   return {
+    /**
+     * Create a new safety guard session in the database.
+     * Returns the session ID for subsequent requests.
+     *
+     * Clients should call this once (e.g., when entering a context view)
+     * and reuse the returned sessionId for all AI requests in that editing
+     * session. This enables accurate consecutive-branch tracking.
+     */
+    async createSession(userId: string): Promise<string> {
+      const session = await db.safetyGuardSession.create({
+        data: { userId },
+      });
+      return session.id;
+    },
+
     /**
      * Check if a unit generation request is allowed
      */
@@ -61,16 +87,49 @@ export function createSafetyGuard(
     },
 
     /**
-     * Check consecutive branch generation limit
+     * Check consecutive branch generation limit.
+     *
+     * Uses the DB-backed SafetyGuardSession table so that the counter
+     * persists across serverless cold starts and horizontal scaling.
      */
     async checkConsecutiveBranchLimit(
       userId: string,
       sessionId: string
     ): Promise<SafetyCheckResult> {
-      const key = `${userId}:${sessionId}`;
-      const count = sessionBranchCounts.get(key) ?? 0;
+      const session = await db.safetyGuardSession.findUnique({
+        where: { id: sessionId },
+      });
 
-      if (count >= config.maxConsecutiveBranches) {
+      // If no session found (expired or invalid), allow but log
+      if (!session) {
+        logger.warn(
+          { userId, sessionId },
+          "Safety guard session not found; allowing request"
+        );
+        return { allowed: true };
+      }
+
+      // Check if session belongs to this user
+      if (session.userId !== userId) {
+        logger.warn(
+          { userId, sessionId, sessionUserId: session.userId },
+          "Safety guard session userId mismatch"
+        );
+        return { allowed: true };
+      }
+
+      // Check if session has expired (stale sessions should not block)
+      const elapsed = Date.now() - session.lastActivityAt.getTime();
+      if (elapsed > config.sessionTtlMs) {
+        // Expired session - reset counter instead of blocking
+        await db.safetyGuardSession.update({
+          where: { id: sessionId },
+          data: { consecutiveBranches: 0, lastActivityAt: new Date() },
+        });
+        return { allowed: true };
+      }
+
+      if (session.consecutiveBranches >= config.maxConsecutiveBranches) {
         return {
           allowed: false,
           error: {
@@ -84,20 +143,51 @@ export function createSafetyGuard(
     },
 
     /**
-     * Increment consecutive branch count for session
+     * Increment consecutive branch count for session (DB-backed)
      */
-    incrementBranchCount(userId: string, sessionId: string): void {
-      const key = `${userId}:${sessionId}`;
-      const count = sessionBranchCounts.get(key) ?? 0;
-      sessionBranchCounts.set(key, count + 1);
+    async incrementBranchCount(
+      userId: string,
+      sessionId: string
+    ): Promise<void> {
+      try {
+        await db.safetyGuardSession.update({
+          where: { id: sessionId },
+          data: {
+            consecutiveBranches: { increment: 1 },
+            lastActivityAt: new Date(),
+          },
+        });
+      } catch (error) {
+        // Session may not exist (e.g., legacy client without session creation).
+        // Log and continue; do not block the user.
+        logger.warn(
+          { userId, sessionId, error },
+          "Failed to increment branch count - session may not exist"
+        );
+      }
     },
 
     /**
-     * Reset branch count when user creates manual content
+     * Reset branch count when user creates manual content (DB-backed)
      */
-    resetBranchCount(userId: string, sessionId: string): void {
-      const key = `${userId}:${sessionId}`;
-      sessionBranchCounts.delete(key);
+    async resetBranchCount(
+      userId: string,
+      sessionId: string
+    ): Promise<void> {
+      try {
+        await db.safetyGuardSession.update({
+          where: { id: sessionId },
+          data: {
+            consecutiveBranches: 0,
+            lastActivityAt: new Date(),
+          },
+        });
+      } catch (error) {
+        logger.warn(
+          { userId, sessionId, error },
+          "Failed to reset branch count - session may not exist"
+        );
+      }
     },
 
     /**
@@ -188,6 +278,24 @@ export function createSafetyGuard(
       }
 
       return { allowed: true };
+    },
+
+    /**
+     * Clean up expired sessions. Call periodically (e.g., via cron) to
+     * prevent unbounded table growth.
+     */
+    async cleanupExpiredSessions(): Promise<number> {
+      const cutoff = new Date(Date.now() - config.sessionTtlMs);
+      const result = await db.safetyGuardSession.deleteMany({
+        where: { lastActivityAt: { lt: cutoff } },
+      });
+      if (result.count > 0) {
+        logger.info(
+          { deletedCount: result.count },
+          "Cleaned up expired safety guard sessions"
+        );
+      }
+      return result.count;
     },
   };
 }

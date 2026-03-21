@@ -80,14 +80,24 @@ function isEditableTarget(target: EventTarget | null): boolean {
 function matchesShortcut(e: KeyboardEvent, keys: string): boolean {
   const parts = keys.toLowerCase().split("+");
   const modRequired = parts.includes("mod");
+  const ctrlRequired = parts.includes("ctrl");
   const shiftRequired = parts.includes("shift");
   const altRequired = parts.includes("alt");
 
-  const key = parts.filter((p) => !["mod", "shift", "alt"].includes(p))[0];
+  const key = parts.filter((p) => !["mod", "ctrl", "shift", "alt"].includes(p))[0];
   if (!key) return false;
 
-  const modPressed = isMac() ? e.metaKey : e.ctrlKey;
-  if (modRequired !== modPressed) return false;
+  if (isMac()) {
+    // On Mac: "mod" = Cmd (metaKey), "ctrl" = physical Ctrl
+    if (modRequired !== e.metaKey) return false;
+    if (ctrlRequired !== e.ctrlKey) return false;
+  } else {
+    // On Windows/Linux: "mod" = Ctrl, "ctrl" = Ctrl
+    // Both "mod" and "ctrl" map to the same physical key.
+    // If either is required, Ctrl must be pressed. If neither, Ctrl must not be pressed.
+    const ctrlShouldBePressed = modRequired || ctrlRequired;
+    if (ctrlShouldBePressed !== e.ctrlKey) return false;
+  }
   if (shiftRequired !== e.shiftKey) return false;
   if (altRequired !== e.altKey) return false;
 

@@ -8,12 +8,17 @@ import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 import { DetailPanel } from "./detail-panel";
 import { CaptureBar } from "~/components/unit/capture-bar";
+import { CaptureOverlay } from "~/components/unit/capture-mode";
 import { CommandPalette } from "~/components/search";
+import { useProjectId } from "~/contexts/project-context";
+import { useSidebarStore } from "~/stores/sidebar-store";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const setSidebarOpen = useLayoutStore((s) => s.setSidebarOpen);
   const focusMode = useFocusModeStore((s) => s.focusMode);
+  const projectId = useProjectId();
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
 
   React.useEffect(() => {
     const xl = window.matchMedia("(min-width: 1280px)");
@@ -100,6 +105,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {/* Global overlays */}
+      {projectId && (
+        <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
+      )}
       <CommandPalette />
     </div>
   );

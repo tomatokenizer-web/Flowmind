@@ -60,6 +60,22 @@ export interface ListUnitsInput {
   sortOrder?: "asc" | "desc";
 }
 
+/**
+ * Thrown when a unit with identical content already exists in the project.
+ * The caller (tRPC router / UI) should inspect `code` to decide whether to
+ * show a "similar unit exists — continue?" prompt rather than a hard block.
+ */
+export class DuplicateUnitContentError extends Error {
+  readonly code = "DUPLICATE_UNIT_CONTENT" as const;
+  readonly existingUnitId: string;
+
+  constructor(existingUnitId: string) {
+    super("A unit with identical content already exists in this project.");
+    this.name = "DuplicateUnitContentError";
+    this.existingUnitId = existingUnitId;
+  }
+}
+
 // Valid lifecycle transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ["pending", "discarded"],
@@ -89,6 +105,13 @@ export function createUnitService(db: PrismaClient) {
 
       const aiTrustLevel =
         input.aiTrustLevel ?? (isAiOrigin ? "inferred" : "user_authored");
+
+      // Story 2.1: Warn (non-hard-block) on exact duplicate content within project.
+      // Callers catching DuplicateUnitContentError can prompt the user to confirm.
+      const duplicate = await repo.findByExactContent(input.projectId, input.content);
+      if (duplicate) {
+        throw new DuplicateUnitContentError(duplicate.id);
+      }
 
       const unit = await repo.create({
         content: input.content,
@@ -183,11 +206,18 @@ export function createUnitService(db: PrismaClient) {
         });
       }
 
-      const unit = await repo.update(id, input);
+      // Story 2.2: When a unit type is auto-assigned via heuristics,
+      // ensure lifecycle is set to "draft" for review
+      const updateInput = { ...input };
+      if (updateInput.unitType && !updateInput.lifecycle) {
+        updateInput.lifecycle = "draft";
+      }
+
+      const unit = await repo.update(id, updateInput);
 
       await eventBus.emit({
         type: "unit.updated",
-        payload: { unitId: id, userId, unit, changes: input as Partial<typeof unit> },
+        payload: { unitId: id, userId, unit, changes: updateInput as Partial<typeof unit> },
         timestamp: new Date(),
       });
 

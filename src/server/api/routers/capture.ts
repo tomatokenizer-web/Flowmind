@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createUnitService } from "@/server/services/unitService";
+import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
+import { TRPCError } from "@trpc/server";
 
 const captureSubmitSchema = z.object({
   content: z.string().min(1, "Content is required"),
@@ -15,18 +16,29 @@ export const captureRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const service = createUnitService(ctx.db);
 
-      return service.create(
-        {
-          content: input.content,
-          projectId: input.projectId,
-          unitType: "observation",
-          lifecycle: "draft",
-          originType: "direct_write",
-          aiTrustLevel: "user_authored",
-          // Flag for AI decomposition pipeline (Epic 5)
-          meta: input.mode === "organize" ? { pendingDecomposition: true } : undefined,
-        },
-        ctx.session.user.id!,
-      );
+      try {
+        return await service.create(
+          {
+            content: input.content,
+            projectId: input.projectId,
+            unitType: "observation",
+            lifecycle: "draft",
+            originType: "direct_write",
+            aiTrustLevel: "user_authored",
+            // Flag for AI decomposition pipeline (Epic 5)
+            meta: input.mode === "organize" ? { pendingDecomposition: true } : undefined,
+          },
+          ctx.session.user.id!,
+        );
+      } catch (error) {
+        if (error instanceof DuplicateUnitContentError) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: error.message,
+            cause: { code: error.code, existingUnitId: error.existingUnitId },
+          });
+        }
+        throw error;
+      }
     }),
 });

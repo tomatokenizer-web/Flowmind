@@ -5,6 +5,8 @@ import * as d3 from "d3";
 import { useGraphStore } from "~/stores/graphStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { useSelectionStore } from "~/stores/selectionStore";
+import { announceToScreenReader } from "~/lib/accessibility";
+import { usePrefersReducedMotion } from "~/hooks/use-prefers-reduced-motion";
 
 // ─── Unit type → hex color ────────────────────────────────────────
 
@@ -20,7 +22,25 @@ const UNIT_TYPE_COLORS: Record<string, string> = {
   action: "#84CC16",
 };
 
+// ─── Relation type → hex color ────────────────────────────────────
+
+const RELATION_TYPE_COLORS: Record<string, string> = {
+  supports: "#10B981",
+  contradicts: "#EF4444",
+  derives_from: "#3B82F6",
+  expands: "#8B5CF6",
+  references: "#6B7280",
+  exemplifies: "#F59E0B",
+  defines: "#06B6D4",
+  questions: "#F97316",
+};
+
 const NODE_RADIUS = 6;
+const FOCUS_RING_RADIUS = NODE_RADIUS + 4;
+const FOCUS_RING_COLOR = "#FFFFFF";
+const FOCUS_RING_WIDTH = 2;
+const FIT_ALL_PADDING = 60;
+const DIMMED_OPACITY = 0.3;
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -28,6 +48,7 @@ interface GraphUnit {
   id: string;
   content: string;
   unitType: string;
+  lifecycle?: string;
 }
 
 interface GraphRelation {
@@ -37,19 +58,23 @@ interface GraphRelation {
   type: string;
   strength: number;
   direction: string;
+  isLoopback?: boolean;
 }
 
 interface SimNode extends d3.SimulationNodeDatum {
   id: string;
   content: string;
   unitType: string;
+  lifecycle: string;
   x?: number;
   y?: number;
 }
 
 interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   id: string;
+  type: string;
   strength: number;
+  isLoopback: boolean;
   source: string | SimNode;
   target: string | SimNode;
 }
@@ -57,14 +82,108 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 interface Props {
   units: GraphUnit[];
   relations: GraphRelation[];
+  onNodeClick?: (nodeId: string) => void;
 }
 
-export function GlobalGraphCanvas({ units, relations }: Props) {
+// ─── Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Find the nearest node in a given direction from the currently focused node.
+ * Direction is one of "up", "down", "left", "right".
+ */
+function findNearestInDirection(
+  nodes: SimNode[],
+  current: SimNode,
+  direction: "up" | "down" | "left" | "right",
+): SimNode | null {
+  if (current.x == null || current.y == null) return null;
+
+  let best: SimNode | null = null;
+  let bestScore = Infinity;
+
+  for (const node of nodes) {
+    if (node.id === current.id) continue;
+    if (node.x == null || node.y == null) continue;
+
+    const dx = node.x - current.x;
+    const dy = node.y - current.y;
+
+    // Check if the node is in the correct general direction.
+    // We use a cone-based approach: the primary axis displacement must
+    // be at least as large as the secondary axis displacement.
+    let inDirection = false;
+    switch (direction) {
+      case "up":
+        inDirection = dy < 0 && Math.abs(dy) >= Math.abs(dx) * 0.3;
+        break;
+      case "down":
+        inDirection = dy > 0 && Math.abs(dy) >= Math.abs(dx) * 0.3;
+        break;
+      case "left":
+        inDirection = dx < 0 && Math.abs(dx) >= Math.abs(dy) * 0.3;
+        break;
+      case "right":
+        inDirection = dx > 0 && Math.abs(dx) >= Math.abs(dy) * 0.3;
+        break;
+    }
+
+    if (!inDirection) continue;
+
+    const dist = dx * dx + dy * dy;
+    if (dist < bestScore) {
+      bestScore = dist;
+      best = node;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Calculate bounding box of all visible nodes.
+ */
+function calcBoundingBox(nodes: SimNode[]) {
+  const positioned = nodes.filter((n) => n.x != null && n.y != null);
+  if (positioned.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const n of positioned) {
+    if (n.x! < minX) minX = n.x!;
+    if (n.y! < minY) minY = n.y!;
+    if (n.x! > maxX) maxX = n.x!;
+    if (n.y! > maxY) maxY = n.y!;
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const simRef = React.useRef<d3.Simulation<SimNode, SimLink> | null>(null);
   const nodesRef = React.useRef<SimNode[]>([]);
   const linksRef = React.useRef<SimLink[]>([]);
   const animRef = React.useRef<number>(0);
+
+  // Keyboard-focused node ID (separate from selection, which opens the panel)
+  const [focusedNodeId, setFocusedNodeId] = React.useState<string | null>(null);
+  const focusedNodeIdRef = React.useRef<string | null>(null);
+  // Keep ref in sync for the render loop
+  React.useEffect(() => {
+    focusedNodeIdRef.current = focusedNodeId;
+  }, [focusedNodeId]);
 
   const zoomLevel = useGraphStore((s) => s.zoomLevel);
   const panOffset = useGraphStore((s) => s.panOffset);
@@ -73,23 +192,22 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
   const setLocalHub = useGraphStore((s) => s.setLocalHub);
   const setLayer = useGraphStore((s) => s.setLayer);
   const filters = useGraphStore((s) => s.filters);
+  const setMiniMapNodes = useGraphStore((s) => s.setMiniMapNodes);
+
+  // Counter for throttled mini-map updates (every ~10 frames)
+  const miniMapFrameRef = React.useRef(0);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
 
-  // Tooltip state
-  const [tooltip, setTooltip] = React.useState<{
-    x: number;
-    y: number;
-    content: string;
-    unitType: string;
-  } | null>(null);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
-  // Drag state
-  const dragRef = React.useRef<{
-    dragging: boolean;
-    lastX: number;
-    lastY: number;
-  }>({ dragging: false, lastX: 0, lastY: 0 });
+  // Relation type filter: set of hidden relation types
+  const hiddenRelationTypes = React.useMemo(
+    () => new Set(filters.relationCategories),
+    [filters.relationCategories],
+  );
 
   // Filter units
   const filteredUnits = React.useMemo(() => {
@@ -102,12 +220,45 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
     [filteredUnits],
   );
 
+  // Compute the set of node IDs connected by at least one visible edge.
+  // null means "all connected" (no relation filter active).
+  const connectedNodeIds = React.useMemo(() => {
+    if (hiddenRelationTypes.size === 0) return null;
+
+    const connected = new Set<string>();
+    for (const rel of relations) {
+      if (hiddenRelationTypes.has(rel.type)) continue;
+      if (!filteredUnitIds.has(rel.sourceUnitId)) continue;
+      if (!filteredUnitIds.has(rel.targetUnitId)) continue;
+      connected.add(rel.sourceUnitId);
+      connected.add(rel.targetUnitId);
+    }
+    return connected;
+  }, [relations, hiddenRelationTypes, filteredUnitIds]);
+
+  // Tooltip state
+  const [tooltip, setTooltip] = React.useState<{
+    x: number;
+    y: number;
+    content: string;
+    unitType: string;
+    lifecycle: string;
+  } | null>(null);
+
+  // Drag state
+  const dragRef = React.useRef<{
+    dragging: boolean;
+    lastX: number;
+    lastY: number;
+  }>({ dragging: false, lastX: 0, lastY: 0 });
+
   // Build simulation
   React.useEffect(() => {
     const nodes: SimNode[] = filteredUnits.map((u) => ({
       id: u.id,
       content: u.content,
       unitType: u.unitType,
+      lifecycle: u.lifecycle ?? "confirmed",
     }));
 
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -115,9 +266,11 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
       .filter((r) => nodeIds.has(r.sourceUnitId) && nodeIds.has(r.targetUnitId))
       .map((r) => ({
         id: r.id,
+        type: r.type,
         source: r.sourceUnitId,
         target: r.targetUnitId,
         strength: r.strength,
+        isLoopback: r.isLoopback ?? r.sourceUnitId === r.targetUnitId,
       }));
 
     nodesRef.current = nodes;
@@ -134,10 +287,88 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
 
     simRef.current = sim;
 
+    // Clear focus if the focused node was filtered out
+    if (focusedNodeIdRef.current && !nodeIds.has(focusedNodeIdRef.current)) {
+      setFocusedNodeId(null);
+    }
+
     return () => {
       sim.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredUnits, relations]);
+
+  // ─── Fit All handler via custom event ──────────────────────────
+
+  React.useEffect(() => {
+    const handleFitAll = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const bbox = calcBoundingBox(nodesRef.current);
+      if (!bbox) {
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const canvasW = rect.width;
+      const canvasH = rect.height;
+
+      // Single node: just center it
+      if (bbox.width === 0 && bbox.height === 0) {
+        setZoom(1);
+        setPan({ x: -bbox.centerX, y: -bbox.centerY });
+        return;
+      }
+
+      // Calculate zoom to fit bounding box + padding
+      const scaleX =
+        (canvasW - FIT_ALL_PADDING * 2) / (bbox.width + NODE_RADIUS * 4);
+      const scaleY =
+        (canvasH - FIT_ALL_PADDING * 2) / (bbox.height + NODE_RADIUS * 4);
+      const newZoom = Math.max(0.3, Math.min(5, Math.min(scaleX, scaleY)));
+
+      // Pan so bounding-box center lands at canvas center
+      const newPanX = -bbox.centerX * newZoom;
+      const newPanY = -bbox.centerY * newZoom;
+
+      if (prefersReducedMotion) {
+        setZoom(newZoom);
+        setPan({ x: newPanX, y: newPanY });
+      } else {
+        // Animated transition (ease-out cubic, 300ms)
+        const startZoom = useGraphStore.getState().zoomLevel;
+        const startPan = useGraphStore.getState().panOffset;
+        const duration = 300;
+        const startTime = performance.now();
+
+        const animate = (now: number) => {
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / duration);
+          const ease = 1 - Math.pow(1 - t, 3);
+
+          setZoom(startZoom + (newZoom - startZoom) * ease);
+          setPan({
+            x: startPan.x + (newPanX - startPan.x) * ease,
+            y: startPan.y + (newPanY - startPan.y) * ease,
+          });
+
+          if (t < 1) requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
+      }
+
+      announceToScreenReader(
+        `Viewport fitted to show all ${nodesRef.current.length} nodes`,
+      );
+    };
+
+    window.addEventListener("flowmind:fit-all", handleFitAll);
+    return () => window.removeEventListener("flowmind:fit-all", handleFitAll);
+  }, [setZoom, setPan, prefersReducedMotion]);
 
   // Render loop
   React.useEffect(() => {
@@ -157,37 +388,236 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
       ctx.translate(width / 2 + panOffset.x, height / 2 + panOffset.y);
       ctx.scale(zoomLevel, zoomLevel);
 
-      // Draw links
+      // Draw links (skip edges whose relation type is filtered out)
       for (const link of linksRef.current) {
         const source = link.source as SimNode;
         const target = link.target as SimNode;
         if (source.x == null || source.y == null || target.x == null || target.y == null)
           continue;
 
-        ctx.beginPath();
-        ctx.moveTo(source.x, source.y);
-        ctx.lineTo(target.x, target.y);
-        ctx.strokeStyle = "rgba(156, 163, 175, 0.4)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        // Hide edges whose relation type is deselected
+        if (hiddenRelationTypes.has(link.type)) continue;
+
+        const edgeColor =
+          RELATION_TYPE_COLORS[link.type] ?? "rgba(156, 163, 175, 1)";
+
+        if (link.isLoopback) {
+          const loopRadius = NODE_RADIUS * 3;
+          ctx.beginPath();
+          ctx.arc(source.x, source.y - loopRadius, loopRadius, 0, Math.PI * 2);
+          ctx.setLineDash([4, 3]);
+          ctx.strokeStyle = edgeColor;
+          ctx.globalAlpha = 0.6;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(source.x, source.y);
+          ctx.lineTo(target.x, target.y);
+          ctx.strokeStyle = edgeColor;
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
       }
 
-      // Draw nodes
+      const currentFocusId = focusedNodeIdRef.current;
+
+      // Draw nodes (dim disconnected nodes to 30% opacity when relation filter is active)
       for (const node of nodesRef.current) {
         if (node.x == null || node.y == null) continue;
+
+        const isDimmed =
+          connectedNodeIds !== null && !connectedNodeIds.has(node.id);
+
+        // Draw focus ring if this node is keyboard-focused
+        if (currentFocusId === node.id) {
+          // Outer glow
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, FOCUS_RING_RADIUS + 2, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          ctx.lineWidth = FOCUS_RING_WIDTH + 2;
+          ctx.stroke();
+
+          // Inner focus ring
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, FOCUS_RING_RADIUS, 0, Math.PI * 2);
+          ctx.strokeStyle = FOCUS_RING_COLOR;
+          ctx.lineWidth = FOCUS_RING_WIDTH;
+          ctx.stroke();
+        }
+
         ctx.beginPath();
         ctx.arc(node.x, node.y, NODE_RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = UNIT_TYPE_COLORS[node.unitType] ?? "#6B7280";
+        ctx.globalAlpha = isDimmed ? DIMMED_OPACITY : 1;
         ctx.fill();
+        ctx.globalAlpha = 1;
       }
 
       ctx.restore();
+
+      // Push node positions to the store for the mini-map (throttled)
+      miniMapFrameRef.current++;
+      if (miniMapFrameRef.current % 10 === 0) {
+        const mmNodes = nodesRef.current
+          .filter((n) => n.x != null && n.y != null)
+          .map((n) => ({ x: n.x!, y: n.y!, unitType: n.unitType }));
+        setMiniMapNodes(mmNodes);
+      }
+
       animRef.current = requestAnimationFrame(render);
     };
 
+    // When user prefers reduced motion, render once after simulation
+    // stabilizes instead of running a continuous animation loop
+    if (prefersReducedMotion) {
+      const sim = simRef.current;
+      if (sim) {
+        sim.on("end.reducedMotion", () => {
+          render();
+          cancelAnimationFrame(animRef.current);
+        });
+      }
+      // Still render at least once immediately
+      animRef.current = requestAnimationFrame(render);
+      return () => {
+        cancelAnimationFrame(animRef.current);
+        if (sim) sim.on("end.reducedMotion", null);
+      };
+    }
+
     animRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animRef.current);
-  }, [zoomLevel, panOffset, filteredUnitIds]);
+  }, [
+    zoomLevel,
+    panOffset,
+    filteredUnitIds,
+    setMiniMapNodes,
+    hiddenRelationTypes,
+    connectedNodeIds,
+    prefersReducedMotion,
+  ]);
+
+  // ─── Keyboard navigation ──────────────────────────────────────
+
+  const selectNode = React.useCallback(
+    (node: SimNode) => {
+      setSelectedUnit(node.id);
+      openPanel(node.id);
+      setLocalHub(node.id);
+      setLayer("local");
+    },
+    [setSelectedUnit, openPanel, setLocalHub, setLayer],
+  );
+
+  const focusNode = React.useCallback(
+    (node: SimNode) => {
+      setFocusedNodeId(node.id);
+      const label = `${node.unitType}: ${node.content.slice(0, 60)}`;
+      announceToScreenReader(`Focused on ${label}`);
+    },
+    [],
+  );
+
+  const handleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent) => {
+      const nodes = nodesRef.current;
+      if (nodes.length === 0) return;
+
+      // Arrow keys: directional navigation
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+
+        const currentNode = nodes.find((n) => n.id === focusedNodeIdRef.current);
+
+        if (!currentNode) {
+          // No node focused yet -- focus the first node
+          const first = nodes[0];
+          if (first) focusNode(first);
+          return;
+        }
+
+        const directionMap: Record<string, "up" | "down" | "left" | "right"> = {
+          ArrowUp: "up",
+          ArrowDown: "down",
+          ArrowLeft: "left",
+          ArrowRight: "right",
+        };
+
+        const nearest = findNearestInDirection(
+          nodes,
+          currentNode,
+          directionMap[e.key]!,
+        );
+
+        if (nearest) {
+          focusNode(nearest);
+        }
+        return;
+      }
+
+      // Tab: cycle through nodes sequentially
+      if (e.key === "Tab") {
+        // Only intercept Tab when the canvas is focused
+        e.preventDefault();
+
+        const currentIndex = nodes.findIndex(
+          (n) => n.id === focusedNodeIdRef.current,
+        );
+
+        let nextIndex: number;
+        if (e.shiftKey) {
+          // Shift+Tab: go backwards
+          nextIndex =
+            currentIndex <= 0 ? nodes.length - 1 : currentIndex - 1;
+        } else {
+          nextIndex =
+            currentIndex < 0 || currentIndex >= nodes.length - 1
+              ? 0
+              : currentIndex + 1;
+        }
+
+        const nextNode = nodes[nextIndex];
+        if (nextNode) {
+          focusNode(nextNode);
+          announceToScreenReader(
+            `Node ${nextIndex + 1} of ${nodes.length}: ${nextNode.unitType}, ${nextNode.content.slice(0, 60)}`,
+          );
+        }
+        return;
+      }
+
+      // Enter: select/open the focused node
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const currentNode = nodes.find(
+          (n) => n.id === focusedNodeIdRef.current,
+        );
+        if (currentNode) {
+          selectNode(currentNode);
+          announceToScreenReader(
+            `Selected ${currentNode.unitType}: ${currentNode.content.slice(0, 60)}`,
+          );
+        }
+        return;
+      }
+
+      // Escape: deselect current node
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setFocusedNodeId(null);
+        clearSelection();
+        closePanel();
+        announceToScreenReader("Node deselected");
+        return;
+      }
+    },
+    [focusNode, selectNode, clearSelection, closePanel],
+  );
 
   // Hit test helper
   const hitTest = React.useCallback(
@@ -243,6 +673,7 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
           y: e.clientY - rect.top - 12,
           content: node.content.slice(0, 50) + (node.content.length > 50 ? "..." : ""),
           unitType: node.unitType,
+          lifecycle: node.lifecycle,
         });
       } else {
         setTooltip(null);
@@ -259,36 +690,80 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
     (e: React.MouseEvent) => {
       const node = hitTest(e.clientX, e.clientY);
       if (node) {
-        setSelectedUnit(node.id);
-        openPanel(node.id);
-        setLocalHub(node.id);
-        setLayer("local");
+        setFocusedNodeId(node.id);
+        selectNode(node);
+        onNodeClick?.(node.id);
       }
     },
-    [hitTest, setLocalHub, setLayer, setSelectedUnit, openPanel],
+    [hitTest, selectNode, onNodeClick],
   );
 
   const handleWheel = React.useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(zoomLevel * delta);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      // Mouse position relative to canvas center (before zoom)
+      const mx = e.clientX - rect.left - rect.width / 2;
+      const my = e.clientY - rect.top - rect.height / 2;
+
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.3, Math.min(5, zoomLevel * factor));
+      const ratio = newZoom / zoomLevel;
+
+      // Adjust pan so the point under the cursor stays fixed:
+      // Before zoom, graph point under cursor: gx = (mx - panOffset.x) / zoomLevel
+      // After zoom, we want same gx under cursor: gx = (mx - newPanX) / newZoom
+      // Solving: newPanX = mx - ratio * (mx - panOffset.x)
+      const newPanX = mx - ratio * (mx - panOffset.x);
+      const newPanY = my - ratio * (my - panOffset.y);
+
+      setZoom(newZoom);
+      setPan({ x: newPanX, y: newPanY });
     },
-    [zoomLevel, setZoom],
+    [zoomLevel, setZoom, setPan, panOffset],
   );
+
+  // Build the screen-reader description of the focused node
+  const focusedNode = React.useMemo(() => {
+    if (!focusedNodeId) return null;
+    return nodesRef.current.find((n) => n.id === focusedNodeId) ?? null;
+  }, [focusedNodeId]);
+
+  const ariaLabel = React.useMemo(() => {
+    const base = `Knowledge graph with ${nodesRef.current.length} nodes`;
+    if (focusedNode) {
+      return `${base}. Focused: ${focusedNode.unitType} node, ${focusedNode.content.slice(0, 80)}`;
+    }
+    return `${base}. Use arrow keys or Tab to navigate nodes, Enter to select, Escape to deselect.`;
+  }, [focusedNode]);
 
   return (
     <div className="relative h-full w-full">
       <canvas
         ref={canvasRef}
-        className="h-full w-full cursor-grab active:cursor-grabbing"
+        className="h-full w-full cursor-grab active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+        tabIndex={0}
+        role="application"
+        aria-label={ariaLabel}
+        aria-roledescription="interactive knowledge graph"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onClick={handleClick}
         onWheel={handleWheel}
+        onKeyDown={handleKeyDown}
       />
+      {/* Hidden live region for keyboard navigation announcements */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {focusedNode
+          ? `Focused on ${focusedNode.unitType} node: ${focusedNode.content.slice(0, 80)}`
+          : ""}
+      </div>
+      {/* Keyboard navigation hint (visible when canvas is focused but no node selected) */}
       {tooltip && (
         <div
           className="pointer-events-none absolute z-50 max-w-xs rounded-md bg-bg-secondary px-3 py-2 text-xs text-text-primary shadow-lg border border-border"
@@ -299,6 +774,8 @@ export function GlobalGraphCanvas({ units, relations }: Props) {
             style={{ backgroundColor: UNIT_TYPE_COLORS[tooltip.unitType] ?? "#6B7280" }}
           />
           <span className="font-medium capitalize">{tooltip.unitType}</span>
+          <span className="mx-1 text-text-tertiary">|</span>
+          <span className="capitalize text-text-secondary">{tooltip.lifecycle}</span>
           <span className="mx-1 text-text-tertiary">|</span>
           {tooltip.content}
         </div>
