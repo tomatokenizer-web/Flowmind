@@ -227,3 +227,34 @@ export const RefinementSchema = z.object({
   refined: z.string(),
   changes: z.array(z.string()),
 });
+
+// ─── Story 5.11: Scope Jump Detection ────────────────────────────────────────
+
+export const ScopeJumpSchema = z.object({
+  isJump: z.boolean(),
+  currentScope: z.string().max(200),
+  suggestedScope: z.string().max(200),
+  confidence: z.number().min(0).max(1),
+});
+
+// ─── Story 6.7: Natural Language Query ───────────────────────────────────────
+
+export const NLQIntentSchema = z.object({
+  keywords: z.array(z.string().max(100)).max(10),
+  unitTypes: z
+    .array(
+      z.enum([
+        "claim",
+        "question",
+        "evidence",
+        "counterargument",
+        "observation",
+        "idea",
+        "definition",
+        "assumption",
+        "action",
+      ])
+    )
+    .optional(),
+  summary: z.string().max(300),
+});

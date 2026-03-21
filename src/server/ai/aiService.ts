@@ -20,6 +20,8 @@ import {
   NextStepsSchema,
   ExtractedTermsSchema,
   StanceClassificationSchema,
+  ScopeJumpSchema,
+  NLQIntentSchema,
 } from "./schemas";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -1288,6 +1290,129 @@ Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit 
 
       logger.info({ stance: result.stance, confidence: result.confidence }, "Stance classified");
       return result;
+    },
+
+    // ─── Story 5.11: Scope Jump Detection ────────────────────────────────────
+
+    /**
+     * Detect if incoming text is a scope jump relative to existing context units.
+     */
+    async detectScopeJump(
+      text: string,
+      existingUnits: Array<{ content: string; unitType: string }>,
+      ctx: AIServiceContext
+    ): Promise<{ isJump: boolean; currentScope: string; suggestedScope: string; confidence: number }> {
+      if (existingUnits.length === 0) {
+        return { isJump: false, currentScope: "", suggestedScope: "", confidence: 0 };
+      }
+
+      const sample = existingUnits
+        .slice(0, 10)
+        .map((u) => `- (${u.unitType}) "${u.content.slice(0, 100)}"`)
+        .join("\n");
+
+      const prompt = `You are analyzing whether a new thought belongs to the same topic as an existing set of thoughts.
+
+EXISTING THOUGHTS (sample):
+${sample}
+
+NEW TEXT: "${text.slice(0, 300)}"
+
+Determine:
+1. What topic/scope do the existing thoughts cover? (currentScope — concise phrase)
+2. What topic/scope does the new text cover? (suggestedScope — concise phrase)
+3. Is the new text a significant topic shift? (isJump — true only if clearly different, not just a subtopic)
+4. How confident are you? (confidence 0-1)`;
+
+      try {
+        const result = await provider.generateStructured<{
+          isJump: boolean;
+          currentScope: string;
+          suggestedScope: string;
+          confidence: number;
+        }>(prompt, {
+          temperature: 0.2,
+          maxTokens: 256,
+          zodSchema: ScopeJumpSchema,
+          schema: {
+            name: "ScopeJump",
+            description: "Scope jump detection result",
+            properties: {
+              isJump: { type: "boolean" },
+              currentScope: { type: "string", maxLength: 200 },
+              suggestedScope: { type: "string", maxLength: 200 },
+              confidence: { type: "number", minimum: 0, maximum: 1 },
+            },
+            required: ["isJump", "currentScope", "suggestedScope", "confidence"],
+          },
+        });
+
+        logger.info({ isJump: result.isJump, confidence: result.confidence }, "Scope jump detection completed");
+        return result;
+      } catch {
+        return { isJump: false, currentScope: "", suggestedScope: "", confidence: 0 };
+      }
+    },
+
+    // ─── Story 6.7: Natural Language Query Intent Extraction ─────────────────
+
+    /**
+     * Extract search intent from a natural language query.
+     */
+    async extractNLQIntent(
+      query: string,
+      ctx: AIServiceContext
+    ): Promise<{ keywords: string[]; unitTypes?: string[]; summary: string }> {
+      const prompt = `Extract search intent from this natural language query about a knowledge base of thought units.
+
+Query: "${query.slice(0, 300)}"
+
+Thought unit types available: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
+
+Extract:
+1. keywords — key terms to search for (2-8 words/phrases)
+2. unitTypes — relevant unit types if the query implies specific types (optional, omit if not implied)
+3. summary — one sentence describing what the user is looking for`;
+
+      try {
+        const result = await provider.generateStructured<{
+          keywords: string[];
+          unitTypes?: string[];
+          summary: string;
+        }>(prompt, {
+          temperature: 0.2,
+          maxTokens: 256,
+          zodSchema: NLQIntentSchema,
+          schema: {
+            name: "NLQIntent",
+            description: "Extracted intent from a natural language query",
+            properties: {
+              keywords: { type: "array", items: { type: "string", maxLength: 100 }, maxItems: 10 },
+              unitTypes: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: [
+                    "claim", "question", "evidence", "counterargument",
+                    "observation", "idea", "definition", "assumption", "action",
+                  ],
+                },
+              },
+              summary: { type: "string", maxLength: 300 },
+            },
+            required: ["keywords", "summary"],
+          },
+        });
+
+        logger.info({ keywordCount: result.keywords.length }, "NLQ intent extracted");
+        return result;
+      } catch {
+        // Fallback: treat the whole query as keywords
+        return {
+          keywords: query.split(/\s+/).filter((w) => w.length > 2).slice(0, 8),
+          summary: `Search for: ${query}`,
+        };
+      }
     },
 
     /**

@@ -35,6 +35,41 @@ const RELATION_TYPE_COLORS: Record<string, string> = {
   questions: "#F97316",
 };
 
+// ─── Relation type → purpose category ─────────────────────────────
+// Maps each system relation type name to its purpose category.
+// Argument: solid thick lines | Creative/Research: dashed lines | Structural: dotted lighter lines
+
+type RelationCategory = "argument" | "creative_research" | "structure_containment";
+
+const RELATION_TYPE_CATEGORY: Record<string, RelationCategory> = {
+  // argument
+  supports: "argument",
+  contradicts: "argument",
+  derives_from: "argument",
+  expands: "argument",
+  references: "argument",
+  exemplifies: "argument",
+  defines: "argument",
+  questions: "argument",
+  // creative_research
+  inspires: "creative_research",
+  echoes: "creative_research",
+  transforms_into: "creative_research",
+  foreshadows: "creative_research",
+  parallels: "creative_research",
+  contextualizes: "creative_research",
+  operationalizes: "creative_research",
+  // structure_containment
+  contains: "structure_containment",
+  presupposes: "structure_containment",
+  defined_by: "structure_containment",
+  grounded_in: "structure_containment",
+  instantiates: "structure_containment",
+  precedes: "structure_containment",
+  supersedes: "structure_containment",
+  complements: "structure_containment",
+};
+
 const NODE_RADIUS = 6;
 const FOCUS_RING_RADIUS = NODE_RADIUS + 4;
 const FOCUS_RING_COLOR = "#FFFFFF";
@@ -401,14 +436,34 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         const edgeColor =
           RELATION_TYPE_COLORS[link.type] ?? "rgba(156, 163, 175, 1)";
 
+        // Determine visual style based on purpose category
+        const category = RELATION_TYPE_CATEGORY[link.type] ?? "argument";
+        let lineDash: number[];
+        let lineWidth: number;
+        let edgeAlpha: number;
+        if (category === "argument") {
+          lineDash = [];        // solid
+          lineWidth = 1.8;
+          edgeAlpha = 0.7;
+        } else if (category === "creative_research") {
+          lineDash = [6, 4];   // dashed
+          lineWidth = 1.2;
+          edgeAlpha = 0.55;
+        } else {
+          // structure_containment
+          lineDash = [2, 3];   // dotted
+          lineWidth = 1;
+          edgeAlpha = 0.4;
+        }
+
         if (link.isLoopback) {
           const loopRadius = NODE_RADIUS * 3;
           ctx.beginPath();
           ctx.arc(source.x, source.y - loopRadius, loopRadius, 0, Math.PI * 2);
-          ctx.setLineDash([4, 3]);
+          ctx.setLineDash(lineDash.length ? lineDash : [4, 3]);
           ctx.strokeStyle = edgeColor;
-          ctx.globalAlpha = 0.6;
-          ctx.lineWidth = 1.5;
+          ctx.globalAlpha = edgeAlpha;
+          ctx.lineWidth = lineWidth;
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.globalAlpha = 1;
@@ -416,10 +471,12 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
           ctx.beginPath();
           ctx.moveTo(source.x, source.y);
           ctx.lineTo(target.x, target.y);
+          ctx.setLineDash(lineDash);
           ctx.strokeStyle = edgeColor;
-          ctx.globalAlpha = 0.5;
-          ctx.lineWidth = 1;
+          ctx.globalAlpha = edgeAlpha;
+          ctx.lineWidth = lineWidth;
           ctx.stroke();
+          ctx.setLineDash([]);
           ctx.globalAlpha = 1;
         }
       }
@@ -757,6 +814,31 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         onWheel={handleWheel}
         onKeyDown={handleKeyDown}
       />
+      {/* Edge style legend */}
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-border bg-bg-secondary/90 px-3 py-2 text-xs text-text-secondary backdrop-blur-sm">
+        <div className="mb-1 font-medium text-text-primary">Edge types</div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <svg width="24" height="6" aria-hidden="true">
+              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+            <span>Argument</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="24" height="6" aria-hidden="true">
+              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1.2" strokeDasharray="6 4" />
+            </svg>
+            <span>Creative / Research</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="24" height="6" aria-hidden="true">
+              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1" strokeDasharray="2 3" />
+            </svg>
+            <span>Structural</span>
+          </div>
+        </div>
+      </div>
+
       {/* Hidden live region for keyboard navigation announcements */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {focusedNode

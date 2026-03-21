@@ -161,3 +161,20 @@ export interface DecompositionResult {
   proposals: UnitProposal[];
   relationProposals: DecompositionRelationProposal[];
 }
+
+// ─── Story 5.11: Scope Jump Detection ────────────────────────────────────────
+
+export interface ScopeJumpResult {
+  isJump: boolean;
+  currentScope: string;
+  suggestedScope: string;
+  confidence: number;
+}
+
+// ─── Story 6.7: Natural Language Query ───────────────────────────────────────
+
+export interface NLQIntent {
+  keywords: string[];
+  unitTypes?: string[];
+  summary: string;
+}

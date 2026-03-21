@@ -5,6 +5,7 @@ import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
+import { NudgeBadge } from "./NudgeBadge";
 import { BranchPotentialPopover } from "./BranchPotentialPopover";
 import { DriftIndicator } from "~/components/drift/DriftIndicator";
 import { UnitAIActionsMenu } from "./UnitAIActionsMenu";
@@ -392,6 +393,14 @@ export function UnitCard({
 
             {/* Flow alert */}
             <FlowAlertBadge unitType={unit.unitType} relationCount={unit.relationCount ?? 0} />
+
+            {/* Inline nudge hints (client-side pattern matching, no AI) */}
+            <NudgeBadge
+              unitType={unit.unitType}
+              content={unit.content}
+              lifecycle={unit.lifecycle}
+              relationCount={unit.relationCount ?? 0}
+            />
 
             {/* Drift indicator */}
             <DriftIndicator driftScore={unit.driftScore ?? 0} />

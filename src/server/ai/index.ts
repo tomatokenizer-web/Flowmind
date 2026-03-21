@@ -31,6 +31,8 @@ export type {
   ExtractedTerm,
   StanceClassification,
   ReflectionPrompt,
+  ScopeJumpResult,
+  NLQIntent,
 } from "./types";
 
 // Domain module exports (for direct imports if needed)

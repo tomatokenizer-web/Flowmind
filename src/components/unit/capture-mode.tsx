@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Loader2, AlertCircle } from "lucide-react";
+import { X, Loader2, AlertCircle, AlertTriangle } from "lucide-react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
@@ -44,6 +44,50 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
   } = useCaptureMode({ projectId, contextId });
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // ── Scope jump detection ──────────────────────────────────────────────────
+  const [scopeJumpVisible, setScopeJumpVisible] = React.useState(false);
+  const [scopeJumpMsg, setScopeJumpMsg] = React.useState("");
+  const scopeJumpDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isValidContextId = contextId && uuidRegex.test(contextId);
+
+  const detectScopeJump = api.ai.detectScopeJump.useMutation({
+    onSuccess: (result) => {
+      if (result.isJump && result.confidence >= 0.7) {
+        setScopeJumpMsg(
+          result.suggestedScope
+            ? `This seems like a different topic ("${result.suggestedScope}"). Consider creating a new context or switching.`
+            : "This seems like a different topic. Consider creating a new context or switching to a different one."
+        );
+        setScopeJumpVisible(true);
+      } else {
+        setScopeJumpVisible(false);
+      }
+    },
+  });
+
+  // Trigger scope-jump check 2 s after user stops typing (only in capture mode with a valid context)
+  const handleScopeJumpCheck = React.useCallback(
+    (text: string) => {
+      if (!isValidContextId || text.length < 20) return;
+      if (scopeJumpDebounceRef.current) clearTimeout(scopeJumpDebounceRef.current);
+      scopeJumpDebounceRef.current = setTimeout(() => {
+        detectScopeJump.mutate({ text, contextId });
+      }, 2000);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isValidContextId, contextId]
+  );
+
+  // Clean up debounce timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (scopeJumpDebounceRef.current) clearTimeout(scopeJumpDebounceRef.current);
+    };
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Audio recording state from store
   const showAudioRecorder = useCaptureStore((s) => s.showAudioRecorder);
@@ -121,12 +165,16 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
   // Auto-resize textarea
   const handleInput = React.useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setText(e.target.value);
+      const value = e.target.value;
+      setText(value);
       const el = e.target;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
+      // Reset scope-jump banner when user edits; re-check after debounce
+      setScopeJumpVisible(false);
+      handleScopeJumpCheck(value);
     },
-    [setText],
+    [setText, handleScopeJumpCheck],
   );
 
   // Keyboard handling: Escape to close, Cmd+Enter to submit
@@ -239,6 +287,22 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                 <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Scope jump warning */}
+              {scopeJumpVisible && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+                  <span className="flex-1">{scopeJumpMsg}</span>
+                  <button
+                    type="button"
+                    onClick={() => setScopeJumpVisible(false)}
+                    className="ml-2 text-amber-400 hover:text-amber-600 focus-visible:outline-none"
+                    aria-label="Dismiss scope jump warning"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )}
 

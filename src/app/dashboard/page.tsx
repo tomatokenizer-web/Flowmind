@@ -13,18 +13,16 @@ import { ContextView } from "~/components/context/context-view";
 import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
+import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
-  const utils = api.useUtils();
   const setActiveAssembly = useAssemblyStore((s) => s.setActiveAssembly);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
   const { data: assemblies = [], isLoading } = api.assembly.list.useQuery(
     { projectId: projectId! },
     { enabled: !!projectId },
   );
-  const createAssembly = api.assembly.create.useMutation({
-    onSuccess: (a) => { setActiveAssembly(a.id); void utils.assembly.list.invalidate(); },
-  });
 
   if (assemblyId && projectId) {
     return (
@@ -40,8 +38,7 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
         <h2 className="font-heading text-xl font-semibold text-text-primary">Assemblies</h2>
         {projectId && (
           <button
-            onClick={() => createAssembly.mutate({ name: "New Assembly", projectId })}
-            disabled={createAssembly.isPending}
+            onClick={() => setTemplateDialogOpen(true)}
             className="flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" /> New Assembly
@@ -71,6 +68,15 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
             </button>
           ))}
         </div>
+      )}
+
+      {projectId && (
+        <AssemblyTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          projectId={projectId}
+          onCreated={(id) => setActiveAssembly(id)}
+        />
       )}
     </section>
   );

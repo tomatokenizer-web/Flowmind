@@ -16,6 +16,8 @@ import type {
   NextStepSuggestion,
   ExtractedTerm,
   StanceClassification,
+  ScopeJumpResult,
+  NLQIntent,
 } from "@/server/ai";
 import {
   ExplorationDirectionsSchema,
@@ -85,6 +87,23 @@ const contextUnitsSchema = z.object({
 const stanceClassificationSchema = z.object({
   unitContent: z.string().min(1).max(5000),
   targetContent: z.string().min(1).max(5000),
+  contextId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+});
+
+// ─── Story 5.11: Scope Jump Detection Schema ──────────────────────────────────
+
+const detectScopeJumpSchema = z.object({
+  text: z.string().min(1).max(5000),
+  contextId: z.string().uuid(),
+  sessionId: z.string().uuid().optional(),
+});
+
+// ─── Story 6.7: Natural Language Query Schema ─────────────────────────────────
+
+const naturalLanguageQuerySchema = z.object({
+  query: z.string().min(1).max(500),
+  projectId: z.string().uuid(),
   contextId: z.string().uuid().optional(),
   sessionId: z.string().uuid().optional(),
 });
@@ -689,5 +708,96 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       if (byType.observation?.length) lines.push(`## Observations\n${byType.observation.map((o) => `- ${o}`).join("\n")}`);
 
       return { prompt: lines.join("\n\n"), unitCount: units.length };
+    }),
+
+  // ─── Story 5.11: Scope Jump Detection ────────────────────────────────────
+
+  /**
+   * Detect if the user's input is a significant topic/scope change
+   * compared to the active context's existing units.
+   */
+  detectScopeJump: rateLimitedProcedure
+    .input(detectScopeJumpSchema)
+    .mutation(async ({ ctx, input }): Promise<ScopeJumpResult> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = resolveSessionId(input.sessionId);
+
+      const existingUnits = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { content: true, unitType: true },
+        take: 15,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return aiService.detectScopeJump(input.text, existingUnits, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+    }),
+
+  // ─── Story 6.7: Natural Language Query ───────────────────────────────────
+
+  /**
+   * Convert a natural language question into search parameters,
+   * run the search, and return ranked results with an AI-generated summary.
+   */
+  naturalLanguageQuery: rateLimitedProcedure
+    .input(naturalLanguageQuerySchema)
+    .mutation(async ({ ctx, input }): Promise<{
+      intent: NLQIntent;
+      results: Array<{
+        unitId: string;
+        content: string;
+        unitType: string;
+        relevanceSummary: string;
+        score: number;
+      }>;
+    }> => {
+      const aiService = createAIService(ctx.db);
+      const sessionId = resolveSessionId(input.sessionId);
+
+      // Step 1: Extract intent from natural language
+      const intent = await aiService.extractNLQIntent(input.query, {
+        userId: ctx.session.user.id!,
+        sessionId,
+        contextId: input.contextId,
+      });
+
+      if (intent.keywords.length === 0) {
+        return { intent, results: [] };
+      }
+
+      // Step 2: Run text search with extracted keywords
+      const { createSearchService } = await import("@/server/services/searchService");
+      const searchService = createSearchService(ctx.db);
+
+      const searchQuery = intent.keywords.join(" ");
+      const rawResults = await searchService.search(
+        searchQuery,
+        {
+          projectId: input.projectId,
+          contextId: input.contextId,
+          layers: ["text"],
+          limit: 20,
+        },
+        intent.unitTypes?.length
+          ? { unitTypes: intent.unitTypes as import("@prisma/client").UnitType[] }
+          : undefined,
+      );
+
+      // Step 3: Annotate results with relevance summary (simple — no extra AI call)
+      const results = rawResults.slice(0, 10).map((r) => ({
+        unitId: r.unitId,
+        content: r.content,
+        unitType: r.unitType,
+        relevanceSummary: `Matched "${intent.keywords.slice(0, 3).join(", ")}" in ${r.matchLayer} layer`,
+        score: r.score,
+      }));
+
+      return { intent, results };
     }),
 });

@@ -11,6 +11,8 @@ import {
   Plus,
   LayoutGrid,
   ArrowRight,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -54,6 +56,40 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
+  // NLQ mode — activated when query starts with "?" or "ask:"
+  const isNLQMode = query.startsWith("?") || query.toLowerCase().startsWith("ask:");
+  const nlqQuery = query.startsWith("?")
+    ? query.slice(1).trim()
+    : query.toLowerCase().startsWith("ask:")
+    ? query.slice(4).trim()
+    : "";
+
+  const [nlqResults, setNlqResults] = React.useState<Array<{
+    unitId: string;
+    content: string;
+    unitType: string;
+    relevanceSummary: string;
+    score: number;
+  }>>([]);
+  const [nlqSummary, setNlqSummary] = React.useState("");
+
+  const nlqMutation = api.ai.naturalLanguageQuery.useMutation({
+    onSuccess: (data) => {
+      setNlqResults(data.results);
+      setNlqSummary(data.intent.summary);
+    },
+  });
+
+  // Run NLQ after user stops typing for 600ms (only in NLQ mode with enough text)
+  React.useEffect(() => {
+    if (!isNLQMode || nlqQuery.length < 3 || !projectId) return;
+    const timer = setTimeout(() => {
+      nlqMutation.mutate({ query: nlqQuery, projectId, contextId });
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nlqQuery, isNLQMode, projectId, contextId]);
+
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
   const openPanel = usePanelStore((s) => s.openPanel);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
@@ -93,6 +129,8 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
       setQuery("");
       setDebouncedQuery("");
       setSelectedIndex(0);
+      setNlqResults([]);
+      setNlqSummary("");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
@@ -179,6 +217,26 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
       action: () => void;
     }> = [];
 
+    // NLQ mode — show AI results
+    if (isNLQMode) {
+      for (const r of nlqResults) {
+        result.push({
+          id: r.unitId,
+          label: r.content.slice(0, 60) + (r.content.length > 60 ? "..." : ""),
+          sublabel: r.relevanceSummary,
+          icon: FileText,
+          section: "AI Results",
+          unitType: r.unitType as UnitType,
+          action: () => {
+            setSelectedUnit(r.unitId);
+            openPanel(r.unitId);
+            setOpen(false);
+          },
+        });
+      }
+      return result;
+    }
+
     if (debouncedQuery && searchResults?.length) {
       // Search results
       for (const r of searchResults) {
@@ -247,12 +305,16 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
 
     return result;
   }, [
+    isNLQMode,
+    nlqResults,
     debouncedQuery,
     searchResults,
     recentUnits,
     contexts,
     quickActions,
     setSelectedUnit,
+    openPanel,
+    setOpen,
   ]);
 
   // Keyboard navigation
@@ -333,7 +395,15 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                 >
                   {/* Search input */}
                   <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                    <Search className="h-5 w-5 text-text-tertiary flex-shrink-0" />
+                    {isNLQMode ? (
+                      nlqMutation.isPending ? (
+                        <Loader2 className="h-5 w-5 text-accent-primary flex-shrink-0 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-5 w-5 text-accent-primary flex-shrink-0" aria-hidden="true" />
+                      )
+                    ) : (
+                      <Search className="h-5 w-5 text-text-tertiary flex-shrink-0" />
+                    )}
                     <input
                       ref={inputRef}
                       type="text"
@@ -342,7 +412,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                         setQuery(e.target.value);
                         setSelectedIndex(0);
                       }}
-                      placeholder="Search thoughts, contexts, or actions..."
+                      placeholder="Search… or type ? to ask in natural language"
                       className={cn(
                         "flex-1 bg-transparent text-text-primary",
                         "placeholder:text-text-tertiary",
@@ -356,6 +426,20 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                     </kbd>
                   </div>
 
+                  {/* NLQ mode banner */}
+                  {isNLQMode && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-accent-primary/5 border-b border-border text-xs text-accent-primary">
+                      <Sparkles className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                      <span>
+                        {nlqSummary
+                          ? `AI: ${nlqSummary}`
+                          : nlqQuery.length >= 3
+                          ? "Searching with AI…"
+                          : 'Type your question after "?"'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Results */}
                   <div
                     ref={listRef}
@@ -364,7 +448,13 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                   >
                     {items.length === 0 ? (
                       <div className="py-8 text-center text-text-tertiary">
-                        {debouncedQuery
+                        {isNLQMode
+                          ? nlqMutation.isPending
+                            ? "Searching with AI…"
+                            : nlqQuery.length >= 3
+                            ? "No results found"
+                            : 'Type your question after "?"'
+                          : debouncedQuery
                           ? "No results found"
                           : "Start typing to search..."}
                       </div>
