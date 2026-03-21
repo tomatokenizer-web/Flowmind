@@ -31,6 +31,7 @@ export function useCaptureMode({
   const setPhase = useCaptureStore((s) => s.setPhase);
   const setDecompositionData = useCaptureStore((s) => s.setDecompositionData);
   const resetToInput = useCaptureStore((s) => s.resetToInput);
+  const setErrorMessage = useCaptureStore((s) => s.setErrorMessage);
 
   const utils = api.useUtils();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -58,8 +59,12 @@ export function useCaptureMode({
     },
     onError: (error) => {
       console.error("Decomposition failed:", error);
-      // Fall back to regular submission on error
+      // Fall back to input phase and show error to user
       setPhase("input");
+      const msg = error instanceof Error ? error.message : "AI decomposition failed. Please try again.";
+      setErrorMessage(msg.includes("ANTHROPIC_API_KEY") || msg.includes("API") 
+        ? "AI is unavailable. Check your Anthropic API key in .env." 
+        : "AI decomposition failed. Please try again or use Capture mode.");
     },
   });
 
@@ -73,10 +78,12 @@ export function useCaptureMode({
     if (currentMode === "organize") {
       // In organize mode, trigger AI decomposition
       setPhase("decomposing");
+      // Validate contextId is a real UUID before passing (empty string breaks Zod validation)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validContextId = contextId && uuidRegex.test(contextId) ? contextId : undefined;
       await decomposeMutation.mutateAsync({
         text,
-        // Only pass contextId if it's a valid non-empty UUID
-        contextId: contextId && contextId.length > 0 ? contextId : undefined,
+        contextId: validContextId,
         projectId,
       });
     } else {
@@ -103,12 +110,15 @@ export function useCaptureMode({
     resetToInput();
   }, [resetToInput]);
 
+  const errorMessage = useCaptureStore((s) => s.errorMessage);
+
   return {
     isOpen,
     mode,
     phase,
     pendingText,
     decompositionData,
+    errorMessage,
     isSubmitting: submitMutation.isPending,
     isDecomposing: decomposeMutation.isPending,
     textareaRef,

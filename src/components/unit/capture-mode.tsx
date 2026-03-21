@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, AlertCircle } from "lucide-react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
@@ -32,6 +32,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     phase,
     pendingText,
     decompositionData,
+    errorMessage,
     isSubmitting,
     isDecomposing,
     close,
@@ -232,6 +233,14 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                 disabled={isSubmitting}
                 aria-label="Thought input"
               />
+
+              {/* Error message */}
+              {errorMessage && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
 
               {/* Hint text */}
               <p className="mt-4 text-sm text-[#AEAEB2]">
