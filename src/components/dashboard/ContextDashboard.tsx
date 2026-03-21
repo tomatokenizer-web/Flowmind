@@ -9,6 +9,7 @@ import {
   Link2,
   HelpCircle,
   AlertTriangle,
+  ScanSearch,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -97,6 +98,12 @@ export function ContextDashboard({
 }: ContextDashboardProps) {
   const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
 
+  // Contradiction analysis — triggered on demand
+  const [contradictionCount, setContradictionCount] = React.useState<number | null>(null);
+  const contradictionMutation = api.ai.detectContradictions.useMutation({
+    onSuccess: (pairs) => setContradictionCount(pairs.length),
+  });
+
   // Fetch context statistics
   const { data: context } = api.context.getById.useQuery({ id: contextId });
 
@@ -165,7 +172,6 @@ export function ContextDashboard({
       draft,
       pending,
       questions,
-      contradictions: 0, // TODO: Implement contradiction detection
       topConnected,
     };
   }, [units]);
@@ -226,14 +232,36 @@ export function ContextDashboard({
             color="info"
           />
         )}
-        {stats.contradictions > 0 && (
-          <StatBadge
-            icon={AlertTriangle}
-            label="Contradictions"
-            count={stats.contradictions}
-            color="danger"
-          />
-        )}
+        {/* Contradiction analysis — on-demand */}
+        <div className="inline-flex items-center gap-1.5">
+          {contradictionCount !== null && contradictionCount > 0 && (
+            <StatBadge
+              icon={AlertTriangle}
+              label="Contradictions"
+              count={contradictionCount}
+              color="danger"
+            />
+          )}
+          {contradictionCount !== null && contradictionCount === 0 && (
+            <span className="text-xs text-text-tertiary">No contradictions found</span>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              contradictionMutation.mutate({ contextId })
+            }
+            disabled={contradictionMutation.isPending}
+            title="Scan for contradictions"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+              "text-text-tertiary hover:text-text-secondary hover:bg-bg-secondary",
+              "transition-colors duration-fast disabled:opacity-50",
+            )}
+          >
+            <ScanSearch className="h-3.5 w-3.5" aria-hidden="true" />
+            {contradictionMutation.isPending ? "Analyzing..." : "Analyze"}
+          </button>
+        </div>
       </div>
 
       {/* Top connected units */}

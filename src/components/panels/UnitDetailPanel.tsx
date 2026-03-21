@@ -29,6 +29,7 @@ import { VersionHistory } from "~/components/unit/version-history";
 import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
 import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
 import { ResourceAttachmentStrip, type ResourceAttachment } from "~/components/unit/resource-attachment";
+import { ResourceUploadZone } from "~/components/unit/resource-upload";
 import { AudioDetailView } from "~/components/unit/audio-detail-view";
 import { EmptyState } from "~/components/shared/empty-state";
 import { usePanelStore, type DetailTab } from "~/stores/panel-store";
@@ -73,6 +74,18 @@ interface UnitDetailPanelProps {
 
 // ─── Content Tab ─────────────────────────────────────────────────────
 
+// Helper: derive resourceType from MIME type
+function mimeToResourceType(
+  mime: string,
+): "image" | "audio" | "video" | "code" | "table" | "link" | "diagram" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  if (mime === "text/csv" || mime === "application/vnd.ms-excel") return "table";
+  if (mime === "application/json" || mime.includes("javascript") || mime.includes("typescript")) return "code";
+  return "diagram";
+}
+
 function ContentTab({
   unit,
   onContentChange,
@@ -84,6 +97,43 @@ function ContentTab({
 }) {
   const [localContent, setLocalContent] = useState(unit.content);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const utils = api.useUtils();
+
+  const uploadResource = api.resource.upload.useMutation({
+    onSuccess: () => {
+      void utils.unit.getById.invalidate({ id: unit.id });
+      void utils.resource.getByUnitId.invalidate({ unitId: unit.id });
+      setShowUpload(false);
+      toast.success("File attached successfully");
+    },
+    onError: (err) => {
+      toast.error("Upload failed", { description: err.message });
+    },
+  });
+
+  const handleFilesSelected = useCallback(
+    (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        // dataUrl is "data:<mime>;base64,<data>" — strip the prefix
+        const base64 = dataUrl.split(",")[1] ?? "";
+        uploadResource.mutate({
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          resourceType: mimeToResourceType(file.type),
+          base64,
+          unitId: unit.id,
+        });
+      };
+      reader.readAsDataURL(file);
+    },
+    [unit.id, uploadResource],
+  );
 
   // Sync local content when unit changes
   useEffect(() => {
@@ -187,15 +237,47 @@ function ContentTab({
       </div>
 
       {/* Resources */}
-      {unit.resources && unit.resources.length > 0 && (
-        <div className="space-y-2">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
             <Paperclip className="h-3 w-3" aria-hidden="true" />
             Resources
           </div>
-          <ResourceAttachmentStrip resources={unit.resources} />
+          <button
+            type="button"
+            onClick={() => setShowUpload((v) => !v)}
+            className={cn(
+              "flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+              "border border-border text-text-secondary transition-colors",
+              "hover:bg-bg-hover hover:text-text-primary",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+              showUpload && "bg-bg-secondary",
+            )}
+            aria-label={showUpload ? "Hide upload zone" : "Attach file"}
+          >
+            <Paperclip className="h-3 w-3" aria-hidden="true" />
+            {showUpload ? "Cancel" : "Attach file"}
+          </button>
         </div>
-      )}
+
+        {showUpload && (
+          <div className="space-y-2">
+            <ResourceUploadZone
+              onFilesSelected={handleFilesSelected}
+              multiple={false}
+              disabled={uploadResource.isPending}
+              className="text-xs"
+            />
+            {uploadResource.isPending && (
+              <p className="text-center text-xs text-text-tertiary">Uploading…</p>
+            )}
+          </div>
+        )}
+
+        {unit.resources && unit.resources.length > 0 && (
+          <ResourceAttachmentStrip resources={unit.resources} />
+        )}
+      </div>
 
       {/* Version History */}
       <div className="border-t border-border pt-3">
@@ -359,6 +441,12 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
     { enabled: !!unitId },
   );
 
+  // Fetch custom relation types to merge into the dropdown
+  const { data: customTypes = [] } = api.customRelationType.list.useQuery(
+    { projectId: projectId! },
+    { enabled: !!projectId },
+  );
+
   // Search units to link to
   const { data: searchResults } = api.unit.list.useQuery(
     { projectId: projectId!, limit: 50, lifecycle: "confirmed" },
@@ -402,9 +490,18 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
             onChange={(e) => setRelType(e.target.value)}
             className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary"
           >
-            {RELATION_TYPES.map((t) => (
-              <option key={t} value={t}>{t.replace(/_/g, " ")}</option>
-            ))}
+            <optgroup label="System types">
+              {RELATION_TYPES.map((t) => (
+                <option key={t} value={t}>{t.replace(/_/g, " ")}</option>
+              ))}
+            </optgroup>
+            {customTypes.length > 0 && (
+              <optgroup label="Custom types">
+                {customTypes.map((ct) => (
+                  <option key={ct.id} value={ct.name}>{ct.name.replace(/_/g, " ")}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <input
             type="text"

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { X, Search, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Search, BookOpen, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -87,10 +87,46 @@ export function RelationGlossary({ open, onClose }: RelationGlossaryProps) {
     Set<string>
   >(new Set(Object.keys(CATEGORY_META)));
 
+  // Create custom type form state
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
+  const [newTypeName, setNewTypeName] = React.useState("");
+  const [newTypeDescription, setNewTypeDescription] = React.useState("");
+  const [newTypeScope, setNewTypeScope] = React.useState<"private" | "shared">("shared");
+  const [createError, setCreateError] = React.useState<string | null>(null);
+
+  const utils = api.useUtils();
+
   const { data: stats, isLoading } = api.relationType.stats.useQuery(
     { projectId: projectId ?? undefined },
     { enabled: open },
   );
+
+  const createCustomType = api.customRelationType.create.useMutation({
+    onSuccess: () => {
+      void utils.relationType.stats.invalidate({ projectId: projectId ?? undefined });
+      setShowCreateForm(false);
+      setNewTypeName("");
+      setNewTypeDescription("");
+      setNewTypeScope("shared");
+      setCreateError(null);
+    },
+    onError: (err) => {
+      setCreateError(err.message);
+    },
+  });
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectId || !newTypeName.trim()) return;
+    setCreateError(null);
+    createCustomType.mutate({
+      name: newTypeName.trim().toLowerCase().replace(/\s+/g, "_"),
+      description: newTypeDescription.trim(),
+      projectId,
+      scope: newTypeScope,
+      reusable: true,
+    });
+  };
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {
@@ -342,6 +378,117 @@ export function RelationGlossary({ open, onClose }: RelationGlossaryProps) {
                     );
                   },
                 )
+              )}
+
+              {/* Create custom type section */}
+              {projectId && (
+                <div className="mt-4 border-t border-border pt-4">
+                  {!showCreateForm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateForm(true)}
+                      className={cn(
+                        "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border",
+                        "py-3 text-sm text-text-secondary transition-colors",
+                        "hover:border-accent-primary/50 hover:bg-bg-hover hover:text-text-primary",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+                      )}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      Create custom type
+                    </button>
+                  ) : (
+                    <form onSubmit={handleCreateSubmit} className="space-y-3 rounded-xl border border-border bg-bg-secondary p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                        New custom relation type
+                      </p>
+
+                      {/* Name */}
+                      <div className="space-y-1">
+                        <label htmlFor="custom-type-name" className="text-xs text-text-secondary">
+                          Name <span className="text-accent-error">*</span>
+                        </label>
+                        <input
+                          id="custom-type-name"
+                          type="text"
+                          value={newTypeName}
+                          onChange={(e) => setNewTypeName(e.target.value)}
+                          placeholder="e.g. critiques, extends, motivates"
+                          required
+                          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+                        />
+                        <p className="text-[11px] text-text-tertiary">
+                          Spaces will become underscores. Must not conflict with system types.
+                        </p>
+                      </div>
+
+                      {/* Description */}
+                      <div className="space-y-1">
+                        <label htmlFor="custom-type-desc" className="text-xs text-text-secondary">
+                          Description
+                        </label>
+                        <input
+                          id="custom-type-desc"
+                          type="text"
+                          value={newTypeDescription}
+                          onChange={(e) => setNewTypeDescription(e.target.value)}
+                          placeholder="What does this relation express?"
+                          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+                        />
+                      </div>
+
+                      {/* Scope */}
+                      <div className="space-y-1">
+                        <label htmlFor="custom-type-scope" className="text-xs text-text-secondary">
+                          Scope
+                        </label>
+                        <select
+                          id="custom-type-scope"
+                          value={newTypeScope}
+                          onChange={(e) => setNewTypeScope(e.target.value as "private" | "shared")}
+                          className="w-full rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+                        >
+                          <option value="shared">Shared — visible to all collaborators</option>
+                          <option value="private">Private — only visible to you</option>
+                        </select>
+                      </div>
+
+                      {/* Error */}
+                      {createError && (
+                        <p className="rounded-lg border border-accent-error/20 bg-red-50 px-3 py-2 text-xs text-accent-error">
+                          {createError}
+                        </p>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCreateForm(false);
+                            setCreateError(null);
+                            setNewTypeName("");
+                            setNewTypeDescription("");
+                          }}
+                          className="rounded-lg px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={!newTypeName.trim() || createCustomType.isPending}
+                          className={cn(
+                            "rounded-lg bg-accent-primary px-3 py-1.5 text-sm font-medium text-white",
+                            "hover:bg-accent-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+                            "disabled:cursor-not-allowed disabled:opacity-50",
+                          )}
+                        >
+                          {createCustomType.isPending ? "Creating…" : "Create"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>

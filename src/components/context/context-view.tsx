@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { ChevronDown, Layers, Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, Layers, Loader2, Merge, Scissors, Sparkles } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
@@ -21,6 +21,8 @@ import { AIInsightsPanel } from "~/components/ai/AIInsightsPanel";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
 import { AddUnitToContext } from "./add-unit-to-context";
+import { ContextSplitDialog } from "./context-split-dialog";
+import { ContextMergeDialog } from "./context-merge-dialog";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -122,6 +124,22 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   }, [viewStateId]);
 
   const [showAiInsights, setShowAiInsights] = React.useState(false);
+
+  // Split / Merge dialog state
+  const [splitOpen, setSplitOpen] = React.useState(false);
+  const [mergeOpen, setMergeOpen] = React.useState(false);
+  const [mergeTargetId, setMergeTargetId] = React.useState<string>("");
+  const [mergeTargetName, setMergeTargetName] = React.useState<string>("");
+
+  // Fetch sibling contexts for the merge picker (only when a context is active and projectId is known)
+  const { data: allContexts } = api.context.list.useQuery(
+    { projectId: projectId! },
+    { enabled: !!projectId && !!activeContextId },
+  );
+  const siblingContexts = React.useMemo(
+    () => (allContexts ?? []).filter((c: { id: string }) => c.id !== activeContextId),
+    [allContexts, activeContextId],
+  );
 
   const { briefing, isLoading: isBriefingLoading } =
     useContextBriefing(activeContextId);
@@ -297,8 +315,63 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               unitCount={context._count?.unitContexts ?? 0}
               perspectiveCount={context._count?.perspectives ?? 0}
             />
-            {/* Add Unit to Context button */}
-            <div className="flex justify-end">
+            {/* Context action buttons */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {/* Split */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSplitOpen(true)}
+                  className="gap-1.5 text-text-secondary"
+                  title="Split this context into two sub-contexts"
+                >
+                  <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
+                  Split
+                </Button>
+
+                {/* Merge — only available when there are other contexts */}
+                {siblingContexts.length > 0 && (
+                  <div className="relative flex items-center">
+                    <Merge
+                      className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-text-tertiary"
+                      aria-hidden="true"
+                    />
+                    <select
+                      aria-label="Select context to merge with"
+                      className={cn(
+                        "h-8 cursor-pointer rounded-md border border-border bg-bg-primary py-1 pl-7 pr-2",
+                        "text-xs text-text-secondary outline-none transition-colors duration-fast",
+                        "focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20",
+                        "hover:bg-bg-secondary",
+                      )}
+                      value=""
+                      onChange={(e) => {
+                        const target = siblingContexts.find(
+                          (c: { id: string }) => c.id === e.target.value,
+                        );
+                        if (target) {
+                          setMergeTargetId(target.id);
+                          setMergeTargetName((target as { name: string }).name);
+                          setMergeOpen(true);
+                          e.target.value = "";
+                        }
+                      }}
+                    >
+                      <option value="" disabled>
+                        Merge with...
+                      </option>
+                      {siblingContexts.map((c: { id: string; name: string }) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Add Unit to Context button */}
               <AddUnitToContext
                 contextId={activeContextId}
                 projectId={projectId!}
@@ -423,6 +496,30 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         onDismiss={handleDismissSelection}
         disabled={lifecycleMutation.isPending}
       />
+
+      {/* Split dialog */}
+      {activeContextId && projectId && (
+        <ContextSplitDialog
+          open={splitOpen}
+          onOpenChange={setSplitOpen}
+          contextId={activeContextId}
+          contextName={context?.name ?? ""}
+          projectId={projectId}
+        />
+      )}
+
+      {/* Merge dialog */}
+      {activeContextId && projectId && mergeTargetId && (
+        <ContextMergeDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          contextIdA={activeContextId}
+          contextNameA={context?.name ?? ""}
+          contextIdB={mergeTargetId}
+          contextNameB={mergeTargetName}
+          projectId={projectId}
+        />
+      )}
     </div>
   );
 }

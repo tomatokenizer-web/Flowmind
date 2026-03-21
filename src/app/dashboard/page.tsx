@@ -12,6 +12,7 @@ import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
 import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
+import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
@@ -114,6 +115,12 @@ export default function DashboardPage() {
 
   return (
     <>
+      {/* Completeness Compass — top-right of the context view */}
+      {projectId && (
+        <div className="flex justify-end px-4 pt-3">
+          <CompletenessCompass />
+        </div>
+      )}
       <ContextView projectId={projectId} />
       {projectId && (
         <CreateContextDialog
