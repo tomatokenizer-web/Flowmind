@@ -687,27 +687,70 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
     }),
 
   generatePrompt: protectedProcedure
-    .input(z.object({ unitIds: z.array(z.string().uuid()), contextId: z.string().uuid().optional() }))
+    .input(
+      z.object({
+        contextId: z.string().uuid(),
+        format: z.enum(["chat", "system", "structured"]).default("chat"),
+        unitIds: z.array(z.string().uuid()).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const units = await ctx.db.unit.findMany({
-        where: { id: { in: input.unitIds } },
-        select: { content: true, unitType: true },
+      const userId = ctx.session.user.id!;
+
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId },
+        select: { id: true, name: true, description: true, projectId: true },
       });
+      if (!context) throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
 
-      const byType = units.reduce((acc, u) => {
-        acc[u.unitType] = acc[u.unitType] ?? [];
-        acc[u.unitType]!.push(u.content);
-        return acc;
-      }, {} as Record<string, string[]>);
+      const project = await ctx.db.project.findFirst({
+        where: { id: context.projectId, userId },
+        select: { id: true },
+      });
+      if (!project) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
 
-      const lines: string[] = [];
-      if (byType.claim?.length) lines.push(`## Key Claims\n${byType.claim.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-      if (byType.evidence?.length) lines.push(`## Evidence\n${byType.evidence.map((e) => `- ${e}`).join("\n")}`);
-      if (byType.question?.length) lines.push(`## Open Questions\n${byType.question.map((q) => `- ${q}`).join("\n")}`);
-      if (byType.assumption?.length) lines.push(`## Assumptions\n${byType.assumption.map((a) => `- ${a}`).join("\n")}`);
-      if (byType.observation?.length) lines.push(`## Observations\n${byType.observation.map((o) => `- ${o}`).join("\n")}`);
+      let units: Array<{ id: string; content: string; unitType: string }>;
+      if (input.unitIds && input.unitIds.length > 0) {
+        const rows = await ctx.db.unit.findMany({
+          where: { id: { in: input.unitIds }, userId },
+          select: { id: true, content: true, unitType: true },
+        });
+        units = rows.map((u) => ({ ...u, unitType: u.unitType as string }));
+      } else {
+        const rows = await ctx.db.unitContext.findMany({
+          where: { contextId: input.contextId },
+          select: { unit: { select: { id: true, content: true, unitType: true } } },
+        });
+        units = rows.map((r) => ({ ...r.unit, unitType: r.unit.unitType as string }));
+      }
 
-      return { prompt: lines.join("\n\n"), unitCount: units.length };
+      const byType: Record<string, string[]> = {};
+      for (const u of units) {
+        if (!byType[u.unitType]) byType[u.unitType] = [];
+        byType[u.unitType]!.push(u.content);
+      }
+
+      const sections: string[] = [];
+      const background = context.description ?? context.name;
+      sections.push(`# ${context.name}\n\n## Background\n${background}`);
+      if (byType["claim"]?.length) sections.push(`## Key Claims\n${byType["claim"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+      if (byType["evidence"]?.length) sections.push(`## Evidence\n${byType["evidence"].map((e, i) => `${i + 1}. ${e}`).join("\n")}`);
+      if (byType["observation"]?.length) sections.push(`## Observations\n${byType["observation"].map((o, i) => `${i + 1}. ${o}`).join("\n")}`);
+      if (byType["counterargument"]?.length) sections.push(`## Counter-arguments\n${byType["counterargument"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+      if (byType["assumption"]?.length) sections.push(`## Constraints & Assumptions\n${byType["assumption"].map((a, i) => `${i + 1}. ${a}`).join("\n")}`);
+      if (byType["question"]?.length) sections.push(`## Open Questions\n${byType["question"].map((q, i) => `${i + 1}. ${q}`).join("\n")}`);
+
+      const base = sections.join("\n\n");
+      let prompt: string;
+      if (input.format === "system") {
+        prompt = `You are working with the following structured context. Use it to inform your responses.\n\n${base}`;
+      } else if (input.format === "structured") {
+        prompt = `<context>\n${base}\n</context>`;
+      } else {
+        prompt = `Here is my structured thinking on this topic. Please review it and help me think through it further.\n\n${base}`;
+      }
+
+      return { prompt, unitCount: units.length, format: input.format };
     }),
 
   // ─── Story 5.11: Scope Jump Detection ────────────────────────────────────

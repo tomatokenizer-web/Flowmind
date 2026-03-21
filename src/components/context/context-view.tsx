@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { ChevronDown, Layers, Loader2, Merge, Scissors, Sparkles } from "lucide-react";
+import { ChevronDown, Layers, Loader2, Merge, Scissors, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
@@ -18,6 +18,7 @@ import { EmptyState } from "~/components/shared/empty-state";
 import { BulkApprovalBar } from "~/components/unit/bulk-approval-bar";
 import { Button } from "~/components/ui/button";
 import { AIInsightsPanel } from "~/components/ai/AIInsightsPanel";
+import { PromptGeneratorDialog } from "~/components/ai/PromptGeneratorDialog";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
 import { AddUnitToContext } from "./add-unit-to-context";
@@ -125,9 +126,10 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   const [showAiInsights, setShowAiInsights] = React.useState(false);
 
-  // Split / Merge dialog state
+  // Split / Merge / Prompt dialog state
   const [splitOpen, setSplitOpen] = React.useState(false);
   const [mergeOpen, setMergeOpen] = React.useState(false);
+  const [promptDialogOpen, setPromptDialogOpen] = React.useState(false);
   const [mergeTargetId, setMergeTargetId] = React.useState<string>("");
   const [mergeTargetName, setMergeTargetName] = React.useState<string>("");
 
@@ -330,6 +332,18 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                   Split
                 </Button>
 
+                {/* Generate AI Prompt */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPromptDialogOpen(true)}
+                  className="gap-1.5 text-text-secondary"
+                  title="Generate an AI prompt from this context's units"
+                >
+                  <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  AI Prompt
+                </Button>
+
                 {/* Merge — only available when there are other contexts */}
                 {siblingContexts.length > 0 && (
                   <div className="relative flex items-center">
@@ -518,6 +532,15 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           contextIdB={mergeTargetId}
           contextNameB={mergeTargetName}
           projectId={projectId}
+        />
+      )}
+
+      {/* Prompt generator dialog */}
+      {activeContextId && (
+        <PromptGeneratorDialog
+          open={promptDialogOpen}
+          onOpenChange={setPromptDialogOpen}
+          contextId={activeContextId}
         />
       )}
     </div>

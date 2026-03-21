@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen } from "lucide-react";
+import { Plus, BookOpen, GitCompare } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
@@ -14,11 +14,14 @@ import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
+import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
   const setActiveAssembly = useAssemblyStore((s) => s.setActiveAssembly);
   const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
+  const [compareDialogOpen, setCompareDialogOpen] = React.useState(false);
+  const [compareIds, setCompareIds] = React.useState<[string, string] | null>(null);
   const { data: assemblies = [], isLoading } = api.assembly.list.useQuery(
     { projectId: projectId! },
     { enabled: !!projectId },
@@ -58,14 +61,32 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {assemblies.map((a: { id: string; name: string; updatedAt: Date; _count?: { items: number } }) => (
-            <button key={a.id} type="button" onClick={() => setActiveAssembly(a.id)}
-              className="flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 text-left hover:shadow-hover transition-shadow">
-              <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-accent-primary" />
+            <div key={a.id} className="group flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 hover:shadow-hover transition-shadow">
+              <button type="button" onClick={() => setActiveAssembly(a.id)} className="flex items-center gap-2 text-left min-w-0">
+                <BookOpen className="h-4 w-4 text-accent-primary shrink-0" />
                 <span className="font-medium text-text-primary truncate">{a.name}</span>
+              </button>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-text-tertiary">{a._count?.items ?? 0} units</span>
+                {assemblies.length >= 2 && (
+                  <button
+                    type="button"
+                    title="Compare with another assembly"
+                    onClick={() => {
+                      const other = assemblies.find((b: { id: string }) => b.id !== a.id);
+                      if (other) {
+                        setCompareIds([a.id, other.id]);
+                        setCompareDialogOpen(true);
+                      }
+                    }}
+                    className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-text-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-hover hover:text-accent-primary"
+                  >
+                    <GitCompare className="h-3 w-3" />
+                    Compare
+                  </button>
+                )}
               </div>
-              <span className="text-xs text-text-tertiary">{a._count?.items ?? 0} units</span>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -76,6 +97,16 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
           onOpenChange={setTemplateDialogOpen}
           projectId={projectId}
           onCreated={(id) => setActiveAssembly(id)}
+        />
+      )}
+
+      {compareIds && (
+        <AssemblyCompareDialog
+          open={compareDialogOpen}
+          onOpenChange={setCompareDialogOpen}
+          initialAssemblyAId={compareIds[0]}
+          initialAssemblyBId={compareIds[1]}
+          assemblies={assemblies as Array<{ id: string; name: string }>}
         />
       )}
     </section>

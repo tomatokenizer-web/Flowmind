@@ -22,6 +22,135 @@ const FORMATS: { id: ExportFormat; label: string; icon: React.ComponentType<{ cl
   { id: "social", label: "Social", icon: Hash, description: "Short-form social content" },
 ];
 
+// ─── Unit-type conversion rules ───────────────────────────────────────────────
+// Applied client-side to add semantic formatting based on unit type.
+type UnitType =
+  | "claim"
+  | "evidence"
+  | "question"
+  | "counterargument"
+  | "observation"
+  | "definition"
+  | "assumption"
+  | "action"
+  | "idea"
+  | string;
+
+function applyUnitTypeFormatting(content: string, unitType: UnitType, format: ExportFormat): string {
+  if (format === "presentation" || format === "social") {
+    // Presentation / social: prepend a type label and leave content as-is
+    const label: Record<string, string> = {
+      claim: "CLAIM",
+      evidence: "EVIDENCE",
+      question: "Q",
+      counterargument: "COUNTER",
+      observation: "OBS",
+      definition: "DEF",
+      assumption: "ASSUMPTION",
+      action: "ACTION",
+      idea: "IDEA",
+    };
+    const tag = label[unitType];
+    return tag ? `[${tag}] ${content}` : content;
+  }
+
+  // essay / email: rich formatting
+  switch (unitType as UnitType) {
+    case "claim":
+      // Thesis statement style — bold heading
+      return `**${content}**`;
+
+    case "evidence":
+      // Supporting paragraph with citation cue
+      return `${content}\n  — [source]`;
+
+    case "question":
+      // Italicised open question
+      return `_${content}_`;
+
+    case "counterargument":
+      // "However,…" contrasting paragraph
+      return content.toLowerCase().startsWith("however")
+        ? content
+        : `However, ${content.charAt(0).toLowerCase()}${content.slice(1)}`;
+
+    case "observation":
+      // Plain paragraph — no prefix
+      return content;
+
+    case "definition": {
+      // Bold term extracted from leading word(s) + colon, or wrap entire content
+      const colonIdx = content.indexOf(":");
+      if (colonIdx > 0) {
+        const term = content.slice(0, colonIdx).trim();
+        const def = content.slice(colonIdx + 1).trim();
+        return `**${term}**: ${def}`;
+      }
+      return `**${content}**`;
+    }
+
+    case "assumption":
+      return content.toLowerCase().startsWith("assuming")
+        ? content
+        : `Assuming that ${content.charAt(0).toLowerCase()}${content.slice(1)}`;
+
+    case "action":
+      return `- [ ] ${content}`;
+
+    case "idea":
+      return `> **Idea:** ${content}`;
+
+    default:
+      return content;
+  }
+}
+
+/**
+ * Post-process exported content: replace raw unit content with type-aware
+ * formatting. The server returns plain content; we re-format by pairing with
+ * the ordered unit list from the assembly query.
+ */
+function applyTypeConversions(
+  rawContent: string,
+  units: Array<{ content: string; type: string }>,
+  format: ExportFormat,
+): string {
+  if (units.length === 0) return rawContent;
+
+  if (format === "essay") {
+    return units
+      .map((u) => applyUnitTypeFormatting(u.content, u.type, format))
+      .join("\n\n");
+  }
+
+  if (format === "email") {
+    const actions = units.filter((u) => u.type === "action");
+    const others = units.filter((u) => u.type !== "action");
+    let out = `Key Points:\n${others.map((u) => `• ${applyUnitTypeFormatting(u.content, u.type, format)}`).join("\n")}`;
+    if (actions.length > 0) {
+      out += `\n\nAction Items:\n${actions.map((u) => applyUnitTypeFormatting(u.content, u.type, format)).join("\n")}`;
+    }
+    return out;
+  }
+
+  if (format === "presentation") {
+    return units
+      .map((u, i) => `Slide ${i + 1}\n• ${applyUnitTypeFormatting(u.content, u.type, format)}`)
+      .join("\n\n");
+  }
+
+  if (format === "social") {
+    return units
+      .map((u) => {
+        const formatted = applyUnitTypeFormatting(u.content, u.type, format);
+        return formatted.length > 240 ? formatted.slice(0, 237) + "..." : formatted;
+      })
+      .join("\n\n---\n\n");
+  }
+
+  return rawContent;
+}
+
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,21 +162,48 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
   const [format, setFormat] = React.useState<ExportFormat>("essay");
   const [copied, setCopied] = React.useState(false);
 
-  const { data: exportData, isLoading } = api.assembly.export.useQuery(
+  // Fetch raw export content (server-side formatting)
+  const { data: exportData, isLoading: exportLoading } = api.assembly.export.useQuery(
     { assemblyId, format },
     { enabled: open },
   );
 
+  // Fetch ordered unit list with types for client-side type conversions
+  const { data: assembly, isLoading: assemblyLoading } = api.assembly.getById.useQuery(
+    { id: assemblyId },
+    { enabled: open },
+  );
+
+  const isLoading = exportLoading || assemblyLoading;
+
+  // Build ordered unit list from assembly items
+  const orderedUnits = React.useMemo(() => {
+    if (!assembly?.items) return [];
+    return assembly.items
+      .filter((item) => item.unit !== null)
+      .sort((a, b) => a.position - b.position)
+      .map((item) => ({
+        content: item.unit!.content as string,
+        type: item.unit!.unitType as string,
+      }));
+  }, [assembly?.items]);
+
+  // Apply client-side unit-type formatting
+  const formattedContent = React.useMemo(() => {
+    if (!exportData?.content) return "";
+    return applyTypeConversions(exportData.content, orderedUnits, format);
+  }, [exportData?.content, orderedUnits, format]);
+
   const handleCopy = async () => {
-    if (!exportData?.content) return;
-    await navigator.clipboard.writeText(exportData.content);
+    if (!formattedContent) return;
+    await navigator.clipboard.writeText(formattedContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
-    if (!exportData?.content) return;
-    const blob = new Blob([exportData.content], { type: "text/plain" });
+    if (!formattedContent) return;
+    const blob = new Blob([formattedContent], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -108,7 +264,7 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
               </div>
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-sm text-text-primary leading-relaxed">
-                {exportData?.content ?? "No content to export"}
+                {formattedContent || "No content to export"}
               </pre>
             )}
           </div>
@@ -130,11 +286,11 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Button variant="ghost" onClick={handleCopy} disabled={!exportData?.content}>
+            <Button variant="ghost" onClick={handleCopy} disabled={!formattedContent}>
               <Copy className="h-4 w-4" />
               {copied ? "Copied!" : "Copy"}
             </Button>
-            <Button onClick={handleDownload} disabled={!exportData?.content}>
+            <Button onClick={handleDownload} disabled={!formattedContent}>
               <Download className="h-4 w-4" />
               Download
             </Button>
