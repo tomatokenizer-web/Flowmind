@@ -68,6 +68,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
     onSuccess: () => void utils.unit.list.invalidate({ projectId: projectId! }),
+    onError: (err) => toast.error("Failed to update unit", { description: err.message }),
   });
 
   const handleLifecycleAction = React.useCallback(
@@ -80,20 +81,30 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   // Bulk approve all selected units
   const handleBulkApprove = React.useCallback(async () => {
-    const promises = Array.from(selectedUnitIds).map((id) =>
-      lifecycleMutation.mutateAsync({ id, targetState: "confirmed" })
-    );
-    await Promise.all(promises);
-    setSelectedUnitIds(new Set());
+    try {
+      const promises = Array.from(selectedUnitIds).map((id) =>
+        lifecycleMutation.mutateAsync({ id, targetState: "confirmed" })
+      );
+      await Promise.all(promises);
+      setSelectedUnitIds(new Set());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Bulk approve failed", { description: msg });
+    }
   }, [selectedUnitIds, lifecycleMutation]);
 
   // Bulk reject all selected units
   const handleBulkReject = React.useCallback(async () => {
-    const promises = Array.from(selectedUnitIds).map((id) =>
-      lifecycleMutation.mutateAsync({ id, targetState: "archived" })
-    );
-    await Promise.all(promises);
-    setSelectedUnitIds(new Set());
+    try {
+      const promises = Array.from(selectedUnitIds).map((id) =>
+        lifecycleMutation.mutateAsync({ id, targetState: "archived" })
+      );
+      await Promise.all(promises);
+      setSelectedUnitIds(new Set());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Bulk reject failed", { description: msg });
+    }
   }, [selectedUnitIds, lifecycleMutation]);
 
   // Clear multi-selection

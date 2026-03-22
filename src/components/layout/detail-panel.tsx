@@ -8,6 +8,7 @@ import { useLayoutStore } from "~/stores/layout-store";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
 import type { MetadataValues } from "~/components/unit/metadata-editor";
+import { toast } from "~/lib/toast";
 
 const PANEL_WIDTH = 360;
 
@@ -51,6 +52,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
   const utils = api.useUtils();
   const updateMutation = api.unit.update.useMutation({
     onSuccess: () => { void utils.unit.getById.invalidate({ id: selectedUnitId! }); },
+    onError: (err) => { toast.error("Failed to save changes", { description: err.message }); },
   });
 
   const handleContentChange = React.useCallback((content: string) => {
@@ -68,6 +70,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
 
   const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
     onSuccess: () => { void utils.unit.getById.invalidate({ id: selectedUnitId! }); },
+    onError: (err) => { toast.error("Failed to update lifecycle", { description: err.message }); },
   });
 
   const handleLifecycleChange = React.useCallback((lifecycle: string) => {

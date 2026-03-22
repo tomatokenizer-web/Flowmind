@@ -573,10 +573,14 @@ function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: 
   const utils = api.useUtils();
 
   const suggestTypeMutation = api.ai.suggestType.useMutation({
-    onError: () => { /* silent — user sees nothing happened, can retry */ },
+    onError: (err) => {
+      toast.error("AI suggestion failed", { description: err.message });
+    },
   });
   const refineMutation = api.ai.refineUnit.useMutation({
-    onError: () => { /* silent fallback */ },
+    onError: (err) => {
+      toast.error("AI refinement failed", { description: err.message });
+    },
   });
   const updateMutation = api.unit.update.useMutation({
     onSuccess: (updated) => {
@@ -585,7 +589,9 @@ function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: 
       onContentChange?.(updated.content);
       refineMutation.reset();
     },
-    onError: () => { /* silent */ },
+    onError: (err) => {
+      toast.error("Failed to save changes", { description: err.message });
+    },
   });
 
   return (
