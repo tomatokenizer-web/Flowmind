@@ -681,8 +681,16 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
           },
         });
         return { original: input.content, refined: result.refined, changes: result.changes };
-      } catch {
-        return { original: input.content, refined: input.content, changes: [] };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[refineUnit] AI call failed:", msg);
+        if (msg.includes("credit") || msg.includes("balance") || msg.includes("billing")) {
+          throw new TRPCError({ code: "PAYMENT_REQUIRED", message: "Anthropic API credit issue. Check your billing." });
+        }
+        if (msg.includes("authentication") || msg.includes("401") || msg.includes("invalid.*key")) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Anthropic API key." });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI refinement failed: ${msg}` });
       }
     }),
 
