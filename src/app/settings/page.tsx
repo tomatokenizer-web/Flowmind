@@ -506,7 +506,9 @@ function PrivacyPanel() {
         const a = document.createElement("a");
         a.href = url;
         a.download = `flowmind-export-${date}.json`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
         // Markdown format
@@ -581,7 +583,9 @@ function PrivacyPanel() {
         const a = document.createElement("a");
         a.href = url;
         a.download = `flowmind-export-${date}.md`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
     } finally {
