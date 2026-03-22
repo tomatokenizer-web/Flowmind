@@ -6,12 +6,6 @@ import { X, Download, Copy, FileText, Presentation, Mail, Hash, FileDown, Histor
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/ui/tooltip";
 
 type ExportFormat = "essay" | "presentation" | "email" | "social";
 type ActiveTab = "export" | "history";
@@ -411,21 +405,22 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
 
               {/* Actions */}
               <div className="mt-4 flex justify-end gap-2">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button variant="ghost" disabled>
-                          <FileDown className="h-4 w-4" />
-                          PDF
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Coming soon</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Button
+                  variant="ghost"
+                  disabled={selectedUnits.length === 0}
+                  onClick={() => {
+                    const url = `/api/assembly/${assemblyId}/export-pdf`;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${assemblyName.replace(/[^a-zA-Z0-9-_ ]/g, "").replace(/\s+/g, "-").toLowerCase()}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                >
+                  <FileDown className="h-4 w-4" />
+                  PDF
+                </Button>
                 <Button variant="ghost" onClick={handleCopy} disabled={!formattedContent || selectedUnits.length === 0}>
                   <Copy className="h-4 w-4" />
                   {copied ? "Copied!" : "Copy"}

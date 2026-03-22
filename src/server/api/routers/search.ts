@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createSearchService, type SearchLayer } from "@/server/services/searchService";
+import { generateEmbedding } from "@/server/ai/embedding";
 
 // ─── Zod Schemas ────────────────────────────────────────────────────
 
@@ -80,6 +81,16 @@ export const searchRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
+      // Check if embedding provider is configured
+      const testEmbedding = await generateEmbedding("test");
+      if (!testEmbedding) {
+        return {
+          results: [],
+          embeddingConfigured: false,
+          message: "Semantic search requires an embedding provider. Configure AI_EMBEDDING_MODEL and an API key in your environment to enable this feature.",
+        };
+      }
+
       const service = createSearchService(ctx.db);
 
       const results = await service.search(
@@ -91,6 +102,6 @@ export const searchRouter = createTRPCRouter({
         },
       );
 
-      return results;
+      return { results, embeddingConfigured: true, message: null };
     }),
 });

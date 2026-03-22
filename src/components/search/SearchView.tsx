@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, X, Layers, Clock, FileText } from "lucide-react";
+import { Search, X, Layers, Clock, FileText, Sparkles } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { useSelectionStore } from "~/stores/selectionStore";
@@ -268,7 +268,20 @@ export function SearchView({
               active={activeLayers.includes("temporal")}
               onToggle={toggleLayer}
             />
+            <LayerToggle
+              layer="semantic"
+              icon={Sparkles}
+              label="Semantic"
+              active={activeLayers.includes("semantic")}
+              onToggle={toggleLayer}
+            />
           </div>
+          {activeLayers.includes("semantic") && (
+            <p className="mt-2 text-xs text-text-tertiary">
+              Semantic search uses AI embeddings to find conceptually similar units.
+              {" "}Results depend on embedding provider configuration.
+            </p>
+          )}
         </div>
       </div>
 
