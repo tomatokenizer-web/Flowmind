@@ -134,17 +134,121 @@ export const userRouter = createTRPCRouter({
       return { ok: true };
     }),
 
+  // ── Embedding Preference ──────────────────────────────────────────
+
+  /**
+   * Get the user's embedding/AI-powered-search opt-in preference.
+   * Defaults to true (opted in) when no preference is stored.
+   */
+  getEmbeddingPreference: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const pref = await ctx.db.$queryRaw<
+        Array<{ value: string }>
+      >`SELECT value FROM user_preferences WHERE user_id = ${ctx.session.user.id} AND key = 'embedding_enabled' LIMIT 1`;
+
+      if (pref.length > 0 && pref[0]?.value !== undefined) {
+        return { embeddingEnabled: pref[0].value === "true" };
+      }
+    } catch {
+      // Table may not exist yet — return default
+    }
+    return { embeddingEnabled: true };
+  }),
+
+  /**
+   * Set the user's embedding/AI-powered-search opt-in preference.
+   */
+  setEmbeddingPreference: protectedProcedure
+    .input(z.object({ embeddingEnabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const value = String(input.embeddingEnabled);
+
+      try {
+        await ctx.db.$executeRaw`
+          INSERT INTO user_preferences (user_id, key, value, updated_at)
+          VALUES (${ctx.session.user.id}, 'embedding_enabled', ${value}, NOW())
+          ON CONFLICT (user_id, key) DO UPDATE SET value = ${value}, updated_at = NOW()
+        `;
+      } catch {
+        await ctx.db.$executeRaw`
+          CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (user_id, key)
+          )
+        `;
+        await ctx.db.$executeRaw`
+          INSERT INTO user_preferences (user_id, key, value, updated_at)
+          VALUES (${ctx.session.user.id}, 'embedding_enabled', ${value}, NOW())
+          ON CONFLICT (user_id, key) DO UPDATE SET value = ${value}, updated_at = NOW()
+        `;
+      }
+
+      return { ok: true };
+    }),
+
   // ── Account Management ────────────────────────────────────────────
 
   /**
    * Delete the current user's account and all associated data.
-   * This is irreversible.
+   * Manually cascades in FK-safe order to avoid constraint violations
+   * on databases where cascades are not fully configured.
+   * Order: assembly_items → assemblies → unit_contexts → relations →
+   *        units → contexts → resources → projects → api_keys → sessions → user
    */
   deleteAccount: protectedProcedure.mutation(async ({ ctx }) => {
-    // Cascade delete is configured in the Prisma schema for most relations.
-    // Delete the user row — cascades handle child records.
-    await ctx.db.user.delete({
-      where: { id: ctx.session.user.id },
+    const userId = ctx.session.user.id!;
+
+    await ctx.db.$transaction(async (tx) => {
+      // 1. Assembly items (reference units and assemblies)
+      await tx.assemblyItem.deleteMany({
+        where: { assembly: { project: { userId } } },
+      });
+
+      // 2. Assemblies
+      await tx.assembly.deleteMany({
+        where: { project: { userId } },
+      });
+
+      // 3. Unit contexts (join table between units and contexts)
+      await tx.unitContext.deleteMany({
+        where: { unit: { userId } },
+      });
+
+      // 4. Relations (reference units)
+      await tx.relation.deleteMany({
+        where: { sourceUnit: { userId } },
+      });
+      // Also remove relations where this user's units are the target
+      await tx.relation.deleteMany({
+        where: { targetUnit: { userId } },
+      });
+
+      // 5. Units (and their cascaded children: unitVersions, unitResources,
+      //    unitPerspectives, contextVisits, unitTags are cascade-deleted by DB)
+      await tx.unit.deleteMany({ where: { userId } });
+
+      // 6. Contexts (cascade: navigators, unitPerspectives, contextVisits,
+      //    contextReferences, reasoningChains)
+      await tx.context.deleteMany({ where: { project: { userId } } });
+
+      // 7. Resources
+      await tx.resourceUnit.deleteMany({ where: { userId } });
+
+      // 8. Projects (cascade: tags, webhooks, customRelationTypes)
+      await tx.project.deleteMany({ where: { userId } });
+
+      // 9. User preferences (raw table — best-effort)
+      try {
+        await tx.$executeRaw`DELETE FROM user_preferences WHERE user_id = ${userId}`;
+      } catch {
+        // Table may not exist
+      }
+
+      // 10. The user row itself (cascades: accounts, sessions)
+      await tx.user.delete({ where: { id: userId } });
     });
 
     return { ok: true };

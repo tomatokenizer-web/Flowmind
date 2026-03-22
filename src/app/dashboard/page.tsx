@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen, GitCompare } from "lucide-react";
+import { Plus, BookOpen, GitCompare, Wand2 } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
@@ -15,6 +15,7 @@ import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
 import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
+import { FormalizeWizard } from "~/components/formalize/FormalizeWizard";
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
@@ -22,6 +23,7 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
   const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
   const [compareDialogOpen, setCompareDialogOpen] = React.useState(false);
   const [compareIds, setCompareIds] = React.useState<[string, string] | null>(null);
+  const [formalizeOpen, setFormalizeOpen] = React.useState(false);
   const { data: assemblies = [], isLoading } = api.assembly.list.useQuery(
     { projectId: projectId! },
     { enabled: !!projectId },
@@ -40,12 +42,20 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
       <div className="mb-6 flex items-center justify-between">
         <h2 className="font-heading text-xl font-semibold text-text-primary">Assemblies</h2>
         {projectId && (
-          <button
-            onClick={() => setTemplateDialogOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
-          >
-            <Plus className="h-4 w-4" /> New Assembly
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFormalizeOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-border bg-bg-primary px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-hover transition-colors"
+            >
+              <Wand2 className="h-4 w-4 text-accent-primary" /> Convert to Template
+            </button>
+            <button
+              onClick={() => setTemplateDialogOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
+            >
+              <Plus className="h-4 w-4" /> New Assembly
+            </button>
+          </div>
         )}
       </div>
       {isLoading ? (
@@ -107,6 +117,15 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
           initialAssemblyAId={compareIds[0]}
           initialAssemblyBId={compareIds[1]}
           assemblies={assemblies as Array<{ id: string; name: string }>}
+        />
+      )}
+
+      {projectId && (
+        <FormalizeWizard
+          open={formalizeOpen}
+          onOpenChange={setFormalizeOpen}
+          projectId={projectId}
+          onSuccess={(assemblyId) => setActiveAssembly(assemblyId)}
         />
       )}
     </section>

@@ -692,6 +692,20 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
         contextId: z.string().uuid(),
         format: z.enum(["chat", "system", "structured"]).default("chat"),
         unitIds: z.array(z.string().uuid()).optional(),
+        /** Which top-level sections to include. Omit to include all available. */
+        enabledSections: z
+          .array(
+            z.enum([
+              "background",
+              "claims",
+              "evidence",
+              "observations",
+              "counterarguments",
+              "constraints",
+              "questions",
+            ]),
+          )
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -730,15 +744,20 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
         byType[u.unitType]!.push(u.content);
       }
 
+      // Helper: check whether a section key is enabled (absent = all enabled)
+      type SectionKey = NonNullable<typeof input.enabledSections>[number];
+      const enabled = input.enabledSections;
+      const sec = (key: SectionKey) => !enabled || enabled.includes(key);
+
       const sections: string[] = [];
       const background = context.description ?? context.name;
-      sections.push(`# ${context.name}\n\n## Background\n${background}`);
-      if (byType["claim"]?.length) sections.push(`## Key Claims\n${byType["claim"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-      if (byType["evidence"]?.length) sections.push(`## Evidence\n${byType["evidence"].map((e, i) => `${i + 1}. ${e}`).join("\n")}`);
-      if (byType["observation"]?.length) sections.push(`## Observations\n${byType["observation"].map((o, i) => `${i + 1}. ${o}`).join("\n")}`);
-      if (byType["counterargument"]?.length) sections.push(`## Counter-arguments\n${byType["counterargument"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-      if (byType["assumption"]?.length) sections.push(`## Constraints & Assumptions\n${byType["assumption"].map((a, i) => `${i + 1}. ${a}`).join("\n")}`);
-      if (byType["question"]?.length) sections.push(`## Open Questions\n${byType["question"].map((q, i) => `${i + 1}. ${q}`).join("\n")}`);
+      if (sec("background")) sections.push(`# ${context.name}\n\n## Background\n${background}`);
+      if (sec("claims") && byType["claim"]?.length) sections.push(`## Key Claims\n${byType["claim"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+      if (sec("evidence") && byType["evidence"]?.length) sections.push(`## Evidence\n${byType["evidence"].map((e, i) => `${i + 1}. ${e}`).join("\n")}`);
+      if (sec("observations") && byType["observation"]?.length) sections.push(`## Observations\n${byType["observation"].map((o, i) => `${i + 1}. ${o}`).join("\n")}`);
+      if (sec("counterarguments") && byType["counterargument"]?.length) sections.push(`## Counter-arguments\n${byType["counterargument"].map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+      if (sec("constraints") && byType["assumption"]?.length) sections.push(`## Constraints & Assumptions\n${byType["assumption"].map((a, i) => `${i + 1}. ${a}`).join("\n")}`);
+      if (sec("questions") && byType["question"]?.length) sections.push(`## Open Questions\n${byType["question"].map((q, i) => `${i + 1}. ${q}`).join("\n")}`);
 
       const base = sections.join("\n\n");
       let prompt: string;

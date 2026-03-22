@@ -29,6 +29,7 @@ import { webhookRouter } from "@/server/api/routers/webhook";
 import { exportHistoryRouter } from "@/server/api/routers/export-history";
 
 import { reasoningChainRouter } from "@/server/api/routers/reasoning-chain";
+import { formalizeRouter } from "@/server/api/routers/formalize";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -61,6 +62,7 @@ export const appRouter = createTRPCRouter({
   exportHistory: exportHistoryRouter,
 
   reasoningChain: reasoningChainRouter,
+  formalize: formalizeRouter,
 });
 
 export type AppRouter = typeof appRouter;
