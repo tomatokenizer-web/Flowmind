@@ -234,7 +234,7 @@ export function RichTextEditor({
         className,
       )}
     >
-      {editable && <Toolbar editor={editor} />}
+      {editable && editor && <Toolbar editor={editor} />}
       <EditorContent editor={editor} />
     </div>
   );
