@@ -18,6 +18,7 @@ import { EmptyState } from "~/components/shared/empty-state";
 import { BulkApprovalBar } from "~/components/unit/bulk-approval-bar";
 import { Button } from "~/components/ui/button";
 import { AIInsightsPanel } from "~/components/ai/AIInsightsPanel";
+import { ReasoningChainPanel } from "~/components/assembly/ReasoningChainPanel";
 import { PromptGeneratorDialog } from "~/components/ai/PromptGeneratorDialog";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
@@ -406,6 +407,11 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         />
       )}
 
+
+      {/* Reasoning Chains — collapsible panel, only when a context is active */}
+      {activeContextId && !isLoading && (
+        <ReasoningChainPanel contextId={activeContextId} />
+      )}
 
       {/* AI Insights — collapsible panel, only when a context is active */}
       {activeContextId && !isLoading && (

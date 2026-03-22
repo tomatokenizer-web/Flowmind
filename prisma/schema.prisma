@@ -151,6 +151,7 @@ model User {
   contextReferences      ContextReference[]
   customRelationTypes    CustomRelationType[]
   webhooks               Webhook[]
+  exportHistory          ExportHistory[]
 
   @@map("users")
 }
@@ -405,6 +406,7 @@ model Context {
   contextVisits    ContextVisit[]
   sourceReferences ContextReference[] @relation("SourceReferences")
   targetReferences ContextReference[] @relation("TargetReferences")
+  reasoningChains  ReasoningChain[]
 
   @@unique([name, parentId, projectId])
   @@index([projectId])
@@ -465,15 +467,16 @@ model UnitVersion {
 }
 
 model Assembly {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  projectId    String         @map("project_id") @db.Uuid
-  templateType String?        @map("template_type") @db.VarChar(50)
-  sourceMap    Json?          @map("source_map")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  items        AssemblyItem[]
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  projectId      String          @map("project_id") @db.Uuid
+  templateType   String?         @map("template_type") @db.VarChar(50)
+  sourceMap      Json?           @map("source_map")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items          AssemblyItem[]
+  exportHistory  ExportHistory[]
 
   @@index([projectId])
   @@map("assemblies")
@@ -616,6 +619,41 @@ model SafetyGuardSession {
   @@index([userId])
   @@index([lastActivityAt])
   @@map("safety_guard_sessions")
+}
+
+// ─── Export History (Story 7.7) ──────────────────────────────────────
+
+model ExportHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assemblyId  String   @map("assembly_id") @db.Uuid
+  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  format      String   @db.VarChar(50)
+  unitIds     String[] @map("unit_ids") @db.Uuid
+  contentHash String   @map("content_hash") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([assemblyId])
+  @@index([userId])
+  @@map("export_history")
+}
+
+
+// ─── Reasoning Chains (Story 7.9) ─────────────────────────────────────
+
+model ReasoningChain {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  goal      String?
+  contextId String   @map("context_id") @db.Uuid
+  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  steps     Json     // Array of { unitId: string, role: "premise"|"inference"|"conclusion", order: number }
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([contextId])
+  @@map("reasoning_chains")
 }
 
 // ─── Webhooks (Story 10.2) ──────────────────────────────────────────

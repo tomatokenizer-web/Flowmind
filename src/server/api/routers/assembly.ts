@@ -285,6 +285,148 @@ export const assemblyRouter = createTRPCRouter({
     }),
 
   /**
+   * Get source map for an assembly — groups units by origin type
+   */
+  getSourceMap: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.assemblyId },
+        include: {
+          project: { select: { userId: true } },
+          items: {
+            include: {
+              unit: { select: { originType: true } },
+            },
+          },
+        },
+      });
+
+      if (!assembly) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      if (assembly.project.userId !== ctx.session.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+
+      // Categorize origin types into display groups
+      const groupOf = (originType: string | null): string => {
+        if (!originType) return "human";
+        if (originType === "direct_write") return "human";
+        if (originType === "ai_generated" || originType === "ai_refined") return "ai";
+        if (
+          originType === "external_excerpt" ||
+          originType === "external_inspiration" ||
+          originType === "external_summary"
+        )
+          return "import";
+        return "decomposition";
+      };
+
+      const counts: Record<string, number> = {};
+      for (const item of assembly.items) {
+        const group = groupOf(item.unit?.originType ?? null);
+        counts[group] = (counts[group] ?? 0) + 1;
+      }
+
+      const totalUnits = assembly.items.length;
+      const sources = Object.entries(counts).map(([origin, count]) => ({
+        origin,
+        count,
+        percentage: totalUnits > 0 ? Math.round((count / totalUnits) * 100) : 0,
+      }));
+
+      return { sources, totalUnits };
+    }),
+
+  /**
+   * Propose slot mappings for a template based on unit types in a context
+   */
+  proposeSlotMappings: protectedProcedure
+    .input(
+      z.object({
+        contextId: z.string().uuid(),
+        templateType: z.string().max(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Fetch units in this context via UnitContext join
+      const unitContexts = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        include: {
+          unit: {
+            select: {
+              id: true,
+              unitType: true,
+              lifecycle: true,
+              relationsAsSource: { select: { id: true } },
+              relationsAsTarget: { select: { id: true } },
+            },
+          },
+        },
+      });
+
+      const units = unitContexts
+        .map((uc) => uc.unit)
+        .filter((u) => u.lifecycle !== "draft" && u.lifecycle !== "archived" && u.lifecycle !== "discarded");
+
+      // Slot → unit type heuristic mapping
+      const SLOT_HEURISTICS: Record<string, { types: string[]; preferMostRelated?: boolean }> = {
+        thesis: { types: ["claim"] },
+        claim: { types: ["claim"] },
+        introduction: { types: ["observation", "definition"] },
+        evidence: { types: ["evidence"] },
+        conclusion: { types: ["claim"], preferMostRelated: true },
+        warrant: { types: ["claim", "evidence"] },
+        rebuttal: { types: ["counterargument"] },
+        abstract: { types: ["observation", "claim"] },
+        methods: { types: ["action", "observation"] },
+        results: { types: ["evidence", "observation"] },
+        discussion: { types: ["claim", "assumption"] },
+        hook: { types: ["claim", "observation", "question"] },
+        problem: { types: ["observation", "question"] },
+        solution: { types: ["claim", "idea"] },
+        "call to action": { types: ["action"] },
+      };
+
+      // Template slot definitions (mirrors AssemblyTemplateDialog)
+      const TEMPLATE_SLOTS: Record<string, string[]> = {
+        essay: ["Introduction", "Body I", "Body II", "Body III", "Conclusion"],
+        research_paper: ["Abstract", "Introduction", "Methods", "Results", "Discussion"],
+        presentation: ["Hook", "Problem", "Solution", "Evidence", "Call to Action"],
+        debate_brief: ["Claim", "Warrant I", "Warrant II", "Evidence", "Rebuttal"],
+      };
+
+      const slots = TEMPLATE_SLOTS[input.templateType] ?? [];
+      const usedUnitIds = new Set<string>();
+      const proposals: { slot: string; proposedUnitId: string; confidence: number }[] = [];
+
+      for (const slot of slots) {
+        const heuristic = SLOT_HEURISTICS[slot.toLowerCase().replace(/\s+[ivx]+$/i, "").trim()];
+        if (!heuristic) continue;
+
+        // Filter to units of matching types not yet proposed
+        let candidates = units.filter(
+          (u) => heuristic.types.includes(u.unitType) && !usedUnitIds.has(u.id)
+        );
+
+        if (candidates.length === 0) continue;
+
+        // If preferMostRelated, sort by total relation count descending
+        if (heuristic.preferMostRelated) {
+          candidates = [...candidates].sort((a, b) => {
+            const aRels = a.relationsAsSource.length + a.relationsAsTarget.length;
+            const bRels = b.relationsAsSource.length + b.relationsAsTarget.length;
+            return bRels - aRels;
+          });
+        }
+
+        const picked = candidates[0]!;
+        const confidence = heuristic.types[0] === picked.unitType ? 0.85 : 0.6;
+        proposals.push({ slot, proposedUnitId: picked.id, confidence });
+        usedUnitIds.add(picked.id);
+      }
+
+      return proposals;
+    }),
+
+  /**
    * Diff two assemblies
    */
   diff: protectedProcedure

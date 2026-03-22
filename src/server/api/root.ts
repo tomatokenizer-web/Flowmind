@@ -26,6 +26,9 @@ import { contextReferenceRouter } from "@/server/api/routers/context-reference";
 import { userRouter } from "@/server/api/routers/user";
 import { tagRouter } from "@/server/api/routers/tag";
 import { webhookRouter } from "@/server/api/routers/webhook";
+import { exportHistoryRouter } from "@/server/api/routers/export-history";
+
+import { reasoningChainRouter } from "@/server/api/routers/reasoning-chain";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -55,6 +58,9 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   tag: tagRouter,
   webhook: webhookRouter,
+  exportHistory: exportHistoryRouter,
+
+  reasoningChain: reasoningChainRouter,
 });
 
 export type AppRouter = typeof appRouter;

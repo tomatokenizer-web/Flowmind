@@ -31,6 +31,7 @@ import { Button } from "~/components/ui/button";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType } from "@prisma/client";
 import { ExportDialog } from "./ExportDialog";
+import { SourceMapPanel } from "./SourceMapPanel";
 
 // ─── Sortable Card ────────────────────────────────────────────────
 
@@ -405,6 +406,11 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
             </DragOverlay>
           </DndContext>
         )}
+      </div>
+
+      {/* Source Map — collapsible panel showing origin breakdown */}
+      <div className="border-t border-border px-6 py-3">
+        <SourceMapPanel assemblyId={assemblyId} />
       </div>
 
       <ExportDialog
