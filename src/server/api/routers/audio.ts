@@ -27,53 +27,15 @@ const transcribeSchema = z.object({
   decompose: z.boolean().default(false),
 });
 
-const transcriptionSegment = z.object({
-  text: z.string(),
-  start: z.number(),
-  end: z.number(),
-});
+// ─── Transcription ────────────────────────────────────────────────────
+// Whisper API integration requires OPENAI_API_KEY configuration.
 
-// ─── Mock Transcription Service ─────────────────────────────────────
-// Real Whisper API integration will be wired in Epic 5.
-
-interface TranscriptionResult {
-  text: string;
-  segments: Array<{
-    text: string;
-    start: number;
-    end: number;
-  }>;
-  confidence: number;
-  language: string;
-}
-
-async function mockTranscribe(
-  _audioBase64: string,
-  duration: number,
-): Promise<TranscriptionResult> {
-  // Simulate transcription latency
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  // Generate mock segments based on duration
-  const segmentCount = Math.max(1, Math.floor(duration / 10));
-  const segments: TranscriptionResult["segments"] = [];
-
-  for (let i = 0; i < segmentCount; i++) {
-    const start = (duration / segmentCount) * i;
-    const end = (duration / segmentCount) * (i + 1);
-    segments.push({
-      text: `[Mock transcription segment ${i + 1}] Audio content from ${Math.floor(start)}s to ${Math.floor(end)}s.`,
-      start,
-      end,
-    });
-  }
-
-  return {
-    text: segments.map((s) => s.text).join(" "),
-    segments,
-    confidence: 0.92,
-    language: "en",
-  };
+function requireTranscriptionConfig(): never {
+  throw new TRPCError({
+    code: "NOT_IMPLEMENTED",
+    message:
+      "Audio transcription requires Whisper API configuration. Set OPENAI_API_KEY in .env",
+  });
 }
 
 // ─── Router ────────────────────────────────────────────────────────
@@ -112,7 +74,7 @@ export const audioRouter = createTRPCRouter({
 
   /**
    * Transcribe an uploaded audio Resource and create linked Units.
-   * Uses mock transcription for now — real Whisper API in Epic 5.
+   * Requires OPENAI_API_KEY to be set — throws NOT_IMPLEMENTED otherwise.
    */
   transcribe: protectedProcedure
     .input(transcribeSchema)
@@ -135,53 +97,10 @@ export const audioRouter = createTRPCRouter({
         });
       }
 
-      const metadata = resource.metadata as Record<string, unknown> | null;
-      const duration = (metadata?.duration as number) ?? 30;
-
-      // Run transcription (mock for now)
-      const transcription = await mockTranscribe("", duration);
-
-      // Create Units from transcription segments
-      const units = await Promise.all(
-        transcription.segments.map(async (segment) => {
-          const unit = await ctx.db.unit.create({
-            data: {
-              content: segment.text,
-              unitType: "observation",
-              lifecycle: "draft",
-              originType: "external_excerpt",
-              sourceSpan: {
-                type: "audio_transcription",
-                audioResourceId: input.resourceId,
-                start: segment.start,
-                end: segment.end,
-              },
-              userId: ctx.session.user.id!,
-              projectId: input.projectId,
-            },
-          });
-
-          // Link unit to the audio resource
-          await resourceService.linkToUnit(
-            input.resourceId,
-            unit.id,
-            "transcription_source",
-          );
-
-          return unit;
-        }),
-      );
-
-      return {
-        transcription: {
-          text: transcription.text,
-          segments: transcription.segments,
-          confidence: transcription.confidence,
-          language: transcription.language,
-        },
-        units,
-        resourceId: input.resourceId,
-      };
+      // Transcription requires Whisper API — not yet configured.
+      // This throws TRPCError NOT_IMPLEMENTED; code below is unreachable
+      // until OPENAI_API_KEY is set and real Whisper integration is added.
+      return requireTranscriptionConfig();
     }),
 
   /**

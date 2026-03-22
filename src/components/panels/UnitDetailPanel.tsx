@@ -16,6 +16,7 @@ import {
   Paperclip,
   Compass,
   ChevronDown,
+  GitCommitHorizontal,
 } from "lucide-react";
 import { RichTextEditor } from "~/components/editor/RichTextEditor";
 import { formatDistanceToNow, format } from "date-fns";
@@ -36,6 +37,10 @@ import { usePanelStore, type DetailTab } from "~/stores/panel-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
+import { useAIIntensity, isAtLeastBalanced, isProactive } from "~/hooks/useAIIntensity";
+import { EpistemicHumilityBanner } from "~/components/feedback/EpistemicHumilityBanner";
+import { ExternalKnowledgePanel } from "~/components/ai/ExternalKnowledgePanel";
+import { ProvenanceChain } from "~/components/feedback/ProvenanceChain";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -69,6 +74,8 @@ interface UnitDetailPanelProps {
   onMetadataChange?: (field: keyof MetadataValues, value: string | null) => void;
   onLifecycleChange?: (lifecycle: string) => void;
   onRemoveResource?: (resourceId: string) => void;
+  /** Called when user clicks "Add as Unit" from the external knowledge panel */
+  onAddAsUnit?: (content: string) => void;
   className?: string;
 }
 
@@ -208,6 +215,9 @@ function ContentTab({
           <span>{charCount} characters</span>
         </div>
       </div>
+
+      {/* Epistemic humility notice — shown when content contains controversial/absolute claims */}
+      <EpistemicHumilityBanner content={localContent} unitId={unit.id} />
 
       {/* Lifecycle controls */}
       <div className="space-y-2">
@@ -568,9 +578,12 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
 
 // ─── AI Tab ───────────────────────────────────────────────────────────
 
-function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: string; content: string; branchPotential?: number; onContentChange?: (c: string) => void }) {
+function AITab({ unitId, content, branchPotential, onContentChange, onAddAsUnit }: { unitId: string; content: string; branchPotential?: number; onContentChange?: (c: string) => void; onAddAsUnit?: (content: string) => void }) {
   const filled = Math.round((branchPotential ?? 0) * 4);
   const utils = api.useUtils();
+  const { level: aiLevel } = useAIIntensity();
+  const showAISections = isAtLeastBalanced(aiLevel);
+  const showBranchPotential = isProactive(aiLevel);
 
   const suggestTypeMutation = api.ai.suggestType.useMutation({
     onError: (err) => {
@@ -593,6 +606,47 @@ function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: 
       toast.error("Failed to save changes", { description: err.message });
     },
   });
+
+  if (!showAISections) {
+    return (
+      <div className="space-y-4 p-4">
+        <div className="rounded-xl border border-border p-4 text-center">
+          <p className="text-sm text-text-secondary">
+            AI suggestions are disabled in Minimal mode.
+          </p>
+          <p className="mt-1 text-xs text-text-tertiary">
+            Change your AI intensity in Settings to enable automatic suggestions.
+          </p>
+        </div>
+        {/* Branch potential always visible if data exists */}
+        {branchPotential !== undefined && (
+          <div className="flex items-center justify-between rounded-xl border border-border p-3">
+            <span className="text-sm text-text-secondary">Branch Potential</span>
+            <span className="inline-flex items-center gap-0.5" aria-label={`Branch potential: ${filled} of 4`}>
+              {Array.from({ length: 4 }, (_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "text-base leading-none",
+                    i < filled ? "text-accent-primary" : "text-text-tertiary",
+                  )}
+                  aria-hidden="true"
+                >
+                  {i < filled ? "●" : "○"}
+                </span>
+              ))}
+            </span>
+          </div>
+        )}
+        {/* External knowledge search available in all modes */}
+        <ExternalKnowledgePanel
+          unitId={unitId}
+          unitContent={content}
+          onAddAsUnit={onAddAsUnit}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 p-4">
@@ -637,24 +691,33 @@ function AITab({ unitId, content, branchPotential, onContentChange }: { unitId: 
         )}
       </div>
 
-      {/* Branch potential */}
-      <div className="flex items-center justify-between rounded-xl border border-border p-3">
-        <span className="text-sm text-text-secondary">Branch Potential</span>
-        <span className="inline-flex items-center gap-0.5" aria-label={`Branch potential: ${filled} of 4`}>
-          {Array.from({ length: 4 }, (_, i) => (
-            <span
-              key={i}
-              className={cn(
-                "text-base leading-none",
-                i < filled ? "text-accent-primary" : "text-text-tertiary",
-              )}
-              aria-hidden="true"
-            >
-              {i < filled ? "●" : "○"}
-            </span>
-          ))}
-        </span>
-      </div>
+      {/* Branch potential — only shown in proactive mode */}
+      {showBranchPotential && (
+        <div className="flex items-center justify-between rounded-xl border border-border p-3">
+          <span className="text-sm text-text-secondary">Branch Potential</span>
+          <span className="inline-flex items-center gap-0.5" aria-label={`Branch potential: ${filled} of 4`}>
+            {Array.from({ length: 4 }, (_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "text-base leading-none",
+                  i < filled ? "text-accent-primary" : "text-text-tertiary",
+                )}
+                aria-hidden="true"
+              >
+                {i < filled ? "●" : "○"}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+
+      {/* External knowledge search */}
+      <ExternalKnowledgePanel
+        unitId={unitId}
+        unitContent={content}
+        onAddAsUnit={onAddAsUnit}
+      />
     </div>
   );
 }
@@ -680,6 +743,7 @@ const TAB_CONFIG: { value: DetailTab; label: string; Icon: React.ElementType }[]
   { value: "relations", label: "Relations", Icon: Link2 },
   { value: "metadata", label: "Metadata", Icon: Settings2 },
   { value: "ai", label: "AI", Icon: Sparkles },
+  { value: "provenance", label: "Provenance", Icon: GitCommitHorizontal },
 ];
 
 // ─── Add to Navigator ────────────────────────────────────────────────
@@ -744,10 +808,12 @@ export function UnitDetailPanel({
   onMetadataChange,
   onLifecycleChange,
   onRemoveResource,
+  onAddAsUnit,
   className,
 }: UnitDetailPanelProps) {
   const activeTab = usePanelStore((s) => s.activeTab);
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
+  const openPanel = usePanelStore((s) => s.openPanel);
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -825,7 +891,14 @@ export function UnitDetailPanel({
               </TabsContent>
 
               <TabsContent value="ai" className="mt-0">
-                <AITab unitId={unit.id} content={unit.content} branchPotential={unit.branchPotential} onContentChange={onContentChange} />
+                <AITab unitId={unit.id} content={unit.content} branchPotential={unit.branchPotential} onContentChange={onContentChange} onAddAsUnit={onAddAsUnit} />
+              </TabsContent>
+
+              <TabsContent value="provenance" className="mt-0">
+                <ProvenanceChain
+                  unitId={unit.id}
+                  onNavigate={(id) => openPanel(id)}
+                />
               </TabsContent>
             </div>
           </ScrollArea>

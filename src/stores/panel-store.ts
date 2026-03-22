@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type DetailTab = "content" | "relations" | "metadata" | "ai";
+export type DetailTab = "content" | "relations" | "metadata" | "ai" | "provenance";
 
 interface PanelState {
   /** Whether the detail panel is open */

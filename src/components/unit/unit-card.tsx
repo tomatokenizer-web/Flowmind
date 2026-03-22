@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { NudgeBadge } from "./NudgeBadge";
-import { BranchPotentialPopover } from "./BranchPotentialPopover";
+import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPopover";
 import { DriftIndicator } from "~/components/drift/DriftIndicator";
 import { UnitAIActionsMenu } from "./UnitAIActionsMenu";
 import { useSelectionStore } from "~/stores/selectionStore";
@@ -120,32 +120,6 @@ function PerspectiveImportanceBadge({ value }: { value: number }) {
           aria-hidden="true"
         >
           {i < filled ? "\u2605" : "\u2606"}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-// ─── Branch Potential Indicator ──────────────────────────────────────
-
-function BranchPotentialDots({ score }: { score: number }) {
-  // score 0-1 mapped to 0-4 filled dots
-  const filled = Math.round(score * 4);
-  return (
-    <span
-      className="inline-flex items-center gap-0.5"
-      aria-label={`Branch potential: ${filled} of 4`}
-    >
-      {Array.from({ length: 4 }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "text-xs leading-none",
-            i < filled ? "text-text-primary" : "text-text-tertiary",
-          )}
-          aria-hidden="true"
-        >
-          {i < filled ? "●" : "○"}
         </span>
       ))}
     </span>
@@ -384,11 +358,16 @@ export function UnitCard({
             {/* Lifecycle badge — new AILifecycleBadge for draft/pending/confirmed */}
             <AILifecycleBadge lifecycle={unit.lifecycle} size="sm" />
 
-            {/* Branch potential — clickable popover */}
-            <BranchPotentialPopover unitId={unit.id} score={unit.branchPotential ?? 0}>
-              <button type="button" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded">
-                <BranchPotentialDots score={unit.branchPotential ?? 0} />
-              </button>
+            {/* Branch potential — clickable popover with live computed score */}
+            <BranchPotentialPopover unitId={unit.id}>
+              {(score, reasons) => (
+                <button
+                  type="button"
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded"
+                >
+                  <BranchPotentialDots score={score} reasons={reasons} />
+                </button>
+              )}
             </BranchPotentialPopover>
 
             {/* Flow alert */}

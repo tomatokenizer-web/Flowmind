@@ -340,6 +340,73 @@ export const projectRouter = createTRPCRouter({
       };
     }),
 
+  // ─── Story 9.7: Project-level dashboard stats ──────────────────
+  getProjectStats: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+        include: {
+          template: { select: { name: true, config: true } },
+          _count: { select: { units: true, contexts: true, assemblies: true } },
+        },
+      });
+
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      // Most active context (by unit count)
+      const contexts = await ctx.db.context.findMany({
+        where: { projectId: input.projectId },
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { unitContexts: true } },
+        },
+        orderBy: { unitContexts: { _count: "desc" } },
+        take: 1,
+      });
+
+      const mostActiveContext = contexts[0]
+        ? { id: contexts[0].id, name: contexts[0].name, unitCount: contexts[0]._count.unitContexts }
+        : null;
+
+      // Template completion progress (scaffold questions)
+      let templateCompletion: { templateName: string; answered: number; total: number; pct: number } | null = null;
+      if (project.template) {
+        const config = project.template.config as {
+          scaffoldQuestions?: Array<{ content: string }>;
+        };
+        const total = config.scaffoldQuestions?.length ?? 0;
+        if (total > 0) {
+          const answeredCount = await ctx.db.unit.count({
+            where: {
+              projectId: input.projectId,
+              lifecycle: "confirmed",
+              meta: { path: ["scaffold"], equals: true },
+            },
+          });
+          templateCompletion = {
+            templateName: project.template.name,
+            answered: Math.min(answeredCount, total),
+            total,
+            pct: Math.round((Math.min(answeredCount, total) / total) * 100),
+          };
+        }
+      }
+
+      return {
+        totalUnits: project._count.units,
+        contextCount: project._count.contexts,
+        assemblyCount: project._count.assemblies,
+        mostActiveContext,
+        templateCompletion,
+      };
+    }),
+
   /**
    * Get completeness stats for a project
    */

@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen, GitCompare, Wand2 } from "lucide-react";
+import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useAssemblyStore } from "~/stores/assemblyStore";
+import { cn } from "~/lib/utils";
 import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
@@ -16,6 +17,157 @@ import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
 import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
 import { FormalizeWizard } from "~/components/formalize/FormalizeWizard";
+
+// ─── Project stats + quick actions bar (Story 9.7) ───────────────────
+
+interface QuickActionProps {
+  icon: React.ElementType;
+  label: string;
+  description: string;
+  onClick: () => void;
+  accent?: boolean;
+}
+
+function QuickActionCard({ icon: Icon, label, description, onClick, accent }: QuickActionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition-all",
+        "hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+        accent
+          ? "border-accent-primary/30 bg-accent-primary/5 hover:bg-accent-primary/10"
+          : "border-border bg-bg-primary hover:bg-bg-secondary",
+      )}
+    >
+      <div className={cn("flex items-center gap-2", accent ? "text-accent-primary" : "text-text-secondary")}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        <span className="text-sm font-medium text-text-primary">{label}</span>
+      </div>
+      <p className="text-xs text-text-tertiary">{description}</p>
+    </button>
+  );
+}
+
+function ProjectStatsBar({ projectId }: { projectId: string }) {
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
+
+  const { data: stats, isLoading } = api.project.getProjectStats.useQuery(
+    { projectId },
+    { staleTime: 60_000 },
+  );
+
+  const handleCreateContext = React.useCallback(() => {
+    // Fire a custom event the sidebar captures, or fall back to setting a flag
+    window.dispatchEvent(new CustomEvent("flowmind:open-create-context"));
+  }, []);
+
+  const handleStartCapture = React.useCallback(() => {
+    // Scroll to capture bar or open the canvas view
+    setViewMode("canvas");
+    // Focus the capture bar once the view renders
+    setTimeout(() => {
+      const captureBar = document.querySelector<HTMLElement>("[data-capture-bar]");
+      captureBar?.focus();
+    }, 100);
+  }, [setViewMode]);
+
+  const handleViewGraph = React.useCallback(() => {
+    setViewMode("graph");
+  }, [setViewMode]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-wrap gap-3 px-4 pt-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-14 w-32 animate-pulse rounded-xl bg-bg-secondary" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  return (
+    <div className="px-4 pt-4 flex flex-col gap-4">
+      {/* Key metrics row */}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Project statistics">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
+          <Layers className="h-4 w-4 text-accent-primary" aria-hidden="true" />
+          <span className="text-xs text-text-tertiary">Units</span>
+          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.totalUnits}</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
+          <FolderOpen className="h-4 w-4 text-text-secondary" aria-hidden="true" />
+          <span className="text-xs text-text-tertiary">Contexts</span>
+          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.contextCount}</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
+          <GitMerge className="h-4 w-4 text-text-secondary" aria-hidden="true" />
+          <span className="text-xs text-text-tertiary">Assemblies</span>
+          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.assemblyCount}</span>
+        </div>
+        {stats.mostActiveContext && (
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2 max-w-[220px]">
+            <Zap className="h-4 w-4 text-lifecycle-pending-text" aria-hidden="true" />
+            <span className="text-xs text-text-tertiary">Most active</span>
+            <span className="truncate text-sm font-medium text-text-primary">
+              {stats.mostActiveContext.name}
+            </span>
+            <span className="flex-shrink-0 text-xs tabular-nums text-text-tertiary">
+              ({stats.mostActiveContext.unitCount})
+            </span>
+          </div>
+        )}
+        {stats.templateCompletion && (
+          <div className="flex flex-col justify-center rounded-xl border border-border bg-bg-secondary px-3 py-2 min-w-[140px]">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="truncate text-xs text-text-tertiary">{stats.templateCompletion.templateName}</span>
+              <span className="flex-shrink-0 text-xs tabular-nums text-text-tertiary">
+                {stats.templateCompletion.answered}/{stats.templateCompletion.total}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-primary">
+              <div
+                className="h-full rounded-full bg-accent-primary transition-all"
+                style={{ width: `${stats.templateCompletion.pct}%` }}
+                role="progressbar"
+                aria-valuenow={stats.templateCompletion.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Template completion: ${stats.templateCompletion.pct}%`}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick actions row */}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Quick actions">
+        <QuickActionCard
+          icon={Plus}
+          label="Create Context"
+          description="Organize units by theme"
+          onClick={handleCreateContext}
+          accent
+        />
+        <QuickActionCard
+          icon={Zap}
+          label="Start Capture"
+          description="Add a new thought unit"
+          onClick={handleStartCapture}
+        />
+        <QuickActionCard
+          icon={Network}
+          label="View Graph"
+          description="Explore idea connections"
+          onClick={handleViewGraph}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ─── Assembly view with list ──────────────────────────────────────────
 function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | undefined; assemblyId: string | null }) {
@@ -179,6 +331,9 @@ export default function DashboardPage() {
 
   return (
     <>
+      {/* Story 9.7: Project stats + quick actions */}
+      <ProjectStatsBar projectId={projectId} />
+
       {/* Completeness Compass — top-right of the context view */}
       {projectId && (
         <div className="flex justify-end px-4 pt-3">

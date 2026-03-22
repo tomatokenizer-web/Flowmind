@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, X, Sparkles, GripVertical, ChevronRight } from "lucide-react";
+import { Check, X, Sparkles, GripVertical, ChevronRight, Pencil, ChevronDown } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { UNIT_TYPE_COLORS } from "~/lib/unit-types";
@@ -29,10 +29,27 @@ type ProposalStatus = "pending" | "accepted" | "rejected";
 interface ProposalState {
   proposal: UnitProposal;
   status: ProposalStatus;
+  /** User-edited content (overrides proposal.content when set) */
+  editedContent: string;
+  /** User-selected type override */
+  editedType: string;
   createdUnitId?: string;
+  isEditing: boolean;
 }
 
-// ─── Purpose Labels ───────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────
+
+const UNIT_TYPES: UnitType[] = [
+  "claim",
+  "question",
+  "evidence",
+  "counterargument",
+  "observation",
+  "idea",
+  "definition",
+  "assumption",
+  "action",
+];
 
 const PURPOSE_LABELS: Record<UserPurpose, { label: string; color: string }> = {
   arguing: { label: "Building Argument", color: "text-blue-600" },
@@ -55,52 +72,78 @@ export function DecompositionReview({
   onCancel,
   className,
 }: DecompositionReviewProps) {
-  // Track proposal states with boundaries that can be adjusted
   const [proposalStates, setProposalStates] = React.useState<ProposalState[]>(() =>
-    initialProposals.map((p) => ({ proposal: p, status: "pending" }))
+    initialProposals.map((p) => ({
+      proposal: p,
+      status: "pending",
+      editedContent: p.content,
+      editedType: p.proposedType,
+      isEditing: false,
+    }))
   );
 
-  // Track drag state for boundary handles
+  // Drag state for boundary handles
   const [draggingIdx, setDraggingIdx] = React.useState<number | null>(null);
   const textContainerRef = React.useRef<HTMLDivElement>(null);
 
   const utils = api.useUtils();
-
-  // Unit creation mutation
   const createUnitMutation = api.unit.create.useMutation();
-  // Relation creation mutation
   const createRelationMutation = api.relation.create.useMutation();
 
-  // Count stats
+  // Stats
   const acceptedCount = proposalStates.filter((p) => p.status === "accepted").length;
   const rejectedCount = proposalStates.filter((p) => p.status === "rejected").length;
   const pendingCount = proposalStates.filter((p) => p.status === "pending").length;
-
-  // Check if all proposals are processed
   const isComplete = pendingCount === 0;
 
-  // Handle accepting a single proposal
+  // ── Editing helpers ──────────────────────────────────────────────────────
+
+  const startEditing = React.useCallback((index: number) => {
+    setProposalStates((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, isEditing: true } : p))
+    );
+  }, []);
+
+  const commitEdit = React.useCallback((index: number) => {
+    setProposalStates((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, isEditing: false } : p))
+    );
+  }, []);
+
+  const updateEditedContent = React.useCallback((index: number, value: string) => {
+    setProposalStates((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, editedContent: value } : p))
+    );
+  }, []);
+
+  const updateEditedType = React.useCallback((index: number, value: string) => {
+    setProposalStates((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, editedType: value } : p))
+    );
+  }, []);
+
+  // ── Accept / Reject ──────────────────────────────────────────────────────
+
   const handleAccept = React.useCallback(
     async (index: number) => {
       const state = proposalStates[index];
       if (!state || state.status !== "pending") return;
 
+      const content = state.editedContent.trim() || state.proposal.content;
+      const unitType = state.editedType as UnitType;
+
       try {
-        // Create the unit with lifecycle "pending" (not "draft") because the user
-        // explicitly accepted it. This also allows relation creation, which the
-        // relation router rejects for "draft" units.
         const unit = await createUnitMutation.mutateAsync({
-          content: state.proposal.content,
+          content,
           projectId,
-          unitType: state.proposal.proposedType as UnitType,
+          unitType,
           originType: "ai_generated",
           lifecycle: "pending",
         });
 
-        // Update state with created unit ID
         setProposalStates((prev) =>
           prev.map((p, i) =>
-            i === index ? { ...p, status: "accepted", createdUnitId: unit.id } : p
+            i === index ? { ...p, status: "accepted", createdUnitId: unit.id, isEditing: false } : p
           )
         );
 
@@ -115,17 +158,15 @@ export function DecompositionReview({
               strength: rel.strength,
             });
           } catch {
-            // Relation creation may fail if target unit is in draft state
-            // This is expected - we'll skip these silently
+            // Silently skip - target may be in draft state
           }
         }
 
-        // Invalidate unit list
         await utils.unit.list.invalidate();
       } catch (error) {
         console.error("Failed to create unit:", error);
-        // If it's a duplicate conflict, mark as rejected with feedback
         const errMsg = error instanceof Error ? error.message : String(error);
+        // Auto-reject duplicates
         if (errMsg.includes("duplicate") || errMsg.includes("CONFLICT") || errMsg.includes("identical content")) {
           setProposalStates((prev) =>
             prev.map((p, i) => (i === index ? { ...p, status: "rejected" } : p))
@@ -136,35 +177,38 @@ export function DecompositionReview({
     [proposalStates, createUnitMutation, createRelationMutation, projectId, relationProposals, utils]
   );
 
-  // Handle rejecting a single proposal
   const handleReject = React.useCallback((index: number) => {
     setProposalStates((prev) =>
-      prev.map((p, i) => (i === index ? { ...p, status: "rejected" } : p))
+      prev.map((p, i) => (i === index ? { ...p, status: "rejected", isEditing: false } : p))
     );
   }, []);
 
-  // Accept all remaining pending proposals
+  // Bulk actions
   const handleAcceptAllRemaining = React.useCallback(async () => {
     const pendingIndices = proposalStates
       .map((p, i) => (p.status === "pending" ? i : -1))
       .filter((i) => i !== -1);
-
     for (const idx of pendingIndices) {
       await handleAccept(idx);
     }
   }, [proposalStates, handleAccept]);
 
-  // Handle completion
+  const handleRejectAllRemaining = React.useCallback(() => {
+    setProposalStates((prev) =>
+      prev.map((p) => (p.status === "pending" ? { ...p, status: "rejected", isEditing: false } : p))
+    );
+  }, []);
+
   const handleDone = React.useCallback(() => {
     onComplete(acceptedCount, rejectedCount);
   }, [onComplete, acceptedCount, rejectedCount]);
 
-  // Handle drag start for boundary adjustment
+  // ── Drag boundary handles ────────────────────────────────────────────────
+
   const handleDragStart = React.useCallback((index: number) => {
     setDraggingIdx(index);
   }, []);
 
-  // Handle drag end
   const handleDragEnd = React.useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
       if (draggingIdx === null || !textContainerRef.current) return;
@@ -172,33 +216,32 @@ export function DecompositionReview({
       const container = textContainerRef.current;
       const rect = container.getBoundingClientRect();
       const clientX = "touches" in event ? event.touches[0]?.clientX ?? 0 : event.clientX;
-
-      // Calculate character position from mouse position (approximate)
       const relativeX = clientX - rect.left;
       const charWidth = rect.width / originalText.length;
       const newCharPos = Math.round(relativeX / charWidth);
       const clampedPos = Math.max(0, Math.min(originalText.length, newCharPos));
 
-      // Update the boundary
       setProposalStates((prev) => {
         const updated = [...prev];
         const current = updated[draggingIdx];
         if (!current) return prev;
 
-        // Adjust the endChar of current proposal
         const newEndChar = Math.max(current.proposal.startChar + 5, clampedPos);
+        const newContent = originalText.slice(current.proposal.startChar, newEndChar);
         updated[draggingIdx] = {
           ...current,
-          proposal: { ...current.proposal, endChar: newEndChar, content: originalText.slice(current.proposal.startChar, newEndChar) },
+          proposal: { ...current.proposal, endChar: newEndChar, content: newContent },
+          editedContent: newContent,
         };
 
-        // Adjust the startChar of next proposal if it exists
         if (draggingIdx < updated.length - 1) {
           const next = updated[draggingIdx + 1];
           if (next) {
+            const nextContent = originalText.slice(newEndChar, next.proposal.endChar);
             updated[draggingIdx + 1] = {
               ...next,
-              proposal: { ...next.proposal, startChar: newEndChar, content: originalText.slice(newEndChar, next.proposal.endChar) },
+              proposal: { ...next.proposal, startChar: newEndChar, content: nextContent },
+              editedContent: nextContent,
             };
           }
         }
@@ -211,10 +254,10 @@ export function DecompositionReview({
     [draggingIdx, originalText]
   );
 
-  // Get colors for unit type
-  const getTypeColors = (type: string) => {
-    return UNIT_TYPE_COLORS[type as UnitType] ?? { bg: "#F5F5F7", accent: "#6E6E73" };
-  };
+  const getTypeColors = (type: string) =>
+    UNIT_TYPE_COLORS[type as UnitType] ?? { bg: "#F5F5F7", accent: "#6E6E73" };
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
@@ -236,16 +279,19 @@ export function DecompositionReview({
         </div>
       </div>
 
-      {/* Original text with boundary overlays */}
+      {/* Original text with color-coded boundary highlights */}
       <div
         ref={textContainerRef}
         className="relative rounded-lg border border-border-primary bg-bg-secondary p-4"
         onMouseUp={handleDragEnd}
         onTouchEnd={handleDragEnd}
       >
+        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
+          Original Text
+        </p>
         <div className="text-sm leading-relaxed text-text-primary">
           {proposalStates.map((state, idx) => {
-            const colors = getTypeColors(state.proposal.proposedType);
+            const colors = getTypeColors(state.editedType);
             const isAccepted = state.status === "accepted";
             const isRejected = state.status === "rejected";
 
@@ -262,18 +308,20 @@ export function DecompositionReview({
                     backgroundColor: isRejected ? "#FEF2F2" : colors.bg,
                     borderLeft: `2px solid ${isRejected ? "#991B1B" : colors.accent}`,
                   }}
+                  title={state.editedType.replace(/_/g, " ")}
                 >
-                  {state.proposal.content}
+                  {state.editedContent || state.proposal.content}
                 </motion.span>
                 {/* Draggable boundary handle */}
                 {idx < proposalStates.length - 1 && (
                   <span
                     className={cn(
-                      "relative mx-1 inline-flex cursor-col-resize items-center opacity-50 hover:opacity-100",
+                      "relative mx-1 inline-flex cursor-col-resize items-center opacity-40 hover:opacity-100",
                       draggingIdx === idx && "opacity-100"
                     )}
                     onMouseDown={() => handleDragStart(idx)}
                     onTouchStart={() => handleDragStart(idx)}
+                    title="Drag to adjust boundary"
                   >
                     <GripVertical className="h-4 w-4 text-text-tertiary" />
                   </span>
@@ -288,7 +336,7 @@ export function DecompositionReview({
       <div className="flex flex-col gap-2">
         <AnimatePresence mode="popLayout">
           {proposalStates.map((state, idx) => {
-            const colors = getTypeColors(state.proposal.proposedType);
+            const colors = getTypeColors(state.editedType);
             const isPending = state.status === "pending";
 
             return (
@@ -313,21 +361,49 @@ export function DecompositionReview({
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
-                  {/* Type badge and content */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="rounded px-1.5 py-0.5 text-xs font-medium capitalize"
-                        style={{
-                          backgroundColor: colors.bg,
-                          color: colors.accent,
-                        }}
-                      >
-                        {state.proposal.proposedType.replace(/_/g, " ")}
-                      </span>
+                  <div className="flex-1 min-w-0">
+                    {/* Type badge row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Type selector (only editable when pending) */}
+                      {isPending ? (
+                        <div className="relative inline-flex items-center">
+                          <select
+                            value={state.editedType}
+                            onChange={(e) => updateEditedType(idx, e.target.value)}
+                            className={cn(
+                              "appearance-none rounded px-1.5 py-0.5 pr-5 text-xs font-medium capitalize cursor-pointer",
+                              "border-0 outline-none focus:ring-1 focus:ring-offset-0 focus:ring-blue-400"
+                            )}
+                            style={{
+                              backgroundColor: colors.bg,
+                              color: colors.accent,
+                            }}
+                            aria-label="Unit type"
+                          >
+                            {UNIT_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t.replace(/_/g, " ")}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3"
+                            style={{ color: colors.accent }}
+                          />
+                        </div>
+                      ) : (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-xs font-medium capitalize"
+                          style={{ backgroundColor: colors.bg, color: colors.accent }}
+                        >
+                          {state.editedType.replace(/_/g, " ")}
+                        </span>
+                      )}
+
                       <span className="text-[10px] text-text-tertiary">
                         {Math.round(state.proposal.confidence * 100)}% confident
                       </span>
+
                       {state.status === "accepted" && (
                         <span className="flex items-center gap-0.5 text-[10px] text-emerald-600">
                           <Check className="h-3 w-3" /> Created
@@ -339,10 +415,51 @@ export function DecompositionReview({
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-text-secondary line-clamp-2">
-                      {state.proposal.content}
-                    </p>
-                    {/* Show relation count if any */}
+
+                    {/* Content: editable textarea or read-only text */}
+                    {state.isEditing ? (
+                      <div className="mt-1.5">
+                        <textarea
+                          autoFocus
+                          value={state.editedContent}
+                          onChange={(e) => updateEditedContent(idx, e.target.value)}
+                          onBlur={() => commitEdit(idx)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              commitEdit(idx);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              // Revert to proposal content on Escape
+                              updateEditedContent(idx, state.proposal.content);
+                              commitEdit(idx);
+                            }
+                          }}
+                          className={cn(
+                            "w-full resize-none rounded border border-blue-300 bg-blue-50/30 px-2 py-1",
+                            "text-sm text-text-primary outline-none focus:ring-1 focus:ring-blue-400",
+                            "min-h-[60px]"
+                          )}
+                          rows={3}
+                          aria-label="Edit unit content"
+                        />
+                        <p className="mt-0.5 text-[10px] text-text-tertiary">
+                          Cmd+Enter to confirm · Esc to revert
+                        </p>
+                      </div>
+                    ) : (
+                      <p
+                        className={cn(
+                          "mt-1 text-sm",
+                          state.status === "rejected" ? "text-text-tertiary line-clamp-2" : "text-text-secondary line-clamp-3"
+                        )}
+                      >
+                        {state.editedContent || state.proposal.content}
+                      </p>
+                    )}
+
+                    {/* Relation count */}
                     {relationProposals.filter((r) => r.sourceIdx === idx).length > 0 && (
                       <p className="mt-1 flex items-center gap-1 text-[10px] text-text-tertiary">
                         <ChevronRight className="h-3 w-3" />
@@ -353,23 +470,40 @@ export function DecompositionReview({
                     )}
                   </div>
 
-                  {/* Actions */}
+                  {/* Action buttons - only for pending */}
                   {isPending && (
-                    <div className="flex gap-1.5">
+                    <div className="flex shrink-0 gap-1">
+                      {/* Edit button */}
+                      {!state.isEditing && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEditing(idx)}
+                          className="h-7 w-7 p-0 text-text-tertiary hover:bg-bg-secondary hover:text-text-primary"
+                          title="Edit content"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {/* Accept */}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleAccept(idx)}
-                        disabled={createUnitMutation.isPending}
+                        disabled={createUnitMutation.isPending || state.isEditing}
                         className="h-7 w-7 p-0 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700"
+                        title="Accept this unit"
                       >
                         <Check className="h-4 w-4" />
                       </Button>
+                      {/* Reject */}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleReject(idx)}
+                        disabled={state.isEditing}
                         className="h-7 w-7 p-0 text-red-500 hover:bg-red-100 hover:text-red-600"
+                        title="Reject this unit"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -389,14 +523,25 @@ export function DecompositionReview({
         </Button>
         <div className="flex gap-2">
           {pendingCount > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleAcceptAllRemaining}
-              disabled={createUnitMutation.isPending}
-            >
-              Accept All ({pendingCount})
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRejectAllRemaining}
+                disabled={createUnitMutation.isPending}
+                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+              >
+                Reject All ({pendingCount})
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleAcceptAllRemaining}
+                disabled={createUnitMutation.isPending}
+              >
+                Accept All ({pendingCount})
+              </Button>
+            </>
           )}
           {isComplete && (
             <Button variant="primary" size="sm" onClick={handleDone}>

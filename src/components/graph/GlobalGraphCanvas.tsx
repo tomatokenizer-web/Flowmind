@@ -35,6 +35,52 @@ const RELATION_TYPE_COLORS: Record<string, string> = {
   questions: "#F97316",
 };
 
+// ─── Relation type → stroke weight ────────────────────────────────
+// thick = high-importance logical relations
+// medium = elaboration / example / response
+// thin = loose associative / contextual
+
+type RelationWeight = "thick" | "medium" | "thin";
+
+const RELATION_TYPE_WEIGHT: Record<string, RelationWeight> = {
+  // thick: strong logical bonds
+  supports: "thick",
+  contradicts: "thick",
+  derives_from: "thick",
+  // medium: elaboration / exemplification / response
+  elaborates: "medium",
+  exemplifies: "medium",
+  responds_to: "medium",
+  expands: "medium",
+  questions: "medium",
+  defines: "medium",
+  references: "medium",
+  // thin: loose / contextual
+  associated: "thin",
+  contextual: "thin",
+  inspires: "thin",
+  echoes: "thin",
+  parallels: "thin",
+  transforms_into: "thin",
+  foreshadows: "thin",
+  contextualizes: "thin",
+  operationalizes: "thin",
+  contains: "thin",
+  presupposes: "thin",
+  defined_by: "thin",
+  grounded_in: "thin",
+  instantiates: "thin",
+  precedes: "thin",
+  supersedes: "thin",
+  complements: "thin",
+};
+
+const WEIGHT_STROKE: Record<RelationWeight, number> = {
+  thick: 2.5,
+  medium: 1.8,
+  thin: 1.0,
+};
+
 // ─── Relation type → purpose category ─────────────────────────────
 // Maps each system relation type name to its purpose category.
 // Argument: solid thick lines | Creative/Research: dashed lines | Structural: dotted lighter lines
@@ -424,6 +470,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
       ctx.scale(zoomLevel, zoomLevel);
 
       // Draw links (skip edges whose relation type is filtered out)
+      const now = performance.now();
       for (const link of linksRef.current) {
         const source = link.source as SimNode;
         const target = link.target as SimNode;
@@ -436,24 +483,32 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         const edgeColor =
           RELATION_TYPE_COLORS[link.type] ?? "rgba(156, 163, 175, 1)";
 
-        // Determine visual style based on purpose category
+        // ── Weight (thickness) based on relation importance ──────────
+        const weight = RELATION_TYPE_WEIGHT[link.type] ?? "medium";
+        const baseLineWidth = WEIGHT_STROKE[weight]!;
+
+        // ── Dash style based on purpose category ─────────────────────
         const category = RELATION_TYPE_CATEGORY[link.type] ?? "argument";
         let lineDash: number[];
-        let lineWidth: number;
         let edgeAlpha: number;
         if (category === "argument") {
-          lineDash = [];        // solid
-          lineWidth = 1.8;
-          edgeAlpha = 0.7;
+          lineDash = [];
+          edgeAlpha = 0.75;
         } else if (category === "creative_research") {
-          lineDash = [6, 4];   // dashed
-          lineWidth = 1.2;
+          lineDash = [6, 4];
           edgeAlpha = 0.55;
         } else {
-          // structure_containment
-          lineDash = [2, 3];   // dotted
-          lineWidth = 1;
+          lineDash = [2, 3];
           edgeAlpha = 0.4;
+        }
+
+        // ── Contradicts: animated pulsing dash ───────────────────────
+        const isContradicts = link.type === "contradicts";
+        let dashOffset = 0;
+        if (isContradicts && !prefersReducedMotion) {
+          lineDash = [8, 5];
+          dashOffset = (now / 40) % 13; // animate offset
+          edgeAlpha = 0.85;
         }
 
         if (link.isLoopback) {
@@ -461,22 +516,62 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
           ctx.beginPath();
           ctx.arc(source.x, source.y - loopRadius, loopRadius, 0, Math.PI * 2);
           ctx.setLineDash(lineDash.length ? lineDash : [4, 3]);
+          ctx.lineDashOffset = dashOffset;
           ctx.strokeStyle = edgeColor;
           ctx.globalAlpha = edgeAlpha;
-          ctx.lineWidth = lineWidth;
+          ctx.lineWidth = baseLineWidth;
           ctx.stroke();
           ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
           ctx.globalAlpha = 1;
         } else {
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 1) continue; // degenerate
+
+          // Shorten line to stop at node boundary
+          const ux = dx / dist;
+          const uy = dy / dist;
+          const sx = source.x + ux * NODE_RADIUS;
+          const sy = source.y + uy * NODE_RADIUS;
+          const tx = target.x - ux * (NODE_RADIUS + 6); // leave room for arrowhead
+          const ty = target.y - uy * (NODE_RADIUS + 6);
+
           ctx.beginPath();
-          ctx.moveTo(source.x, source.y);
-          ctx.lineTo(target.x, target.y);
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(tx, ty);
           ctx.setLineDash(lineDash);
+          ctx.lineDashOffset = dashOffset;
           ctx.strokeStyle = edgeColor;
           ctx.globalAlpha = edgeAlpha;
-          ctx.lineWidth = lineWidth;
+          ctx.lineWidth = baseLineWidth;
           ctx.stroke();
           ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+          ctx.globalAlpha = 1;
+
+          // ── Arrowhead at target ───────────────────────────────────
+          const arrowLen = 6 + baseLineWidth;
+          const arrowAngle = 0.42; // radians (~24°)
+          const ax = target.x - ux * NODE_RADIUS;
+          const ay = target.y - uy * NODE_RADIUS;
+
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(Math.atan2(uy, ux) - arrowAngle),
+            ay - arrowLen * Math.sin(Math.atan2(uy, ux) - arrowAngle),
+          );
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(
+            ax - arrowLen * Math.cos(Math.atan2(uy, ux) + arrowAngle),
+            ay - arrowLen * Math.sin(Math.atan2(uy, ux) + arrowAngle),
+          );
+          ctx.strokeStyle = edgeColor;
+          ctx.globalAlpha = edgeAlpha;
+          ctx.lineWidth = baseLineWidth * 0.85;
+          ctx.stroke();
           ctx.globalAlpha = 1;
         }
       }
@@ -819,20 +914,30 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         <div className="mb-1 font-medium text-text-primary">Edge types</div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <svg width="24" height="6" aria-hidden="true">
-              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1.8" />
+            <svg width="32" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="2.5" />
+              <polygon points="26,1 32,4 26,7" fill="currentColor" />
             </svg>
-            <span>Argument</span>
+            <span>Strong (supports / contradicts)</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg width="24" height="6" aria-hidden="true">
-              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1.2" strokeDasharray="6 4" />
+            <svg width="32" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="1.8" />
+              <polygon points="26,2 32,4 26,6" fill="currentColor" />
+            </svg>
+            <span>Medium (elaborates / exemplifies)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="32" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="1.0" strokeDasharray="6 4" />
+              <polygon points="26,2.5 32,4 26,5.5" fill="currentColor" />
             </svg>
             <span>Creative / Research</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg width="24" height="6" aria-hidden="true">
-              <line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" strokeWidth="1" strokeDasharray="2 3" />
+            <svg width="32" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" strokeWidth="1.0" strokeDasharray="2 3" />
+              <polygon points="26,2.5 32,4 26,5.5" fill="currentColor" />
             </svg>
             <span>Structural</span>
           </div>

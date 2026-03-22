@@ -6,6 +6,7 @@ import { X, Loader2, AlertCircle, AlertTriangle } from "lucide-react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
+import { useAIIntensity, isAtLeastBalanced } from "~/hooks/useAIIntensity";
 import { DecompositionReview } from "~/components/ai/decomposition-review";
 import { AudioRecorder } from "./audio-recorder";
 import { api } from "~/trpc/react";
@@ -45,6 +46,10 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
+  // ── AI intensity gate ─────────────────────────────────────────────────────
+  const { level: aiLevel } = useAIIntensity();
+  const aiAutoSuggestEnabled = isAtLeastBalanced(aiLevel);
+
   // ── Scope jump detection ──────────────────────────────────────────────────
   const [scopeJumpVisible, setScopeJumpVisible] = React.useState(false);
   const [scopeJumpMsg, setScopeJumpMsg] = React.useState("");
@@ -68,17 +73,18 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     },
   });
 
-  // Trigger scope-jump check 2 s after user stops typing (only in capture mode with a valid context)
+  // Trigger scope-jump check 2 s after user stops typing.
+  // Only fires when AI intensity is at least "balanced".
   const handleScopeJumpCheck = React.useCallback(
     (text: string) => {
-      if (!isValidContextId || text.length < 20) return;
+      if (!aiAutoSuggestEnabled || !isValidContextId || text.length < 20) return;
       if (scopeJumpDebounceRef.current) clearTimeout(scopeJumpDebounceRef.current);
       scopeJumpDebounceRef.current = setTimeout(() => {
         detectScopeJump.mutate({ text, contextId });
       }, 2000);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isValidContextId, contextId]
+    [aiAutoSuggestEnabled, isValidContextId, contextId]
   );
 
   // Clean up debounce timer on unmount
@@ -129,10 +135,11 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
           decompose: false,
         });
 
-        // Submit transcription as capture
-        if (transcribeResult.transcription.text) {
+        // Submit transcription as capture (if Whisper API is configured)
+        const transcription = transcribeResult as unknown as { transcription?: { text?: string } };
+        if (transcription.transcription?.text) {
           await submitCapture.mutateAsync({
-            content: transcribeResult.transcription.text,
+            content: transcription.transcription.text,
             projectId,
             mode: "capture",
           });

@@ -8,6 +8,7 @@ import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
 import { useContextUnits } from "~/hooks/use-context-units";
 import { useContextBriefing } from "~/hooks/use-context-briefing";
+import { useAIIntensity, isProactive } from "~/hooks/useAIIntensity";
 import { useViewStatePreservation } from "~/hooks/use-view-state-preservation";
 import { usePanelStore } from "~/stores/panel-store";
 import type { LifecycleState } from "~/components/unit/lifecycle-indicator";
@@ -18,6 +19,7 @@ import { EmptyState } from "~/components/shared/empty-state";
 import { BulkApprovalBar } from "~/components/unit/bulk-approval-bar";
 import { Button } from "~/components/ui/button";
 import { AIInsightsPanel } from "~/components/ai/AIInsightsPanel";
+import { SuggestionQueuePanel } from "~/components/ai/SuggestionQueuePanel";
 import { ReasoningChainPanel } from "~/components/assembly/ReasoningChainPanel";
 import { PromptGeneratorDialog } from "~/components/ai/PromptGeneratorDialog";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
@@ -25,6 +27,8 @@ import { ContextBriefing } from "./context-briefing";
 import { AddUnitToContext } from "./add-unit-to-context";
 import { ContextSplitDialog } from "./context-split-dialog";
 import { ContextMergeDialog } from "./context-merge-dialog";
+import { MissingArgumentAlert } from "~/components/feedback/MissingArgumentAlert";
+import { ContextStatsPanel } from "~/components/dashboard/ContextStatsPanel";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -137,6 +141,10 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   }, [viewStateId]);
 
   const [showAiInsights, setShowAiInsights] = React.useState(false);
+
+  // AI intensity — contradiction alerts only shown in proactive mode
+  const { level: aiLevel } = useAIIntensity();
+  const showContradictionAlerts = isProactive(aiLevel);
 
   // Split / Merge / Prompt dialog state
   const [splitOpen, setSplitOpen] = React.useState(false);
@@ -419,13 +427,29 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       )}
 
 
+      {/* Context analytics stats panel — Story 6.6 */}
+      {activeContextId && !isLoading && (
+        <ContextStatsPanel contextId={activeContextId} />
+      )}
+
+      {/* Missing argument alerts — heuristic gap detection, only when a context is active */}
+      {activeContextId && !isLoading && (
+        <MissingArgumentAlert
+          contextId={activeContextId}
+          onCreateUnit={(content, unitType) => {
+            // Navigate user to capture bar with pre-filled type hint via toast
+            toast.info(`Add a ${unitType}: ${content}`, { duration: 4000 });
+          }}
+        />
+      )}
+
       {/* Reasoning Chains — collapsible panel, only when a context is active */}
       {activeContextId && !isLoading && (
         <ReasoningChainPanel contextId={activeContextId} />
       )}
 
       {/* AI Insights — collapsible panel, only when a context is active */}
-      {activeContextId && !isLoading && (
+      {activeContextId && !isLoading && showContradictionAlerts && (
         <div className="border border-border rounded-lg overflow-hidden">
           <button
             onClick={() => setShowAiInsights((p) => !p)}
@@ -451,6 +475,14 @@ export function ContextView({ projectId, className }: ContextViewProps) {
             />
           )}
         </div>
+      )}
+
+      {/* Story 5.14: AI Suggestion Queue — visible in balanced and proactive modes */}
+      {activeContextId && projectId && !isLoading && (
+        <SuggestionQueuePanel
+          contextId={activeContextId}
+          projectId={projectId}
+        />
       )}
 
       {/* Unit list */}

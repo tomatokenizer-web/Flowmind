@@ -201,17 +201,32 @@ function ProviderIcon({ provider }: { provider: string }) {
 }
 
 // ─── AI Preferences Panel ────────────────────────────────────────────
+
+type AIIntensityLevel = "minimal" | "balanced" | "proactive";
+
+const INTENSITY_VALUES: Record<AIIntensityLevel, number> = {
+  minimal: 0,
+  balanced: 50,
+  proactive: 100,
+};
+
+function intensityLevelFromNumber(value: number): AIIntensityLevel {
+  if (value <= 33) return "minimal";
+  if (value <= 66) return "balanced";
+  return "proactive";
+}
+
 function AIPreferencesPanel() {
   const { data: prefs } = api.user.getAIPreferences.useQuery();
   const utils = api.useUtils();
 
-  const [intensity, setIntensity] = React.useState(50);
+  const [intensityLevel, setIntensityLevel] = React.useState<AIIntensityLevel>("balanced");
   const [model, setModel] = React.useState<"depth" | "speed" | "balanced">("balanced");
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
     if (prefs) {
-      setIntensity(prefs.interventionIntensity ?? 50);
+      setIntensityLevel(intensityLevelFromNumber(prefs.interventionIntensity ?? 50));
       setModel((prefs.modelPreference ?? "balanced") as "depth" | "speed" | "balanced");
     }
   }, [prefs]);
@@ -226,19 +241,32 @@ function AIPreferencesPanel() {
 
   const handleSave = () => {
     updateMutation.mutate({
-      interventionIntensity: intensity,
+      interventionIntensity: INTENSITY_VALUES[intensityLevel],
       modelPreference: model,
     });
   };
 
-  const intensityLabel =
-    intensity < 25
-      ? "Minimal"
-      : intensity < 50
-        ? "Light"
-        : intensity < 75
-          ? "Moderate"
-          : "Active";
+  const intensityOptions: {
+    id: AIIntensityLevel;
+    label: string;
+    desc: string;
+  }[] = [
+    {
+      id: "minimal",
+      label: "Minimal",
+      desc: "AI only responds when you explicitly ask",
+    },
+    {
+      id: "balanced",
+      label: "Balanced",
+      desc: "AI suggests type and relations on new units (default)",
+    },
+    {
+      id: "proactive",
+      label: "Proactive",
+      desc: "AI auto-suggests refinements, flags contradictions, shows branch potential",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -253,40 +281,41 @@ function AIPreferencesPanel() {
 
       {/* Intervention intensity */}
       <div className="rounded-xl border border-border p-4">
-        <label
-          htmlFor="ai-intensity"
-          className="mb-1 block text-sm font-medium text-text-primary"
-        >
+        <p className="mb-1 text-sm font-medium text-text-primary">
           AI Intervention Intensity
-        </label>
+        </p>
         <p className="mb-4 text-xs text-text-tertiary">
           How proactively the AI suggests connections, improvements, and
           insights.
         </p>
-        <div className="flex items-center gap-4">
-          <span className="w-12 text-xs text-text-tertiary">Minimal</span>
-          <input
-            id="ai-intensity"
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={intensity}
-            onChange={(e) => setIntensity(Number(e.target.value))}
-            className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-bg-secondary accent-accent-primary"
-            aria-label="AI intervention intensity slider"
-            aria-valuenow={intensity}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={`${intensityLabel} (${intensity}%)`}
-          />
-          <span className="w-12 text-right text-xs text-text-tertiary">
-            Active
-          </span>
+        <div className="space-y-2">
+          {intensityOptions.map((opt) => (
+            <label
+              key={opt.id}
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+                intensityLevel === opt.id
+                  ? "border-accent-primary bg-accent-primary/5"
+                  : "border-border hover:bg-bg-hover",
+              )}
+            >
+              <input
+                type="radio"
+                name="ai-intensity-level"
+                value={opt.id}
+                checked={intensityLevel === opt.id}
+                onChange={() => setIntensityLevel(opt.id)}
+                className="accent-accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  {opt.label}
+                </p>
+                <p className="text-xs text-text-tertiary">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
         </div>
-        <p className="mt-2 text-center text-sm font-medium text-accent-primary">
-          {intensityLabel} ({intensity}%)
-        </p>
       </div>
 
       {/* Model preference */}

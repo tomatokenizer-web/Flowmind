@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Boxes, HelpCircle, Clock } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useLayoutStore } from "~/stores/layout-store";
+import type { UnitTypeCounts } from "~/server/services/dashboardService";
 
 export interface ContextSummaryData {
   id: string;
@@ -13,6 +13,7 @@ export interface ContextSummaryData {
   parentName: string | null;
   unitCount: number;
   unresolvedQuestionCount: number;
+  unitTypeCounts: UnitTypeCounts;
   updatedAt: Date;
 }
 
@@ -28,6 +29,119 @@ function formatRelativeTime(date: Date): string {
   if (diffDays < 30) return `${diffDays}d ago`;
   return new Date(date).toLocaleDateString();
 }
+
+// ─── Completeness Compass ─────────────────────────────────────────────
+//
+// Completeness is calculated as:
+//   1 point for each dimension that has at least one unit
+//   Dimensions: claim, evidence, counterargument, question, assumption
+//   Score = (dimensions covered / total dimensions) * 100
+
+const COMPASS_DIMENSIONS: Array<{
+  key: keyof UnitTypeCounts;
+  label: string;
+  color: string;
+}> = [
+  { key: "claim", label: "Claims", color: "bg-accent-primary" },
+  { key: "evidence", label: "Evidence", color: "bg-lifecycle-confirmed-text" },
+  {
+    key: "counterargument",
+    label: "Counter\u2011args",
+    color: "bg-accent-danger",
+  },
+  { key: "question", label: "Questions", color: "bg-accent-warning" },
+  { key: "assumption", label: "Assumptions", color: "bg-text-tertiary" },
+];
+
+function calculateCompleteness(counts: UnitTypeCounts): number {
+  const covered = COMPASS_DIMENSIONS.filter((d) => counts[d.key] > 0).length;
+  return Math.round((covered / COMPASS_DIMENSIONS.length) * 100);
+}
+
+interface CompletenessCompassProps {
+  counts: UnitTypeCounts;
+  totalUnits: number;
+}
+
+function CompletenessCompass({ counts, totalUnits }: CompletenessCompassProps) {
+  const pct = calculateCompleteness(counts);
+
+  // Ring color based on completeness
+  const ringColor =
+    pct === 0
+      ? "border-border"
+      : pct < 40
+        ? "border-accent-danger"
+        : pct < 80
+          ? "border-accent-warning"
+          : "border-lifecycle-confirmed-text";
+
+  const label =
+    totalUnits === 0
+      ? "No units yet"
+      : `Completeness: ${pct}% — ${COMPASS_DIMENSIONS.filter((d) => counts[d.key] > 0)
+          .map((d) => d.label)
+          .join(", ")} covered`;
+
+  return (
+    <div
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2",
+        ringColor,
+      )}
+      aria-label={label}
+      title={label}
+    >
+      <span className="text-[10px] font-medium text-text-secondary">
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
+// ─── Compass Detail Bar ───────────────────────────────────────────────
+
+interface CompassDetailProps {
+  counts: UnitTypeCounts;
+  totalUnits: number;
+}
+
+function CompassDetail({ counts, totalUnits }: CompassDetailProps) {
+  if (totalUnits === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {COMPASS_DIMENSIONS.map((dim) => {
+        const count = counts[dim.key];
+        const pct = totalUnits > 0 ? Math.round((count / totalUnits) * 100) : 0;
+        const hasCoverage = count > 0;
+
+        return (
+          <div key={dim.key} className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-[10px] text-text-tertiary">
+              {dim.label}
+            </span>
+            <div className="h-1.5 flex-1 rounded-full bg-bg-secondary">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-300",
+                  hasCoverage ? dim.color : "bg-bg-hover",
+                )}
+                style={{ width: hasCoverage ? `${Math.max(pct, 4)}%` : "4%" }}
+                aria-label={`${dim.label}: ${count}`}
+              />
+            </div>
+            <span className="w-6 shrink-0 text-right text-[10px] text-text-tertiary">
+              {count}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Card ─────────────────────────────────────────────────────────────
 
 interface ContextSummaryCardProps {
   context: ContextSummaryData;
@@ -65,14 +179,10 @@ export function ContextSummaryCard({ context }: ContextSummaryCardProps) {
             </p>
           )}
         </div>
-        {/* Completeness Compass placeholder */}
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-border"
-          aria-label="Completeness: not yet calculated"
-          title="Completeness compass (coming soon)"
-        >
-          <span className="text-[10px] text-text-tertiary">0%</span>
-        </div>
+        <CompletenessCompass
+          counts={context.unitTypeCounts}
+          totalUnits={context.unitCount}
+        />
       </div>
 
       {/* Description */}
@@ -80,6 +190,14 @@ export function ContextSummaryCard({ context }: ContextSummaryCardProps) {
         <p className="line-clamp-2 text-sm text-text-secondary">
           {context.description}
         </p>
+      )}
+
+      {/* Completeness detail — shown when there are units */}
+      {context.unitCount > 0 && (
+        <CompassDetail
+          counts={context.unitTypeCounts}
+          totalUnits={context.unitCount}
+        />
       )}
 
       {/* Stats row */}

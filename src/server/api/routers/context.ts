@@ -175,4 +175,86 @@ export const contextRouter = createTRPCRouter({
       await service.updateThoughtRankForContext(input.id);
       return { success: true };
     }),
+
+  // ─── Story 6.6: Context stats ──────────────────────────────────
+  getContextStats: protectedProcedure
+    .input(z.object({ contextId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { contextId } = input;
+
+      // Fetch all unit-context records with unit details
+      const unitContexts = await ctx.db.unitContext.findMany({
+        where: { contextId },
+        include: {
+          unit: {
+            select: {
+              id: true,
+              unitType: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+      const unitIds = unitContexts.map((uc) => uc.unit.id);
+
+      // Count relations that connect units within this context
+      const relationCount = await ctx.db.relation.count({
+        where: {
+          sourceUnitId: { in: unitIds },
+          targetUnitId: { in: unitIds },
+        },
+      });
+
+      const unitCount = unitContexts.length;
+      const claimCount = unitContexts.filter((uc) => uc.unit.unitType === "claim").length;
+      const evidenceCount = unitContexts.filter((uc) => uc.unit.unitType === "evidence").length;
+      const questionCount = unitContexts.filter((uc) => uc.unit.unitType === "question").length;
+      const avgRelationsPerUnit = unitCount > 0 ? Math.round((relationCount * 2 / unitCount) * 10) / 10 : 0;
+
+      // Recent activity: count of units created per day over last 7 days
+      const recentActivity: Array<{ date: string; unitCount: number }> = [];
+      for (let i = 6; i >= 0; i--) {
+        const dayStart = new Date();
+        dayStart.setDate(dayStart.getDate() - i);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const count = unitContexts.filter((uc) => {
+          const d = uc.unit.createdAt;
+          return d >= dayStart && d <= dayEnd;
+        }).length;
+
+        recentActivity.push({
+          date: dayStart.toISOString().slice(0, 10),
+          unitCount: count,
+        });
+      }
+
+      // Top contributing unit types by count
+      const typeCounts: Record<string, number> = {};
+      for (const uc of unitContexts) {
+        typeCounts[uc.unit.unitType] = (typeCounts[uc.unit.unitType] ?? 0) + 1;
+      }
+      const topContributingTypes = Object.entries(typeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([type, count]) => ({
+          type,
+          count,
+          pct: unitCount > 0 ? Math.round((count / unitCount) * 100) : 0,
+        }));
+
+      return {
+        unitCount,
+        claimCount,
+        evidenceCount,
+        questionCount,
+        relationCount,
+        avgRelationsPerUnit,
+        recentActivity,
+        topContributingTypes,
+      };
+    }),
 });

@@ -10,7 +10,6 @@ import {
   List,
   BookOpen,
   Compass,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -24,7 +23,8 @@ import { ProjectSelector } from "~/components/project/ProjectSelector";
 import { NavigatorPanel } from "~/components/navigator/NavigatorPanel";
 import { ExternalImportDialog } from "~/components/import/ExternalImportDialog";
 import { DriftPanel } from "~/components/drift/DriftPanel";
-import { api } from "~/trpc/react";
+import { SimilarUnitsPanel } from "~/components/feedback/SimilarUnitsPanel";
+import { OrphanRecoveryPanel } from "~/components/feedback/OrphanRecoveryPanel";
 
 const SIDEBAR_WIDTH = 260;
 const SIDEBAR_COLLAPSED_WIDTH = 60;
@@ -41,13 +41,6 @@ export function Sidebar({ className }: SidebarProps) {
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
   const [importOpen, setImportOpen] = React.useState(false);
-
-  // Fetch incubating units count for compact badge
-  const { data: incubatingUnits } = api.incubation.list.useQuery();
-  const incubatingCount = React.useMemo(() => {
-    if (!projectId || !incubatingUnits) return 0;
-    return incubatingUnits.filter((u) => u.projectId === projectId).length;
-  }, [incubatingUnits, projectId]);
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
   const isCollapsed = !sidebarOpen || sidebarWidth === 60;
@@ -112,29 +105,17 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Spacer to push bottom nav down */}
       <div className="flex-1" />
 
-      {/* Orphan units indicator (incubating = contextless drafts) */}
-      {incubatingCount > 0 && (
-        <div className={cn(
-          "border-t border-border",
-          isCollapsed ? "flex items-center justify-center py-2" : "px-3 py-2",
-        )}>
-          {isCollapsed ? (
-            <div className="relative" title={`${incubatingCount} orphan units`}>
-              <Sparkles className="h-5 w-5 text-text-tertiary" />
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-warning text-[10px] font-medium text-white">
-                {incubatingCount > 9 ? "9+" : incubatingCount}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-text-tertiary">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{incubatingCount} orphan unit{incubatingCount !== 1 ? "s" : ""}</span>
-            </div>
-          )}
-        </div>
+      {/* Orphan recovery panel (8.3) */}
+      {projectId && (
+        <OrphanRecoveryPanel projectId={projectId} collapsed={isCollapsed} />
       )}
 
-      {/* Drift detection panel */}
+      {/* Similar units panel (8.2) */}
+      {projectId && (
+        <SimilarUnitsPanel projectId={projectId} collapsed={isCollapsed} />
+      )}
+
+      {/* Drift detection panel (8.7) */}
       {projectId && (
         <DriftPanel projectId={projectId} collapsed={isCollapsed} />
       )}

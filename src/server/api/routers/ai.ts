@@ -99,6 +99,32 @@ const detectScopeJumpSchema = z.object({
   sessionId: z.string().uuid().optional(),
 });
 
+// ─── Story 5.7: Branch Potential Score Schema ─────────────────────────────────
+
+const computeBranchPotentialSchema = z.object({
+  unitId: z.string().uuid(),
+});
+
+// ─── Story 5.8: Missing Argument Alerts Schema ────────────────────────────────
+
+const detectMissingArgumentsSchema = z.object({
+  contextId: z.string().uuid(),
+});
+
+// ─── Story 5.10: Epistemic Humility Schema ────────────────────────────────────
+
+const detectControversialTopicSchema = z.object({
+  content: z.string().min(1).max(5000),
+});
+
+// ─── Story 5.15: External Knowledge Search Schema ─────────────────────────────
+
+const searchExternalKnowledgeSchema = z.object({
+  query: z.string().min(1).max(500),
+  unitId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+});
+
 // ─── Story 6.7: Natural Language Query Schema ─────────────────────────────────
 
 const naturalLanguageQuerySchema = z.object({
@@ -809,6 +835,104 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       });
     }),
 
+  // ─── Story 5.7: Branch Potential Score ───────────────────────────────────
+
+  /**
+   * Compute branch potential score for a unit using heuristic analysis.
+   * Returns a score 0-4 and the reasons that contributed to the score.
+   * No AI call — purely heuristic for performance.
+   */
+  computeBranchPotential: protectedProcedure
+    .input(computeBranchPotentialSchema)
+    .query(async ({ ctx, input }): Promise<{ score: number; reasons: string[] }> => {
+      const unit = await ctx.db.unit.findUnique({
+        where: { id: input.unitId },
+        select: { content: true, unitType: true },
+      });
+
+      if (!unit) {
+        return { score: 0, reasons: [] };
+      }
+
+      const SPECULATIVE_WORDS = /\b(maybe|perhaps|what if|could|might|possibly|suppose|imagine|wonder|hypothetically)\b/i;
+
+      let score = 0;
+      const reasons: string[] = [];
+
+      if (unit.content.includes("?")) {
+        score += 1;
+        reasons.push("Contains a question");
+      }
+
+      if (SPECULATIVE_WORDS.test(unit.content)) {
+        score += 1;
+        reasons.push("Uses speculative language");
+      }
+
+      if (unit.content.length > 100) {
+        score += 1;
+        reasons.push("Rich content with more substance to explore");
+      }
+
+      if (["question", "idea", "observation"].includes(unit.unitType)) {
+        score += 1;
+        reasons.push(`Unit type '${unit.unitType}' invites further exploration`);
+      }
+
+      return { score: Math.min(score, 4), reasons };
+    }),
+
+  // ─── Story 5.8: Missing Argument Alerts ──────────────────────────────────
+
+  /**
+   * Detect structural gaps in a context's argument by analysing unit types.
+   * Heuristic — no AI call required.
+   */
+  detectMissingArguments: protectedProcedure
+    .input(detectMissingArgumentsSchema)
+    .query(async ({ ctx, input }): Promise<{
+      gaps: Array<{ type: string; message: string; severity: "high" | "medium" | "low" }>;
+    }> => {
+      const units = await ctx.db.unit.findMany({
+        where: {
+          perspectives: { some: { contextId: input.contextId } },
+          lifecycle: { not: "draft" },
+        },
+        select: { unitType: true },
+        take: 100,
+      });
+
+      if (units.length === 0) {
+        return { gaps: [] };
+      }
+
+      const typeSet = new Set(units.map((u) => u.unitType));
+      const gaps: Array<{ type: string; message: string; severity: "high" | "medium" | "low" }> = [];
+
+      const hasClaims = typeSet.has("claim");
+      const hasEvidence = typeSet.has("evidence");
+      const hasCounterarguments = typeSet.has("counterargument");
+      const hasQuestions = typeSet.has("question");
+
+      if (hasClaims && !hasEvidence) {
+        gaps.push({ type: "missing_evidence", message: "Claims lack supporting evidence", severity: "high" });
+      }
+
+      if (hasClaims && !hasCounterarguments) {
+        gaps.push({ type: "missing_counterargument", message: "No opposing viewpoints considered", severity: "medium" });
+      }
+
+      if (hasEvidence && !hasClaims) {
+        gaps.push({ type: "unconnected_evidence", message: "Evidence not connected to any claims", severity: "high" });
+      }
+
+      if (!hasQuestions) {
+        gaps.push({ type: "no_questions", message: "No open questions to explore", severity: "low" });
+      }
+
+      return { gaps };
+    }),
+
   // ─── Story 6.7: Natural Language Query ───────────────────────────────────
 
   /**
@@ -869,5 +993,162 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       }));
 
       return { intent, results };
+    }),
+
+  // ─── Story 5.10: Epistemic Humility / Controversial Topic Detection ──────────
+
+  /**
+   * Heuristic detection of controversial or absolutist content.
+   * No AI call required — purely regex/keyword based.
+   */
+  detectControversialTopic: protectedProcedure
+    .input(detectControversialTopicSchema)
+    .mutation(({ input }): { isControversial: boolean; reasons: string[]; suggestion: string } => {
+      const text = input.content.toLowerCase();
+      const reasons: string[] = [];
+
+      // Controversial keywords
+      const controversialKeywords = [
+        "politics", "political", "religion", "religious", "abortion",
+        "gun control", "gun rights", "immigration", "race", "racism",
+        "gender", "transgender", "climate change", "global warming",
+        "vaccine", "vaccination", "war", "death penalty", "capital punishment",
+        "euthanasia", "drugs legalization", "affirmative action",
+        "socialism", "capitalism", "communism", "fascism",
+      ];
+
+      const matchedKeywords = controversialKeywords.filter((kw) => text.includes(kw));
+      if (matchedKeywords.length > 0) {
+        reasons.push(`Contains potentially controversial topic(s): ${matchedKeywords.slice(0, 3).join(", ")}`);
+      }
+
+      // Absolute language patterns
+      const absolutePatterns = [
+        /\beveryone knows\b/,
+        /\bobviously\b/,
+        /\bclearly\b/,
+        /\balways\b/,
+        /\bnever\b/,
+        /\ball \w+ are\b/,
+        /\bno one\b/,
+        /\bno \w+ ever\b/,
+        /\bwithout question\b/,
+        /\bundeniably\b/,
+        /\bit('s| is) (a )?fact\b/,
+        /\beverybody\b/,
+        /\bnobody\b/,
+      ];
+
+      const matchedAbsolute = absolutePatterns
+        .filter((p) => p.test(text))
+        .map((p) => p.source.replace(/\\b/g, "").replace(/\\/g, ""));
+
+      if (matchedAbsolute.length > 0) {
+        reasons.push(`Uses absolute language (e.g., "${matchedAbsolute[0]}")`);
+      }
+
+      const isControversial = reasons.length > 0;
+      const suggestion = isControversial
+        ? "Consider adding qualifying language and acknowledging alternative perspectives"
+        : "";
+
+      return { isControversial, reasons, suggestion };
+    }),
+
+  // ─── Story 5.15: External Knowledge Search ───────────────────────────────────
+
+  /**
+   * Use AI training knowledge to suggest related concepts and reading directions.
+   * NOT a web search — generates suggestions from the model's knowledge.
+   */
+  searchExternalKnowledge: rateLimitedProcedure
+    .input(searchExternalKnowledgeSchema)
+    .mutation(async ({ ctx, input }): Promise<{
+      suggestions: Array<{ title: string; description: string; relevance: string }>;
+      relatedConcepts: string[];
+    }> => {
+      const sessionId = resolveSessionId(input.sessionId);
+      void sessionId; // used for safety-guard tracking upstream
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const { z: zod } = await import("zod");
+        const provider = getAIProvider();
+
+        const ExternalKnowledgeSchema = zod.object({
+          suggestions: zod.array(
+            zod.object({
+              title: zod.string(),
+              description: zod.string(),
+              relevance: zod.string(),
+            })
+          ),
+          relatedConcepts: zod.array(zod.string()),
+        });
+
+        const result = await provider.generateStructured<{
+          suggestions: Array<{ title: string; description: string; relevance: string }>;
+          relatedConcepts: string[];
+        }>(
+          `You are a knowledgeable research assistant. Given the following query or topic, suggest 3-5 highly relevant resources, topics, or concepts that would deepen understanding of it.
+
+Query: "${input.query.slice(0, 400)}"
+
+Return structured JSON with:
+- suggestions: array of { title, description, relevance } where relevance explains why it's helpful
+- relatedConcepts: 3-6 brief related concept names
+
+Focus on academic, scientific, or well-established knowledge sources. Do not invent URLs or authors.`,
+          {
+            temperature: 0.5,
+            maxTokens: 1024,
+            zodSchema: ExternalKnowledgeSchema,
+            schema: {
+              name: "ExternalKnowledge",
+              description: "Related knowledge suggestions",
+              properties: {
+                suggestions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string", description: "Topic or resource title" },
+                      description: { type: "string", description: "Brief description of the resource/topic" },
+                      relevance: { type: "string", description: "Why this is relevant to the query" },
+                    },
+                    required: ["title", "description", "relevance"],
+                  },
+                },
+                relatedConcepts: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Short related concept names",
+                },
+              },
+              required: ["suggestions", "relatedConcepts"],
+            },
+          }
+        );
+
+        return result;
+      } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (errMsg.includes("credit") || errMsg.includes("balance")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Anthropic API credit balance is too low.",
+          });
+        }
+        if (errMsg.includes("invalid_api_key") || errMsg.includes("authentication")) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Invalid Anthropic API key.",
+          });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `External knowledge search failed: ${errMsg}`,
+        });
+      }
     }),
 });

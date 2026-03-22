@@ -1,5 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
 
+// Unit types that are meaningful for completeness scoring
+export const COMPASS_UNIT_TYPES = [
+  "claim",
+  "evidence",
+  "counterargument",
+  "question",
+  "assumption",
+] as const;
+
+export type CompassUnitType = (typeof COMPASS_UNIT_TYPES)[number];
+
+export type UnitTypeCounts = Record<CompassUnitType, number>;
+
 export interface ContextCardData {
   id: string;
   name: string;
@@ -8,7 +21,9 @@ export interface ContextCardData {
   parentName: string | null;
   unitCount: number;
   unresolvedQuestionCount: number;
-  lastModifiedAt: Date;
+  unitTypeCounts: UnitTypeCounts;
+  /** Alias for component compatibility: matches ContextSummaryData.updatedAt */
+  updatedAt: Date;
 }
 
 export interface DashboardData {
@@ -36,6 +51,13 @@ export function createDashboardService(db: PrismaClient) {
           _count: {
             select: { unitContexts: true },
           },
+          unitContexts: {
+            select: {
+              unit: {
+                select: { unitType: true },
+              },
+            },
+          },
         },
         orderBy: { updatedAt: "desc" },
       });
@@ -45,6 +67,21 @@ export function createDashboardService(db: PrismaClient) {
           ? ctx.openQuestions
           : [];
 
+        // Tally unit types for the compass
+        const unitTypeCounts: UnitTypeCounts = {
+          claim: 0,
+          evidence: 0,
+          counterargument: 0,
+          question: 0,
+          assumption: 0,
+        };
+        for (const uc of ctx.unitContexts) {
+          const t = uc.unit.unitType as CompassUnitType;
+          if (t in unitTypeCounts) {
+            unitTypeCounts[t]++;
+          }
+        }
+
         return {
           id: ctx.id,
           name: ctx.name,
@@ -53,7 +90,8 @@ export function createDashboardService(db: PrismaClient) {
           parentName: ctx.parent?.name ?? null,
           unitCount: ctx._count.unitContexts,
           unresolvedQuestionCount: openQuestions.length,
-          lastModifiedAt: ctx.updatedAt,
+          unitTypeCounts,
+          updatedAt: ctx.updatedAt,
         };
       });
 
