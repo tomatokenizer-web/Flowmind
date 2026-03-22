@@ -1,4 +1,5 @@
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createScaffoldUnits } from "@/server/services/scaffoldService";
 
@@ -166,7 +167,7 @@ export const projectRouter = createTRPCRouter({
       });
 
       if (!project) {
-        throw new Error("Project not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
       return {
@@ -198,7 +199,7 @@ export const projectRouter = createTRPCRouter({
       });
 
       if (!existing) {
-        throw new Error("Project not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
       const updated = await ctx.db.project.update({
@@ -231,7 +232,7 @@ export const projectRouter = createTRPCRouter({
       });
 
       if (!existing) {
-        throw new Error("Project not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
       // Check if this is the user's only project
@@ -266,7 +267,7 @@ export const projectRouter = createTRPCRouter({
       });
 
       if (!project) {
-        throw new Error("Project not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
       if (!project.template) {
@@ -352,7 +353,7 @@ export const projectRouter = createTRPCRouter({
       });
 
       if (!project) {
-        throw new Error("Project not found");
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
       // Get unit stats by lifecycle

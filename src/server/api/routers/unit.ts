@@ -237,6 +237,13 @@ export const unitRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, project: { userId: ctx.session.user.id } },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       return ctx.db.unit.update({
         where: { id: input.unitId },
         data: { sortOrder: input.newIndex },

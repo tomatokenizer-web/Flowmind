@@ -114,14 +114,14 @@ export const relationRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       const service = createRelationService(ctx.db);
-      return service.update(id, data, ctx.session.user.id);
+      return service.update(id, data, ctx.session.user.id!);
     }),
 
   delete: protectedProcedure
     .input(idSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createRelationService(ctx.db);
-      return service.delete(input.id, ctx.session.user.id);
+      return service.delete(input.id, ctx.session.user.id!);
     }),
 
   listByUnit: protectedProcedure
