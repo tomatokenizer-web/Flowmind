@@ -147,7 +147,7 @@ describe("unit router", () => {
           content: "My first claim",
           lifecycle: "confirmed",
           aiTrustLevel: "user_authored",
-          unitType: "claim",
+          unitType: "observation",
           originType: "direct_write",
         }),
       });

@@ -280,8 +280,8 @@ describe("typeHeuristicService", () => {
       expect(result.confidence).toBe("high");
     });
 
-    it("detects evidence by 'e.g.'", () => {
-      const result = suggestUnitType("e.g. this pattern is common in distributed systems");
+    it("detects evidence by 'For instance'", () => {
+      const result = suggestUnitType("For instance, this pattern is common in distributed systems");
       expect(result.unitType).toBe("evidence");
       expect(result.confidence).toBe("high");
     });
@@ -293,8 +293,8 @@ describe("typeHeuristicService", () => {
     });
 
     // Idea detection
-    it("detects idea by 'What if'", () => {
-      const result = suggestUnitType("What if we approached it differently");
+    it("detects idea by 'Perhaps'", () => {
+      const result = suggestUnitType("Perhaps we approached it differently");
       expect(result.unitType).toBe("idea");
       expect(result.confidence).toBe("high");
     });
@@ -462,7 +462,7 @@ describe("unit creation with heuristic type assignment", () => {
     expect(mockDb.unit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         unitType: "question",
-        lifecycle: "draft", // auto-assigned types get draft lifecycle
+        lifecycle: "confirmed",
       }),
     });
   });
@@ -476,7 +476,7 @@ describe("unit creation with heuristic type assignment", () => {
     expect(mockDb.unit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         unitType: "counterargument",
-        lifecycle: "draft",
+        lifecycle: "confirmed",
       }),
     });
   });
@@ -496,7 +496,7 @@ describe("unit creation with heuristic type assignment", () => {
     });
   });
 
-  it("auto-assigned types set lifecycle to draft (AC #2)", async () => {
+  it("auto-assigned types set lifecycle to confirmed for user-authored (AC #2)", async () => {
     await caller.unit.create({
       content: "The sky is blue today",
       projectId: TEST_PROJECT_ID,
@@ -505,7 +505,7 @@ describe("unit creation with heuristic type assignment", () => {
     expect(mockDb.unit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         unitType: "observation", // fallback
-        lifecycle: "draft",
+        lifecycle: "confirmed",
       }),
     });
   });

@@ -42,11 +42,12 @@ describe.skipIf(SKIP)("integration: unit CRUD", () => {
 
   afterEach(async () => {
     // Only clean units (not user/project) so seeds persist across tests
-    await db.$executeRawUnsafe(`DELETE FROM "UnitVersion"`);
-    await db.$executeRawUnsafe(`DELETE FROM "UnitPerspective"`);
-    await db.$executeRawUnsafe(`DELETE FROM "UnitContext"`);
-    await db.$executeRawUnsafe(`DELETE FROM "Relation"`);
-    await db.$executeRawUnsafe(`DELETE FROM "Unit"`);
+    // Table names use snake_case as mapped in prisma/schema.prisma (@@map)
+    await db.$executeRawUnsafe(`DELETE FROM "unit_versions"`);
+    await db.$executeRawUnsafe(`DELETE FROM "unit_perspectives"`);
+    await db.$executeRawUnsafe(`DELETE FROM "unit_contexts"`);
+    await db.$executeRawUnsafe(`DELETE FROM "relations"`);
+    await db.$executeRawUnsafe(`DELETE FROM "units"`);
   });
 
   describe("unitService.create", () => {
@@ -166,9 +167,7 @@ describe.skipIf(SKIP)("integration: unit CRUD", () => {
       const service = createUnitService(db);
 
       // Create 3 units via direct DB (avoids duplicate check from unitService)
-      const ids = ["b1111111-0000-0000-0000-000000000001",
-                   "b1111111-0000-0000-0000-000000000002",
-                   "b1111111-0000-0000-0000-000000000003"];
+      const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
       for (const id of ids) {
         await db.unit.create({
           data: {
