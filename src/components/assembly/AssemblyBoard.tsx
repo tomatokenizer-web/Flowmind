@@ -131,7 +131,7 @@ function SortableUnitCard({
 
       {/* Bridge text zone */}
       <div className="relative mx-8 my-1">
-        {bridgeText || document.activeElement?.getAttribute("data-bridge") === item.unitId ? (
+        {bridgeText ? (
           <textarea
             data-bridge={item.unitId}
             value={bridgeText}

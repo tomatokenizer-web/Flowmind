@@ -73,10 +73,17 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
   }>>([]);
   const [nlqSummary, setNlqSummary] = React.useState("");
 
+  const [nlqError, setNlqError] = React.useState<string | null>(null);
   const nlqMutation = api.ai.naturalLanguageQuery.useMutation({
     onSuccess: (data) => {
+      setNlqError(null);
       setNlqResults(data.results);
       setNlqSummary(data.intent.summary);
+    },
+    onError: (err) => {
+      setNlqError(err.message ?? "AI query failed");
+      setNlqResults([]);
+      setNlqSummary("");
     },
   });
 

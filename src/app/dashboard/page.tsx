@@ -147,6 +147,14 @@ export default function DashboardPage() {
     );
   }
 
+  if (!projectId) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-text-secondary">No project selected. Create or select a project to get started.</p>
+      </div>
+    );
+  }
+
   if (viewMode === "graph") {
     return (
       <section aria-label="Graph view" className="h-[calc(100vh-120px)]">

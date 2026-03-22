@@ -466,6 +466,7 @@ function KeyboardShortcutsPanel() {
 
 // ─── Privacy Panel ──────────────────────────────────────────────────
 function PrivacyPanel() {
+  const utils = api.useUtils();
   // Export state
   const [exporting, setExporting] = React.useState(false);
   const [exportFormat, setExportFormat] = React.useState<"json" | "markdown">("json");
@@ -476,7 +477,9 @@ function PrivacyPanel() {
 
   // Embedding preference
   const { data: embeddingPref } = api.user.getEmbeddingPreference.useQuery();
-  const setEmbeddingMutation = api.user.setEmbeddingPreference.useMutation();
+  const setEmbeddingMutation = api.user.setEmbeddingPreference.useMutation({
+    onSuccess: () => void utils.user.getEmbeddingPreference.invalidate(),
+  });
 
   const { refetch } = api.apiKey.exportAllData.useQuery(undefined, {
     enabled: false,
