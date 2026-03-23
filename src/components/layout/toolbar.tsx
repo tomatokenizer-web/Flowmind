@@ -60,7 +60,7 @@ export function Toolbar({
   // Build breadcrumb segments with full depth: Home > Context > View > Unit
   const defaultSegments = React.useMemo((): BreadcrumbSegment[] => {
     const segs: BreadcrumbSegment[] = [
-      { label: "Home", href: "/dashboard-app", depth: "project" },
+      { label: "Home", href: "/dashboard", depth: "project" },
     ];
 
     if (activeContextId && contextData) {
