@@ -18,6 +18,7 @@ import { GlobalGraphCanvas } from "./GlobalGraphCanvas";
 import { LocalCardArray } from "./LocalCardArray";
 import { GraphControls } from "./GraphControls";
 import { MergeUnitsDialog } from "./MergeUnitsDialog";
+import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
 
 // ─── Props ────────────────────────────────────────────────────────────
 interface GraphViewProps {
@@ -180,89 +181,91 @@ export function GraphView({ projectId }: GraphViewProps) {
   }, [relationsData]);
 
   return (
-    <div
-      className="relative h-full w-full overflow-hidden bg-bg-primary"
-      role="application"
-      aria-label="Thought connection graph"
-    >
-      <span className="sr-only">
-        Use arrow keys to navigate between connected thoughts. Press Enter to
-        view details.
-      </span>
+    <ComponentErrorBoundary className="h-full w-full">
+      <div
+        className="relative h-full w-full overflow-hidden bg-bg-primary"
+        role="application"
+        aria-label="Thought connection graph"
+      >
+        <span className="sr-only">
+          Use arrow keys to navigate between connected thoughts. Press Enter to
+          view details.
+        </span>
 
-      {layer === "global" ? (
-        <GlobalGraphCanvas
-          units={units ?? []}
-          relations={relations}
-          onNodeClick={mergeMode ? handleNodeClickForMerge : undefined}
-        />
-      ) : (
-        <LocalCardArray />
-      )}
+        {layer === "global" ? (
+          <GlobalGraphCanvas
+            units={units ?? []}
+            relations={relations}
+            onNodeClick={mergeMode ? handleNodeClickForMerge : undefined}
+          />
+        ) : (
+          <LocalCardArray />
+        )}
 
-      <GraphControls />
+        <GraphControls />
 
-      {/* Merge mode controls — shown only on global layer */}
-      {layer === "global" && (
-        <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
-          {mergeMode ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-surface/95 px-4 py-2 shadow-lg backdrop-blur-sm">
-              <GitMerge className="h-4 w-4 text-accent-primary" />
-              <span className="text-sm text-text-primary">
-                {mergeSourceId
-                  ? "Click the target unit to merge into"
-                  : "Click the source unit to merge from"}
-              </span>
-              {mergeSourceId && (
-                <span className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-xs font-mono text-accent-primary">
-                  source selected
+        {/* Merge mode controls — shown only on global layer */}
+        {layer === "global" && (
+          <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+            {mergeMode ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-surface/95 px-4 py-2 shadow-lg backdrop-blur-sm">
+                <GitMerge className="h-4 w-4 text-accent-primary" />
+                <span className="text-sm text-text-primary">
+                  {mergeSourceId
+                    ? "Click the target unit to merge into"
+                    : "Click the source unit to merge from"}
                 </span>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-1 h-6 w-6"
-                onClick={handleCancelMerge}
-                aria-label="Cancel merge"
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "gap-1.5 bg-bg-secondary/90 backdrop-blur-sm",
-                    )}
-                    onClick={handleEnterMerge}
-                  >
-                    <GitMerge className="h-4 w-4" />
-                    <span className="hidden sm:inline">Merge Units</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Merge two semantically identical units</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-      )}
+                {mergeSourceId && (
+                  <span className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-xs font-mono text-accent-primary">
+                    source selected
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-1 h-6 w-6"
+                  onClick={handleCancelMerge}
+                  aria-label="Cancel merge"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "gap-1.5 bg-bg-secondary/90 backdrop-blur-sm",
+                      )}
+                      onClick={handleEnterMerge}
+                    >
+                      <GitMerge className="h-4 w-4" />
+                      <span className="hidden sm:inline">Merge Units</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Merge two semantically identical units</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        )}
 
-      {/* Merge dialog — rendered when both units are selected */}
-      {mergeSourceId && mergeTargetId && (
-        <MergeUnitsDialog
-          open={mergeDialogOpen}
-          onOpenChange={handleMergeDialogOpenChange}
-          sourceUnitId={mergeSourceId}
-          targetUnitId={mergeTargetId}
-          onMerged={handleMerged}
-        />
-      )}
-    </div>
+        {/* Merge dialog — rendered when both units are selected */}
+        {mergeSourceId && mergeTargetId && (
+          <MergeUnitsDialog
+            open={mergeDialogOpen}
+            onOpenChange={handleMergeDialogOpenChange}
+            sourceUnitId={mergeSourceId}
+            targetUnitId={mergeTargetId}
+            onMerged={handleMerged}
+          />
+        )}
+      </div>
+    </ComponentErrorBoundary>
   );
 }

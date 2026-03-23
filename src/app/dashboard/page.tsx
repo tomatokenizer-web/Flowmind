@@ -301,8 +301,10 @@ export default function DashboardPage() {
 
   if (!projectId) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-text-secondary">No project selected. Create or select a project to get started.</p>
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        <FolderOpen className="h-12 w-12 text-text-tertiary" />
+        <p className="text-sm text-text-secondary">No project selected.</p>
+        <p className="text-xs text-text-tertiary">Create or select a project to get started.</p>
       </div>
     );
   }

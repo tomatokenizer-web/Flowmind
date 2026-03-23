@@ -59,10 +59,10 @@ export const relationRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createRelationSchema)
     .mutation(async ({ ctx, input }) => {
-      // Validate lifecycle before delegating to service (fast-fail with clear message)
+      // IDOR fix: verify both units belong to the authenticated user
       const [sourceUnit, targetUnit] = await Promise.all([
-        ctx.db.unit.findUnique({ where: { id: input.sourceUnitId }, select: { lifecycle: true } }),
-        ctx.db.unit.findUnique({ where: { id: input.targetUnitId }, select: { lifecycle: true } }),
+        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { lifecycle: true } }),
+        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { lifecycle: true } }),
       ]);
 
       if (!sourceUnit) {
@@ -112,6 +112,14 @@ export const relationRouter = createTRPCRouter({
   update: protectedProcedure
     .input(updateRelationSchema)
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify the relation's source unit belongs to the authenticated user
+      const relation = await ctx.db.relation.findFirst({
+        where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!relation) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
+      }
       const { id, ...data } = input;
       const service = createRelationService(ctx.db);
       return service.update(id, data, ctx.session.user.id!);
@@ -120,6 +128,14 @@ export const relationRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(idSchema)
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify the relation's source unit belongs to the authenticated user
+      const relation = await ctx.db.relation.findFirst({
+        where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!relation) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
+      }
       const service = createRelationService(ctx.db);
       return service.delete(input.id, ctx.session.user.id!);
     }),
@@ -127,6 +143,14 @@ export const relationRouter = createTRPCRouter({
   listByUnit: protectedProcedure
     .input(listByUnitSchema)
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify the unit belongs to the authenticated user
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createRelationService(ctx.db);
       return service.listByUnit(input.unitId, input.contextId);
     }),
@@ -135,6 +159,14 @@ export const relationRouter = createTRPCRouter({
     .input(listByUnitsSchema)
     .query(async ({ ctx, input }) => {
       if (input.unitIds.length === 0) return [];
+      // IDOR fix: verify all requested units belong to the authenticated user
+      const ownedUnits = await ctx.db.unit.findMany({
+        where: { id: { in: input.unitIds }, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (ownedUnits.length !== input.unitIds.length) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "One or more units not found" });
+      }
       const idSet = new Set(input.unitIds);
       const rows = await ctx.db.relation.findMany({
         where: {
@@ -161,6 +193,14 @@ export const relationRouter = createTRPCRouter({
   neighborsByDepth: protectedProcedure
     .input(neighborsByDepthSchema)
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify the hub unit belongs to the authenticated user
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.hubId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createRelationService(ctx.db);
       return service.neighborsByDepth(input.hubId, input.depth, input.contextId);
     }),
@@ -168,6 +208,14 @@ export const relationRouter = createTRPCRouter({
   listBetween: protectedProcedure
     .input(listBetweenSchema)
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify both units belong to the authenticated user
+      const [source, target] = await Promise.all([
+        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+      ]);
+      if (!source || !target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createRelationService(ctx.db);
       return service.listBetween(input.sourceUnitId, input.targetUnitId);
     }),
@@ -177,6 +225,14 @@ export const relationRouter = createTRPCRouter({
   mergePreview: protectedProcedure
     .input(z.object({ sourceUnitId: z.string().uuid(), targetUnitId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify both units belong to the authenticated user
+      const [source, target] = await Promise.all([
+        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+      ]);
+      if (!source || !target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitMergeService(ctx.db);
       return service.preview(input.sourceUnitId, input.targetUnitId);
     }),
@@ -188,6 +244,14 @@ export const relationRouter = createTRPCRouter({
       keepContent: z.enum(["source", "target"]),
     }))
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify both units belong to the authenticated user
+      const [source, target] = await Promise.all([
+        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+      ]);
+      if (!source || !target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitMergeService(ctx.db);
       return service.merge({ ...input, userId: ctx.session.user.id! });
     }),

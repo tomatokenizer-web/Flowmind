@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { ChevronDown, Layers, Loader2, Merge, Scissors, Sparkles, Wand2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Layers, Loader2, Merge, Scissors, Sparkles, Wand2 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
 import { useContextUnits } from "~/hooks/use-context-units";
 import { useContextBriefing } from "~/hooks/use-context-briefing";
-import { useAIIntensity, isProactive } from "~/hooks/useAIIntensity";
+
 import { useViewStatePreservation } from "~/hooks/use-view-state-preservation";
 import { usePanelStore } from "~/stores/panel-store";
 import type { LifecycleState } from "~/components/unit/lifecycle-indicator";
@@ -29,6 +29,30 @@ import { ContextSplitDialog } from "./context-split-dialog";
 import { ContextMergeDialog } from "./context-merge-dialog";
 import { MissingArgumentAlert } from "~/components/feedback/MissingArgumentAlert";
 import { ContextStatsPanel } from "~/components/dashboard/ContextStatsPanel";
+import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
+
+// ─── Insights Accordion ─────────────────────────────────────────────
+
+function InsightsSection({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = React.useState(false);
+  return (
+    <div className="mx-4 mt-3">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
+      >
+        <ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} />
+        Insights & Analysis
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -141,10 +165,6 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   }, [viewStateId]);
 
   const [showAiInsights, setShowAiInsights] = React.useState(false);
-
-  // AI intensity — contradiction alerts only shown in proactive mode
-  const { level: aiLevel } = useAIIntensity();
-  const showContradictionAlerts = isProactive(aiLevel);
 
   // Split / Merge / Prompt dialog state
   const [splitOpen, setSplitOpen] = React.useState(false);
@@ -323,6 +343,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   }, [cardUnits, pendingRemovalIds]);
 
   return (
+    <ComponentErrorBoundary>
     <div className={cn("flex flex-col gap-space-4 p-space-4", className)}>
       {/* Context header — only when a context is active */}
       {activeContextId &&
@@ -427,62 +448,53 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       )}
 
 
-      {/* Context analytics stats panel — Story 6.6 */}
+      {/* Insights & Analysis — collapsed accordion to avoid pushing unit list down */}
       {activeContextId && !isLoading && (
-        <ContextStatsPanel contextId={activeContextId} />
-      )}
+        <InsightsSection>
+          <ContextStatsPanel contextId={activeContextId} />
 
-      {/* Missing argument alerts — heuristic gap detection, only when a context is active */}
-      {activeContextId && !isLoading && (
-        <MissingArgumentAlert
-          contextId={activeContextId}
-          onCreateUnit={(content, unitType) => {
-            // Navigate user to capture bar with pre-filled type hint via toast
-            toast.info(`Add a ${unitType}: ${content}`, { duration: 4000 });
-          }}
-        />
-      )}
+          <MissingArgumentAlert
+            contextId={activeContextId}
+            onCreateUnit={(content, unitType) => {
+              toast.info(`Add a ${unitType}: ${content}`, { duration: 4000 });
+            }}
+          />
 
-      {/* Reasoning Chains — collapsible panel, only when a context is active */}
-      {activeContextId && !isLoading && (
-        <ReasoningChainPanel contextId={activeContextId} />
-      )}
+          <ReasoningChainPanel contextId={activeContextId} />
 
-      {/* AI Insights — collapsible panel, only when a context is active */}
-      {activeContextId && !isLoading && showContradictionAlerts && (
-        <div className="border border-border rounded-lg overflow-hidden">
-          <button
-            onClick={() => setShowAiInsights((p) => !p)}
-            className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              AI Insights
-            </span>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 transition-transform",
-                showAiInsights && "rotate-180",
-              )}
-            />
-          </button>
-          {showAiInsights && (
-            <AIInsightsPanel
+          <div className="border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setShowAiInsights((p) => !p)}
+              className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                AI Insights
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  showAiInsights && "rotate-180",
+                )}
+              />
+            </button>
+            {showAiInsights && (
+              <AIInsightsPanel
+                contextId={activeContextId}
+                onNavigateToUnit={(unitId) => {
+                  openPanel(unitId);
+                }}
+              />
+            )}
+          </div>
+
+          {projectId && (
+            <SuggestionQueuePanel
               contextId={activeContextId}
-              onNavigateToUnit={(unitId) => {
-                openPanel(unitId);
-              }}
+              projectId={projectId}
             />
           )}
-        </div>
-      )}
-
-      {/* Story 5.14: AI Suggestion Queue — visible in balanced and proactive modes */}
-      {activeContextId && projectId && !isLoading && (
-        <SuggestionQueuePanel
-          contextId={activeContextId}
-          projectId={projectId}
-        />
+        </InsightsSection>
       )}
 
       {/* Unit list */}
@@ -593,5 +605,6 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         />
       )}
     </div>
+    </ComponentErrorBoundary>
   );
 }

@@ -1,10 +1,9 @@
 import { useCallback } from "react";
 import { usePanelStore, type DetailTab } from "~/stores/panel-store";
-import { useLayoutStore } from "~/stores/layout-store";
 
 /**
  * Hook managing detail panel open/close state with unit ID.
- * Bridges the panel store and layout store for synchronized behavior.
+ * Uses panel-store as the single source of truth.
  */
 export function useDetailPanel() {
   const isOpen = usePanelStore((s) => s.isOpen);
@@ -12,32 +11,26 @@ export function useDetailPanel() {
   const activeTab = usePanelStore((s) => s.activeTab);
   const openPanelStore = usePanelStore((s) => s.openPanel);
   const closePanelStore = usePanelStore((s) => s.closePanel);
+  const togglePanelStore = usePanelStore((s) => s.togglePanel);
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
-  const setDetailPanelOpen = useLayoutStore((s) => s.setDetailPanelOpen);
 
   const openPanel = useCallback(
     (unitId: string, tab?: DetailTab) => {
       openPanelStore(unitId);
-      setDetailPanelOpen(true);
       if (tab) setActiveTab(tab);
     },
-    [openPanelStore, setDetailPanelOpen, setActiveTab],
+    [openPanelStore, setActiveTab],
   );
 
   const closePanel = useCallback(() => {
     closePanelStore();
-    setDetailPanelOpen(false);
-  }, [closePanelStore, setDetailPanelOpen]);
+  }, [closePanelStore]);
 
   const togglePanel = useCallback(
     (unitId: string) => {
-      if (isOpen && selectedUnitId === unitId) {
-        closePanel();
-      } else {
-        openPanel(unitId);
-      }
+      togglePanelStore(unitId);
     },
-    [isOpen, selectedUnitId, openPanel, closePanel],
+    [togglePanelStore],
   );
 
   return {

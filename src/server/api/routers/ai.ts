@@ -2,6 +2,8 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createAIService, generateSessionId, createSafetyGuard, enforceRateLimit } from "@/server/ai";
 import { TRPCError } from "@trpc/server";
+import { getContextUnits } from "@/server/api/helpers/context-units";
+import { handleAIError } from "@/server/api/helpers/ai-error";
 import type {
   DecompositionResult,
   SplitReattributionResult,
@@ -204,21 +206,7 @@ export const aiRouter = createTRPCRouter({
       const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context
-      const existingUnits = await ctx.db.unit.findMany({
-        where: {
-          perspectives: {
-            some: { contextId: input.contextId },
-          },
-          lifecycle: { not: "draft" },
-        },
-        select: {
-          id: true,
-          content: true,
-          unitType: true,
-        },
-        take: 20,
-        orderBy: { createdAt: "desc" },
-      });
+      const existingUnits = await getContextUnits(ctx.db, input.contextId!, 20);
 
       const suggestions = await aiService.suggestRelations(
         input.content,
@@ -254,21 +242,7 @@ export const aiRouter = createTRPCRouter({
       const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context for relation suggestions
-      const existingUnits = await ctx.db.unit.findMany({
-        where: {
-          perspectives: {
-            some: { contextId: input.contextId },
-          },
-          lifecycle: { not: "draft" },
-        },
-        select: {
-          id: true,
-          content: true,
-          unitType: true,
-        },
-        take: 20,
-        orderBy: { createdAt: "desc" },
-      });
+      const existingUnits = await getContextUnits(ctx.db, input.contextId ?? "", 20);
 
       try {
         const result = await aiService.decomposeText(
@@ -284,32 +258,7 @@ export const aiRouter = createTRPCRouter({
 
         return result;
       } catch (error: unknown) {
-        // Transform Anthropic SDK errors into user-friendly tRPC errors
-        const errMsg = error instanceof Error ? error.message : String(error);
-        const errStr = JSON.stringify(error);
-
-        if (errMsg.includes("credit") || errMsg.includes("balance") || errStr.includes("credit") || errStr.includes("balance")) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Anthropic API credit balance is too low. Please add credits at console.anthropic.com.",
-          });
-        }
-        if (errMsg.includes("invalid_api_key") || errMsg.includes("401") || errMsg.includes("authentication")) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Invalid Anthropic API key. Check ANTHROPIC_API_KEY in your .env file.",
-          });
-        }
-        if (errMsg.includes("rate_limit") || errMsg.includes("429")) {
-          throw new TRPCError({
-            code: "TOO_MANY_REQUESTS",
-            message: "Anthropic API rate limit reached. Please wait a moment and try again.",
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `AI decomposition failed: ${errMsg}`,
-        });
+        handleAIError(error, "AI decomposition");
       }
     }),
 
@@ -408,15 +357,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 30,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 30);
 
       return aiService.detectContradictions(units, {
         userId: ctx.session.user.id!,
@@ -436,15 +377,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 30,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 30);
 
       return aiService.suggestMerge(units, {
         userId: ctx.session.user.id!,
@@ -464,15 +397,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 30,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 30);
 
       return aiService.analyzeCompleteness(units, {
         userId: ctx.session.user.id!,
@@ -492,15 +417,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 50,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 50);
 
       return aiService.summarizeContext(units, {
         userId: ctx.session.user.id!,
@@ -520,15 +437,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 30,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 30);
 
       return aiService.generateQuestions(units, {
         userId: ctx.session.user.id!,
@@ -548,15 +457,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 30,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 30);
 
       return aiService.suggestNextSteps(units, {
         userId: ctx.session.user.id!,
@@ -576,15 +477,7 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const units = await ctx.db.unit.findMany({
-        where: {
-          perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
-        },
-        select: { id: true, content: true, unitType: true },
-        take: 50,
-        orderBy: { createdAt: "desc" },
-      });
+      const units = await getContextUnits(ctx.db, input.contextId, 50);
 
       return aiService.extractKeyTerms(units, {
         userId: ctx.session.user.id!,
@@ -708,15 +601,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
         });
         return { original: input.content, refined: result.refined, changes: result.changes };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("[refineUnit] AI call failed:", msg);
-        if (msg.includes("credit") || msg.includes("balance") || msg.includes("billing")) {
-          throw new TRPCError({ code: "PAYMENT_REQUIRED", message: "Anthropic API credit issue. Check your billing." });
-        }
-        if (msg.includes("authentication") || msg.includes("401") || msg.includes("invalid.*key")) {
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Anthropic API key." });
-        }
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `AI refinement failed: ${msg}` });
+        handleAIError(err, "AI refinement");
       }
     }),
 
@@ -1132,23 +1017,7 @@ Focus on academic, scientific, or well-established knowledge sources. Do not inv
 
         return result;
       } catch (error: unknown) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        if (errMsg.includes("credit") || errMsg.includes("balance")) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Anthropic API credit balance is too low.",
-          });
-        }
-        if (errMsg.includes("invalid_api_key") || errMsg.includes("authentication")) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Invalid Anthropic API key.",
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `External knowledge search failed: ${errMsg}`,
-        });
+        handleAIError(error, "External knowledge search");
       }
     }),
 });

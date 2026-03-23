@@ -149,6 +149,14 @@ export const unitRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify the unit belongs to the authenticated user
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitService(ctx.db);
       const unit = await service.getById(input.id);
       if (!unit) {
@@ -160,6 +168,14 @@ export const unitRouter = createTRPCRouter({
   list: protectedProcedure
     .input(listUnitsSchema)
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify the project belongs to the authenticated user
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
       const service = createUnitService(ctx.db);
       return service.list(input);
     }),

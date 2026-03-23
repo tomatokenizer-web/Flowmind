@@ -4,7 +4,6 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useLayoutStore } from "~/stores/layout-store";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
 import type { MetadataValues } from "~/components/unit/metadata-editor";
@@ -19,9 +18,8 @@ interface DetailPanelProps {
 }
 
 export function DetailPanel({ className, fullScreenOverlay = false }: DetailPanelProps) {
-  const setDetailPanelOpen = useLayoutStore((s) => s.setDetailPanelOpen);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
-  const detailPanelOpen = usePanelStore((s) => s.isOpen); // use panelStore as source of truth
+  const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
@@ -45,9 +43,8 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     : null;
 
   const handleClose = React.useCallback(() => {
-    setDetailPanelOpen(false);
     closePanel();
-  }, [setDetailPanelOpen, closePanel]);
+  }, [closePanel]);
 
   const utils = api.useUtils();
   const updateMutation = api.unit.update.useMutation({

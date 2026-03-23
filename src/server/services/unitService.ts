@@ -78,9 +78,13 @@ export class DuplicateUnitContentError extends Error {
 
 // Valid lifecycle transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  draft: ["pending", "discarded"],
-  pending: ["confirmed", "draft"],
-  confirmed: ["draft"],
+  draft: ["pending", "confirmed", "discarded"],
+  pending: ["confirmed", "draft", "deferred", "discarded"],
+  confirmed: ["draft", "complete", "archived", "discarded"],
+  deferred: ["pending", "draft", "discarded"],
+  complete: ["confirmed", "archived"],
+  archived: ["draft", "confirmed"],
+  discarded: ["draft"],
 };
 
 export function createUnitService(db: PrismaClient) {
@@ -279,15 +283,16 @@ export function createUnitService(db: PrismaClient) {
     },
 
     async archive(id: string, userId: string) {
-      const unit = await repo.update(id, { lifecycle: "archived" });
+      const result = await this.transitionLifecycle(id, "archived", userId);
+      if (!result) return null;
 
       await eventBus.emit({
         type: "unit.archived",
-        payload: { unitId: id, userId, unit },
+        payload: { unitId: id, userId, unit: result.unit },
         timestamp: new Date(),
       });
 
-      return unit;
+      return result.unit;
     },
 
     async delete(id: string, userId: string) {

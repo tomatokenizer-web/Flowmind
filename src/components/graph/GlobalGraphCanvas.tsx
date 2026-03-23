@@ -1,26 +1,28 @@
 "use client";
 
 import * as React from "react";
-import * as d3 from "d3";
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type Simulation,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+} from "d3-force";
 import { useGraphStore } from "~/stores/graphStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { useSelectionStore } from "~/stores/selectionStore";
 import { announceToScreenReader } from "~/lib/accessibility";
 import { usePrefersReducedMotion } from "~/hooks/use-prefers-reduced-motion";
+import { UNIT_TYPE_COLORS as UNIT_TYPE_COLOR_TOKENS } from "~/lib/unit-types";
 
-// ─── Unit type → hex color ────────────────────────────────────────
+// ─── Unit type → hex color (derived from canonical unit-types tokens) ─
 
-const UNIT_TYPE_COLORS: Record<string, string> = {
-  claim: "#3B82F6",
-  question: "#F59E0B",
-  evidence: "#10B981",
-  counterargument: "#EF4444",
-  observation: "#8B5CF6",
-  idea: "#F97316",
-  definition: "#06B6D4",
-  assumption: "#EC4899",
-  action: "#84CC16",
-};
+const UNIT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNIT_TYPE_COLOR_TOKENS).map(([type, { accent }]) => [type, accent]),
+);
 
 // ─── Relation type → hex color ────────────────────────────────────
 
@@ -142,7 +144,7 @@ interface GraphRelation {
   isLoopback?: boolean;
 }
 
-interface SimNode extends d3.SimulationNodeDatum {
+interface SimNode extends SimulationNodeDatum {
   id: string;
   content: string;
   unitType: string;
@@ -151,7 +153,7 @@ interface SimNode extends d3.SimulationNodeDatum {
   y?: number;
 }
 
-interface SimLink extends d3.SimulationLinkDatum<SimNode> {
+interface SimLink extends SimulationLinkDatum<SimNode> {
   id: string;
   type: string;
   strength: number;
@@ -253,7 +255,7 @@ function calcBoundingBox(nodes: SimNode[]) {
 
 export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const simRef = React.useRef<d3.Simulation<SimNode, SimLink> | null>(null);
+  const simRef = React.useRef<Simulation<SimNode, SimLink> | null>(null);
   const nodesRef = React.useRef<SimNode[]>([]);
   const linksRef = React.useRef<SimLink[]>([]);
   const animRef = React.useRef<number>(0);
@@ -357,14 +359,14 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     nodesRef.current = nodes;
     linksRef.current = links;
 
-    const sim = d3.forceSimulation<SimNode>(nodes)
+    const sim = forceSimulation<SimNode>(nodes)
       .force(
         "link",
-        d3.forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id),
+        forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id),
       )
-      .force("charge", d3.forceManyBody().strength(-100))
-      .force("center", d3.forceCenter(0, 0))
-      .force("collide", d3.forceCollide(NODE_RADIUS * 2));
+      .force("charge", forceManyBody().strength(-100))
+      .force("center", forceCenter(0, 0))
+      .force("collide", forceCollide(NODE_RADIUS * 2));
 
     simRef.current = sim;
 

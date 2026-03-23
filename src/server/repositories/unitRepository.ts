@@ -22,9 +22,9 @@ export function createUnitRepository(db: PrismaClient) {
       return db.unit.create({ data });
     },
 
-    async findById(id: string): Promise<UnitWithRelations | null> {
-      return db.unit.findUnique({
-        where: { id },
+    async findById(id: string, userId?: string): Promise<UnitWithRelations | null> {
+      return db.unit.findFirst({
+        where: { id, ...(userId ? { userId } : {}) },
         include: {
           perspectives: {
             include: { relations: true },

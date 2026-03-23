@@ -12,51 +12,36 @@ function generateKey(): string {
 }
 
 export const apiKeyRouter = createTRPCRouter({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    // For MVP, return empty list (ApiKey model may not be in DB yet)
-    try {
-      const keys = await (ctx.db as any).apiKey?.findMany({
-        where: { userId: ctx.session.user.id! },
-        select: { id: true, name: true, createdAt: true, lastUsed: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return keys ?? [];
-    } catch {
-      return [];
-    }
+  list: protectedProcedure.query(async () => {
+    // ApiKey model not yet in Prisma schema — return empty list
+    return [] as Array<{ id: string; name: string; createdAt: string; lastUsed?: string | null }>;
   }),
 
   create: protectedProcedure
     .input(z.object({ name: z.string().min(1).max(100) }))
-    .mutation(async ({ ctx, input }) => {
-      const key = generateKey();
-      const keyHash = hashKey(key);
-
-      try {
-        await (ctx.db as any).apiKey?.create({
-          data: {
-            name: input.name,
-            keyHash,
-            userId: ctx.session.user.id!,
-          },
-        });
-      } catch {
-        // If ApiKey model doesn't exist yet, just return the key
-      }
-
-      // Return plain key ONCE — never stored in plain text
-      return { key, name: input.name };
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "NOT_IMPLEMENTED",
+        message: "API key management is not yet available",
+      });
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        await (ctx.db as any).apiKey?.delete({ where: { id: input.id } });
-      } catch {
-        throw new TRPCError({ code: "NOT_FOUND", message: "API key not found" });
-      }
-      return { success: true };
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "NOT_IMPLEMENTED",
+        message: "API key management is not yet available",
+      });
+    }),
+
+  revoke: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "NOT_IMPLEMENTED",
+        message: "API key management is not yet available",
+      });
     }),
 
   // Full data export — returns all user-owned data across every model

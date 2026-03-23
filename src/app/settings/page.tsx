@@ -844,10 +844,12 @@ function ApiKeysPanel() {
   const { data: keys = [] } = api.apiKey.list.useQuery();
 
   const createMutation = api.apiKey.create.useMutation({
-    onSuccess: (data) => {
-      setCreatedKey(data.key);
+    onSuccess: () => {
       setNewKeyName("");
       void utils.apiKey.list.invalidate();
+    },
+    onError: () => {
+      // API key management is not yet available
     },
   });
 

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createContextService } from "@/server/services/contextService";
 import { createThoughtRankService } from "@/server/services/thoughtRankService";
+import { TRPCError } from "@trpc/server";
+import type { PrismaClient } from "@prisma/client";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────
 
@@ -72,12 +74,54 @@ const moveContextSchema = z.object({
   projectId: z.string().uuid(),
 });
 
+// ─── IDOR Helpers ─────────────────────────────────────────────────
+
+/** Verify a context belongs to the authenticated user (via project.userId). */
+async function verifyContextOwnership(db: PrismaClient, contextId: string, userId: string) {
+  const ctx = await db.context.findFirst({
+    where: { id: contextId, project: { userId } },
+    select: { id: true },
+  });
+  if (!ctx) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+  }
+  return ctx;
+}
+
+/** Verify a project belongs to the authenticated user. */
+async function verifyProjectOwnership(db: PrismaClient, projectId: string, userId: string) {
+  const project = await db.project.findFirst({
+    where: { id: projectId, userId },
+    select: { id: true },
+  });
+  if (!project) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+  }
+  return project;
+}
+
+/** Verify a unit belongs to the authenticated user. */
+async function verifyUnitOwnership(db: PrismaClient, unitId: string, userId: string) {
+  const unit = await db.unit.findFirst({
+    where: { id: unitId, userId },
+    select: { id: true },
+  });
+  if (!unit) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+  }
+  return unit;
+}
+
 // ─── Router ────────────────────────────────────────────────────────
 
 export const contextRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+      if (input.parentId) {
+        await verifyContextOwnership(ctx.db, input.parentId, ctx.session.user.id!);
+      }
       const service = createContextService(ctx.db);
       return service.createContext(input);
     }),
@@ -85,6 +129,7 @@ export const contextRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(contextIdSchema)
     .query(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.getContextById(input.id);
     }),
@@ -92,6 +137,7 @@ export const contextRouter = createTRPCRouter({
   list: protectedProcedure
     .input(listContextsSchema)
     .query(async ({ ctx, input }) => {
+      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.listContexts(input.projectId, input.parentId);
     }),
@@ -99,6 +145,7 @@ export const contextRouter = createTRPCRouter({
   update: protectedProcedure
     .input(updateContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       const { id, ...data } = input;
       return service.updateContext(id, data);
@@ -107,6 +154,7 @@ export const contextRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(contextIdSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.deleteContext(input.id);
     }),
@@ -114,6 +162,8 @@ export const contextRouter = createTRPCRouter({
   addUnit: protectedProcedure
     .input(unitContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      await verifyUnitOwnership(ctx.db, input.unitId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.addUnit(input.unitId, input.contextId);
     }),
@@ -121,6 +171,8 @@ export const contextRouter = createTRPCRouter({
   removeUnit: protectedProcedure
     .input(unitContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      await verifyUnitOwnership(ctx.db, input.unitId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.removeUnit(input.unitId, input.contextId);
     }),
@@ -128,6 +180,7 @@ export const contextRouter = createTRPCRouter({
   getUnitsForContext: protectedProcedure
     .input(contextIdSchema)
     .query(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.getUnitsForContext(input.id);
     }),
@@ -135,6 +188,8 @@ export const contextRouter = createTRPCRouter({
   getMergeConflicts: protectedProcedure
     .input(mergeConflictsSchema)
     .query(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextIdA, ctx.session.user.id!);
+      await verifyContextOwnership(ctx.db, input.contextIdB, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.getMergeConflicts(input.contextIdA, input.contextIdB);
     }),
@@ -142,6 +197,8 @@ export const contextRouter = createTRPCRouter({
   split: protectedProcedure
     .input(splitContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.splitContext(input);
     }),
@@ -149,6 +206,8 @@ export const contextRouter = createTRPCRouter({
   merge: protectedProcedure
     .input(mergeContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextIdA, ctx.session.user.id!);
+      await verifyContextOwnership(ctx.db, input.contextIdB, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.mergeContexts(input);
     }),
@@ -156,6 +215,7 @@ export const contextRouter = createTRPCRouter({
   reorder: protectedProcedure
     .input(reorderContextsSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       await service.reorderContexts(input.orderedIds, input.projectId, input.parentId);
       return { success: true };
@@ -164,6 +224,11 @@ export const contextRouter = createTRPCRouter({
   move: protectedProcedure
     .input(moveContextSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
+      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+      if (input.newParentId) {
+        await verifyContextOwnership(ctx.db, input.newParentId, ctx.session.user.id!);
+      }
       const service = createContextService(ctx.db);
       return service.moveContext(input.id, input.newParentId, input.projectId);
     }),
@@ -171,6 +236,7 @@ export const contextRouter = createTRPCRouter({
   recomputeThoughtRank: protectedProcedure
     .input(contextIdSchema)
     .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createThoughtRankService(ctx.db);
       await service.updateThoughtRankForContext(input.id);
       return { success: true };
@@ -181,6 +247,8 @@ export const contextRouter = createTRPCRouter({
     .input(z.object({ contextId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const { contextId } = input;
+
+      await verifyContextOwnership(ctx.db, contextId, ctx.session.user.id!);
 
       // Fetch all unit-context records with unit details
       const unitContexts = await ctx.db.unitContext.findMany({

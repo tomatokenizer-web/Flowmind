@@ -32,6 +32,7 @@ import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType } from "@prisma/client";
 import { ExportDialog } from "./ExportDialog";
 import { SourceMapPanel } from "./SourceMapPanel";
+import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
 
 // ─── Sortable Card ────────────────────────────────────────────────
 
@@ -295,6 +296,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
   if (!assembly) return null;
 
   return (
+    <ComponentErrorBoundary>
     <div className="flex h-full">
       {/* Left rail — unit browser */}
       {!isPreview && (
@@ -421,5 +423,6 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
       />
       </div>
     </div>
+    </ComponentErrorBoundary>
   );
 }

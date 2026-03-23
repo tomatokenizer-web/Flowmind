@@ -38,6 +38,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
 import { useAIIntensity, isAtLeastBalanced, isProactive } from "~/hooks/useAIIntensity";
+import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
 import { EpistemicHumilityBanner } from "~/components/feedback/EpistemicHumilityBanner";
 import { ExternalKnowledgePanel } from "~/components/ai/ExternalKnowledgePanel";
 import { ProvenanceChain } from "~/components/feedback/ProvenanceChain";
@@ -302,9 +303,11 @@ function ContentTab({
 function MetadataTab({
   unit,
   onMetadataChange,
+  setActiveTab,
 }: {
   unit: UnitDetailData;
   onMetadataChange?: (field: keyof MetadataValues, value: string | null) => void;
+  setActiveTab: (tab: DetailTab) => void;
 }) {
   const createdAt =
     typeof unit.createdAt === "string" ? new Date(unit.createdAt) : unit.createdAt;
@@ -391,6 +394,7 @@ function MetadataTab({
           </span>
           <button
             type="button"
+            onClick={() => setActiveTab("content")}
             className="text-accent-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded"
           >
             {unit.versionCount ?? 0} version{(unit.versionCount ?? 0) !== 1 ? "s" : ""}
@@ -471,8 +475,7 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
       setTargetContent("");
     },
     onError: (err) => {
-      // Show error to user
-      console.error("Relation creation failed:", err.message);
+      toast.error("Relation creation failed", { description: err.message });
     },
   });
 
@@ -816,6 +819,7 @@ export function UnitDetailPanel({
   const openPanel = usePanelStore((s) => s.openPanel);
 
   return (
+    <ComponentErrorBoundary>
     <div className={cn("flex h-full flex-col", className)}>
       {/* Panel header */}
       <div className="flex h-12 items-center justify-between border-b border-border px-space-4 shrink-0">
@@ -887,6 +891,7 @@ export function UnitDetailPanel({
                 <MetadataTab
                   unit={unit}
                   onMetadataChange={onMetadataChange}
+                  setActiveTab={setActiveTab}
                 />
               </TabsContent>
 
@@ -905,5 +910,6 @@ export function UnitDetailPanel({
         </Tabs>
       )}
     </div>
+    </ComponentErrorBoundary>
   );
 }

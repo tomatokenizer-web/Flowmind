@@ -74,7 +74,30 @@ function createMockPrisma() {
   return {
     unit: {
       create: vi.fn().mockResolvedValue(mockUnit),
-      findFirst: vi.fn().mockResolvedValue(null),
+      // Route calls by shape:
+      // - findByExactContent uses { where: { projectId, content, lifecycle } } → null (no duplicate)
+      // - ownership check uses { where: { id, userId }, select: { id: true } } → { id }
+      // - repo.findById uses { where: { id }, include: { perspectives, versions } } → mockUnitWithRelations
+      findFirst: vi.fn().mockImplementation((args: { where?: Record<string, unknown>; include?: unknown; select?: unknown }) => {
+        const where = args?.where ?? {};
+        // Duplicate-content check: has projectId + content + lifecycle filter
+        if ("content" in where && "lifecycle" in where) {
+          return Promise.resolve(null);
+        }
+        // Ownership check: has userId + id, select only
+        if ("userId" in where && args?.select && !args?.include) {
+          return Promise.resolve({ id: TEST_UNIT_ID });
+        }
+        // repo.findById: has id + include
+        if ("id" in where && args?.include) {
+          return Promise.resolve(mockUnitWithRelations);
+        }
+        // hasAny check: { where: { userId } } only
+        if ("userId" in where && !("id" in where)) {
+          return Promise.resolve(mockUnit);
+        }
+        return Promise.resolve(null);
+      }),
       findUnique: vi.fn().mockResolvedValue(mockUnitWithRelations),
       findMany: vi.fn().mockResolvedValue([mockUnit]),
       update: vi.fn().mockResolvedValue(mockUnit),
@@ -83,6 +106,9 @@ function createMockPrisma() {
     unitVersion: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "v1", version: 1, content: "old" }),
+    },
+    project: {
+      findFirst: vi.fn().mockResolvedValue({ id: TEST_PROJECT_ID }),
     },
   } as unknown as PrismaClient;
 }
@@ -263,17 +289,21 @@ describe("unit router", () => {
       expect(result).toBeDefined();
       expect(result.perspectives).toBeDefined();
       expect(result.versions).toBeDefined();
-      expect(mockDb.unit.findUnique).toHaveBeenCalledWith({
-        where: { id: TEST_UNIT_ID },
-        include: {
-          perspectives: { include: { relations: true } },
-          versions: { orderBy: { version: "desc" }, take: 5 },
-        },
-      });
+      // repo.findById uses findFirst (not findUnique) with include
+      expect(mockDb.unit.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: TEST_UNIT_ID }),
+          include: {
+            perspectives: { include: { relations: true } },
+            versions: { orderBy: { version: "desc" }, take: 5 },
+          },
+        }),
+      );
     });
 
     it("throws NOT_FOUND for non-existent unit", async () => {
-      (mockDb.unit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      // Ownership check uses findFirst — return null to simulate missing/unowned unit
+      (mockDb.unit.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
 
       await expect(
         caller.unit.getById({ id: TEST_UNIT_ID }),
@@ -441,7 +471,8 @@ describe("unit router", () => {
     });
 
     it("throws NOT_FOUND for non-existent unit", async () => {
-      (mockDb.unit.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      // service.update calls repo.findById which uses findFirst
+      (mockDb.unit.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
 
       await expect(
         caller.unit.update({ id: TEST_UNIT_ID, content: "new" }),

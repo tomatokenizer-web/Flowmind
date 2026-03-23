@@ -1,6 +1,8 @@
 import type { PrismaClient, Webhook } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
+import dns from "dns";
+import net from "net";
 import { logger } from "@/server/logger";
 import {
   eventBus,
@@ -42,6 +44,108 @@ export const WEBHOOK_EVENT_TYPES = [
 ] as const;
 
 const DELIVERY_TIMEOUT_MS = 10_000;
+
+// ─── SSRF Prevention ────────────────────────────────────────────────────────
+
+/** Blocked hostname suffixes for internal/local addresses. */
+const BLOCKED_HOSTNAME_SUFFIXES = [".local", ".internal"];
+
+/**
+ * Check whether an IPv4 address falls within a private/reserved CIDR range.
+ * Ranges checked: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 0.0.0.0/8.
+ */
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return false;
+
+  const a = parts[0]!;
+  const b = parts[1]!;
+  return (
+    a === 127 ||                          // 127.0.0.0/8  (loopback)
+    a === 10 ||                           // 10.0.0.0/8   (private)
+    (a === 172 && b >= 16 && b <= 31) ||  // 172.16.0.0/12 (private)
+    (a === 192 && b === 168) ||           // 192.168.0.0/16 (private)
+    (a === 169 && b === 254) ||           // 169.254.0.0/16 (link-local)
+    a === 0                               // 0.0.0.0/8    (current network)
+  );
+}
+
+/**
+ * Check whether an IPv6 address is a loopback, link-local, or unique-local address.
+ * Ranges checked: ::1, fc00::/7 (fc/fd prefix), fe80::/10.
+ * Also detects IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) that resolve to private IPv4.
+ */
+function isPrivateIPv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+
+  if (normalized === "::1") return true;
+
+  // fc00::/7 covers fc and fd prefixes (unique local addresses)
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+
+  // fe80::/10 (link-local)
+  if (normalized.startsWith("fe80")) return true;
+
+  // IPv4-mapped IPv6: ::ffff:a.b.c.d
+  const v4MappedMatch = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4MappedMatch && v4MappedMatch[1]) {
+    return isPrivateIPv4(v4MappedMatch[1]);
+  }
+
+  return false;
+}
+
+/**
+ * Determine whether the given IP address (v4 or v6) is private/reserved.
+ */
+function isPrivateIP(ip: string): boolean {
+  if (net.isIPv4(ip)) return isPrivateIPv4(ip);
+  if (net.isIPv6(ip)) return isPrivateIPv6(ip);
+  return false;
+}
+
+/**
+ * Check whether a webhook URL targets a blocked (internal/private) destination.
+ *
+ * Validates both the hostname itself and the resolved IP address to prevent
+ * SSRF attacks, including DNS rebinding (re-check before every fetch).
+ *
+ * Returns `true` if the URL should be BLOCKED, `false` if it is safe.
+ */
+async function isBlockedUrl(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return true; // Malformed URL — block it
+  }
+
+  const hostname = parsed.hostname;
+
+  // Block "localhost" literally
+  if (hostname === "localhost") return true;
+
+  // Block known internal hostname suffixes (.local, .internal)
+  for (const suffix of BLOCKED_HOSTNAME_SUFFIXES) {
+    if (hostname === suffix.slice(1) || hostname.endsWith(suffix)) {
+      return true;
+    }
+  }
+
+  // If the hostname is already a raw IP address, check it directly
+  if (net.isIP(hostname)) {
+    return isPrivateIP(hostname);
+  }
+
+  // Resolve the hostname to an IP and check the resolved address
+  try {
+    const { address } = await dns.promises.lookup(hostname);
+    return isPrivateIP(address);
+  } catch {
+    // DNS resolution failed — block to be safe
+    return true;
+  }
+}
 
 // ─── HMAC Signing ────────────────────────────────────────────────────────────
 
@@ -89,6 +193,15 @@ export function createWebhookService(db: PrismaClient) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Invalid webhook URL. Must be a valid HTTP(S) URL.",
+      });
+    }
+
+    // SSRF prevention: block internal/private network addresses
+    if (await isBlockedUrl(input.url)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Webhook URL must not point to a private or internal network address.",
       });
     }
 
@@ -261,6 +374,15 @@ export function createWebhookService(db: PrismaClient) {
       const signature = signPayload(body, webhook.secret);
 
       try {
+        // Re-check URL at delivery time to prevent DNS rebinding attacks
+        if (await isBlockedUrl(webhook.url)) {
+          logger.warn(
+            { webhookId: webhook.id, url: webhook.url },
+            "Webhook delivery blocked: URL resolves to private/internal address (possible DNS rebinding)",
+          );
+          return;
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(
           () => controller.abort(),

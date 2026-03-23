@@ -12,10 +12,12 @@ interface PanelState {
 
   openPanel: (unitId: string) => void;
   closePanel: () => void;
+  /** Toggle open/closed. If a different unitId is passed while open, switches to that unit. */
+  togglePanel: (unitId: string) => void;
   setActiveTab: (tab: DetailTab) => void;
 }
 
-export const usePanelStore = create<PanelState>((set) => ({
+export const usePanelStore = create<PanelState>((set, get) => ({
   isOpen: false,
   selectedUnitId: null,
   activeTab: "content",
@@ -25,6 +27,15 @@ export const usePanelStore = create<PanelState>((set) => ({
 
   closePanel: () =>
     set({ isOpen: false }),
+
+  togglePanel: (unitId) => {
+    const { isOpen, selectedUnitId } = get();
+    if (isOpen && selectedUnitId === unitId) {
+      set({ isOpen: false });
+    } else {
+      set({ isOpen: true, selectedUnitId: unitId });
+    }
+  },
 
   setActiveTab: (tab) =>
     set({ activeTab: tab }),
