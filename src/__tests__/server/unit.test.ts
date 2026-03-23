@@ -84,7 +84,11 @@ function createMockPrisma() {
         if ("content" in where && "lifecycle" in where) {
           return Promise.resolve(null);
         }
-        // Ownership check: has userId + id, select only
+        // IDOR ownership check via project: { where: { id, project: { userId } }, select }
+        if ("project" in where && args?.select && !args?.include) {
+          return Promise.resolve({ id: TEST_UNIT_ID });
+        }
+        // Legacy ownership check: has userId + id, select only
         if ("userId" in where && args?.select && !args?.include) {
           return Promise.resolve({ id: TEST_UNIT_ID });
         }
