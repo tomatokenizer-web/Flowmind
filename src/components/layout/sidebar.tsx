@@ -7,8 +7,10 @@ import {
   Settings,
   Link2,
   Compass,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
@@ -142,6 +144,12 @@ export function Sidebar({ className }: SidebarProps) {
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </Link>
+        <button type="button" onClick={() => void signOut({ callbackUrl: "/" })}
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-accent-danger transition-colors", isCollapsed && "justify-center px-0")}
+          title="Sign out">
+          <LogOut className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Sign out</span>}
+        </button>
       </div>
 
       {/* Import dialog */}

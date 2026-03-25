@@ -119,7 +119,13 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   );
 
   const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
-    onSuccess: () => void utils.unit.list.invalidate({ projectId }),
+    onSuccess: () => {
+      void utils.unit.list.invalidate({ projectId });
+      if (projectId) {
+        void utils.project.getProjectStats.invalidate({ projectId });
+        void utils.project.getCompletenessStats.invalidate({ projectId });
+      }
+    },
     onError: (err) => toast.error("Failed to update unit", { description: err.message }),
   });
 

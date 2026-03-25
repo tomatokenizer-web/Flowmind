@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { GitMerge, X } from "lucide-react";
+import { GitMerge, X, Network } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useGraphStore } from "~/stores/graphStore";
@@ -137,7 +137,7 @@ export function GraphView({ projectId }: GraphViewProps) {
   }, [panOffset, selectedNodeId, filters, saveFilterState]);
 
   // Fetch units for the current context/project
-  const { data: unitsData } = api.unit.list.useQuery(
+  const { data: unitsData, isLoading: unitsLoading } = api.unit.list.useQuery(
     {
       projectId: projectId,
       contextId: activeContextId ?? undefined,
@@ -191,6 +191,14 @@ export function GraphView({ projectId }: GraphViewProps) {
           Use arrow keys to navigate between connected thoughts. Press Enter to
           view details.
         </span>
+
+        {!unitsLoading && units.length === 0 && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center pointer-events-none">
+            <Network className="mb-3 h-12 w-12 text-text-tertiary" />
+            <p className="text-sm text-text-secondary">No units to visualize</p>
+            <p className="text-xs text-text-tertiary mt-1">Capture some thoughts to see them in the graph</p>
+          </div>
+        )}
 
         {layer === "global" ? (
           <GlobalGraphCanvas
