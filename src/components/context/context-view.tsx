@@ -131,6 +131,30 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     [lifecycleMutation],
   );
 
+  const createUnitMutation = api.unit.create.useMutation({
+    onSuccess: () => {
+      void utils.unit.list.invalidate({ projectId });
+      toast.success("Unit created from AI suggestion");
+    },
+    onError: (err) => toast.error("Failed to create unit", { description: err.message }),
+  });
+
+  const deleteUnitMutation = api.unit.delete.useMutation({
+    onSuccess: () => {
+      void utils.unit.list.invalidate({ projectId });
+      void utils.unit.hasAny.invalidate();
+    },
+    onError: (err) => toast.error("Failed to delete unit", { description: err.message }),
+  });
+
+  const handleDeleteUnit = React.useCallback(
+    (unitId: string) => {
+      if (!window.confirm("Permanently delete this unit? This cannot be undone.")) return;
+      deleteUnitMutation.mutate({ id: unitId });
+    },
+    [deleteUnitMutation],
+  );
+
   const bulkLifecycleMutation = api.unit.lifecycleBulkTransition.useMutation({
     onSuccess: () => void utils.unit.list.invalidate({ projectId }),
     onError: (err) => toast.error("Bulk operation failed", { description: err.message }),
@@ -525,7 +549,12 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           <MissingArgumentAlert
             contextId={activeContextId}
             onCreateUnit={(content, unitType) => {
-              toast.info(`Add a ${unitType}: ${content}`, { duration: 4000 });
+              if (!projectId) return;
+              createUnitMutation.mutate({
+                content,
+                unitType: unitType as Parameters<typeof createUnitMutation.mutate>[0]["unitType"],
+                projectId,
+              });
             }}
           />
 
@@ -552,6 +581,14 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                 contextId={activeContextId}
                 onNavigateToUnit={(unitId) => {
                   openPanel(unitId);
+                }}
+                onCreateUnit={(content, unitType) => {
+                  if (!projectId) return;
+                  createUnitMutation.mutate({
+                    content,
+                    unitType: unitType as Parameters<typeof createUnitMutation.mutate>[0]["unitType"],
+                    projectId,
+                  });
                 }}
               />
             )}
@@ -608,6 +645,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                 ? (unit) => () => handleRemoveFromContext(unit.id)
                 : undefined
             }
+            getOnDelete={(unit) => () => handleDeleteUnit(unit.id)}
             listLabel={
               activeContextId && context
                 ? `Units in ${context.name}`

@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag, Trash2 } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { NudgeBadge } from "./NudgeBadge";
 import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPopover";
@@ -56,6 +56,8 @@ export interface UnitCardProps {
   onLifecycleAction?: (unitId: string, action: "approve" | "reject" | "reset") => void;
   /** When provided, shows "Remove from Context" in the context menu */
   onRemoveFromContext?: () => void;
+  /** When provided, shows a delete button on hover */
+  onDelete?: () => void;
   /** Project ID for split functionality - required to create new units */
   projectId?: string;
   className?: string;
@@ -134,6 +136,7 @@ export function UnitCard({
   onClick,
   onLifecycleAction,
   onRemoveFromContext,
+  onDelete,
   projectId,
   className,
 }: UnitCardProps) {
@@ -327,6 +330,28 @@ export function UnitCard({
                 )}
               >
                 <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {/* Delete unit */}
+            {onDelete && (
+              <button
+                type="button"
+                aria-label="Delete unit"
+                title="Delete unit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className={cn(
+                  "inline-flex items-center justify-center rounded p-0.5",
+                  "text-text-tertiary hover:text-accent-danger hover:bg-bg-hover",
+                  "transition-colors duration-fast",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-danger",
+                  "opacity-0 group-hover:opacity-100",
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             )}
           </div>

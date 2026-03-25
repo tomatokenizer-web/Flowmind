@@ -40,9 +40,15 @@ export function ExternalImportDialog({ open, onOpenChange }: ExternalImportDialo
     },
   });
 
+  const addToContextMutation = api.context.addUnit.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate(),
+  });
+
+  const incubateMutation = api.unit.update.useMutation();
+
   const handleSubmit = async () => {
     if (!projectId) return;
-    const content = pasteText || url;
+    const content = pasteText || (url ? `[Imported URL] ${url}` : "");
     if (!content.trim()) return;
 
     let targetContextId = activeContextId;
@@ -52,14 +58,20 @@ export function ExternalImportDialog({ open, onOpenChange }: ExternalImportDialo
       targetContextId = newCtx.id;
     }
 
-    await submitMutation.mutateAsync({
+    const unit = await submitMutation.mutateAsync({
       content: content.trim(),
       projectId,
       mode: "capture",
     });
 
-    if (connectionMode === "incubate") {
-      // The unit will be auto-incubated by the service layer if short
+    // Connect to target context if applicable
+    if (connectionMode !== "incubate" && targetContextId && unit?.id) {
+      await addToContextMutation.mutateAsync({ contextId: targetContextId, unitId: unit.id });
+    }
+
+    // Explicitly incubate if requested
+    if (connectionMode === "incubate" && unit?.id) {
+      await incubateMutation.mutateAsync({ id: unit.id, incubating: true });
     }
   };
 

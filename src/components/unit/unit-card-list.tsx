@@ -19,6 +19,7 @@ export interface UnitCardListProps {
   onUnitClick?: (unit: UnitCardUnit, event?: React.MouseEvent) => void;
   onLifecycleAction?: UnitCardProps["onLifecycleAction"];
   getOnRemoveFromContext?: (unit: UnitCardUnit) => (() => void) | undefined;
+  getOnDelete?: (unit: UnitCardUnit) => (() => void) | undefined;
   projectId?: string;
   /** aria-label for the scroll container */
   listLabel?: string;
@@ -44,6 +45,7 @@ export function UnitCardList({
   onUnitClick,
   onLifecycleAction,
   getOnRemoveFromContext,
+  getOnDelete,
   projectId,
   listLabel = "Unit list",
 }: UnitCardListProps) {
@@ -116,6 +118,7 @@ export function UnitCardList({
                 onLifecycleAction={onLifecycleAction}
                 projectId={projectId}
                 onRemoveFromContext={getOnRemoveFromContext?.(unit)}
+                onDelete={getOnDelete?.(unit)}
               />
             </div>
           );

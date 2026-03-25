@@ -256,54 +256,13 @@ export function ThreadView({
 
   const units = unitsData?.items ?? [];
 
-  // Fetch relations for all visible units
+  // Fetch relations for all visible units in a single batch query
   const unitIds = React.useMemo(() => units.map((u) => u.id), [units]);
 
-  // Use first 10 units for relations (same pattern as GraphView)
-  const firstBatchIds = unitIds.slice(0, 10);
-
-  const r0 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[0]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[0] },
+  const { data: relationsData } = api.relation.listByUnits.useQuery(
+    { unitIds, contextId: activeContextId ?? undefined },
+    { enabled: unitIds.length > 0 },
   );
-  const r1 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[1]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[1] },
-  );
-  const r2 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[2]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[2] },
-  );
-  const r3 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[3]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[3] },
-  );
-  const r4 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[4]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[4] },
-  );
-  const r5 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[5]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[5] },
-  );
-  const r6 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[6]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[6] },
-  );
-  const r7 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[7]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[7] },
-  );
-  const r8 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[8]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[8] },
-  );
-  const r9 = api.relation.listByUnit.useQuery(
-    { unitId: firstBatchIds[9]!, contextId: activeContextId ?? undefined },
-    { enabled: !!firstBatchIds[9] },
-  );
-
-  const relationsQueries = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9];
 
   // Build relations map and fork counts
   const { relationsMap, forkCounts } = React.useMemo(() => {
@@ -311,24 +270,23 @@ export function ThreadView({
     const forks = new Map<string, number>();
     const seen = new Set<string>();
 
-    for (const q of relationsQueries) {
-      if (!q.data) continue;
-      for (const r of q.data) {
-        if (seen.has(r.id)) continue;
-        seen.add(r.id);
+    if (!relationsData) return { relationsMap: map, forkCounts: forks };
 
-        // Map relations to their target unit
-        const existing = map.get(r.targetUnitId) ?? [];
-        existing.push(r);
-        map.set(r.targetUnitId, existing);
+    for (const r of relationsData) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
 
-        // Count forks from source
-        forks.set(r.sourceUnitId, (forks.get(r.sourceUnitId) ?? 0) + 1);
-      }
+      // Map relations to their target unit
+      const existing = map.get(r.targetUnitId) ?? [];
+      existing.push(r);
+      map.set(r.targetUnitId, existing);
+
+      // Count forks from source
+      forks.set(r.sourceUnitId, (forks.get(r.sourceUnitId) ?? 0) + 1);
     }
 
     return { relationsMap: map, forkCounts: forks };
-  }, [relationsQueries]);
+  }, [relationsData]);
 
   // Build derivation order by following derives_from relations
   const derivationOrder = React.useMemo(() => {
