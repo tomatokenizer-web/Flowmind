@@ -157,10 +157,8 @@ export function createUnitService(db: PrismaClient) {
       const unit = await repo.findById(id);
       if (!unit) return null;
 
-      // Touch lastAccessed
-      await repo.update(id, { lastAccessed: new Date() }).catch(() => {
-        // Non-critical, don't fail the read
-      });
+      // Fire-and-forget lastAccessed — don't block the read
+      void repo.update(id, { lastAccessed: new Date() }).catch(() => {});
 
       return unit;
     },

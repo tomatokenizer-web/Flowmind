@@ -50,6 +50,24 @@ export function createUnitRepository(db: PrismaClient) {
         where,
         orderBy: orderBy ?? { createdAt: "desc" },
         take: take + 1, // Fetch one extra for cursor-based pagination
+        select: {
+          id: true,
+          content: true,
+          unitType: true,
+          lifecycle: true,
+          createdAt: true,
+          modifiedAt: true,
+          originType: true,
+          sourceSpan: true,
+          importance: true,
+          pinned: true,
+          flagged: true,
+          driftScore: true,
+          branchPotential: true,
+          incubating: true,
+          projectId: true,
+          userId: true,
+        },
       };
 
       if (cursor) {

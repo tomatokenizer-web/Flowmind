@@ -13,6 +13,7 @@ import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 import { UnitTypeBadge } from "./unit-type-badge";
 import { LifecycleIndicator, type LifecycleState } from "./lifecycle-indicator";
 import { AILifecycleBadge } from "./lifecycle-badge";
@@ -292,8 +293,28 @@ export function UnitCard({
                 <UnitAIActionsMenu
                   unit={{ id: unit.id, content: unit.content, unitType: unit.unitType }}
                   contextId={undefined}
-                  onCreateUnit={() => {}}
-                  onUpdateUnit={() => {}}
+                  onCreateUnit={(content, type) => {
+                    if (!projectId) return;
+                    createUnit.mutate({
+                      content,
+                      unitType: type as UnitType,
+                      lifecycle: "draft",
+                      originType: "ai_refined",
+                      sourceSpan: { derivedFrom: unit.id },
+                      projectId,
+                    }, {
+                      onSuccess: () => toast.success("Unit created from AI suggestion"),
+                    });
+                  }}
+                  onUpdateUnit={(id, updates) => {
+                    updateMutation.mutate({
+                      id,
+                      ...(updates.content && { content: updates.content }),
+                      ...(updates.unitType && { unitType: updates.unitType as UnitType }),
+                    }, {
+                      onSuccess: () => toast.success("Unit updated"),
+                    });
+                  }}
                 />
               </span>
             )}
