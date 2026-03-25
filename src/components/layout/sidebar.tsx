@@ -96,43 +96,43 @@ export function Sidebar({ className }: SidebarProps) {
         <ProjectSelector collapsed={isCollapsed} />
       </div>
 
-      {/* Context tree */}
-      <ContextTree projectId={projectId} collapsed={isCollapsed} />
+      {/* Scrollable middle section — contains all expandable panels */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+        {/* Context tree */}
+        <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
-      {/* Navigator panel — separate section from contexts */}
-      {isExpanded && activeContextId && projectId && (
-        <div className="border-t border-border">
-          <NavigatorPanel contextId={activeContextId} projectId={projectId} />
-        </div>
-      )}
-      {isCollapsed && activeContextId && (
-        <div className="border-t border-border flex items-center justify-center py-2">
-          <Compass className="h-5 w-5 text-text-tertiary" aria-label="Navigators" />
-        </div>
-      )}
+        {/* Navigator panel — separate section from contexts */}
+        {isExpanded && activeContextId && projectId && (
+          <div className="border-t border-border">
+            <NavigatorPanel contextId={activeContextId} projectId={projectId} />
+          </div>
+        )}
+        {isCollapsed && activeContextId && (
+          <div className="border-t border-border flex items-center justify-center py-2">
+            <Compass className="h-5 w-5 text-text-tertiary" aria-label="Navigators" />
+          </div>
+        )}
 
-      {/* Incubation queue — shows units awaiting triage */}
-      <IncubationQueue collapsed={isCollapsed} />
+        {/* Incubation queue — shows units awaiting triage */}
+        <IncubationQueue collapsed={isCollapsed} />
 
-      {/* Spacer to push bottom nav down */}
-      <div className="flex-1" />
+        {/* Orphan recovery panel (8.3) — renders null internally when count === 0 */}
+        {projectId && activeContextId && (
+          <OrphanRecoveryPanel projectId={projectId} collapsed={isCollapsed} />
+        )}
 
-      {/* Orphan recovery panel (8.3) — renders null internally when count === 0 */}
-      {projectId && activeContextId && (
-        <OrphanRecoveryPanel projectId={projectId} collapsed={isCollapsed} />
-      )}
+        {/* Similar units panel (8.2) — renders null internally when count === 0 */}
+        {projectId && activeContextId && (
+          <SimilarUnitsPanel projectId={projectId} collapsed={isCollapsed} />
+        )}
 
-      {/* Similar units panel (8.2) — renders null internally when count === 0 */}
-      {projectId && activeContextId && (
-        <SimilarUnitsPanel projectId={projectId} collapsed={isCollapsed} />
-      )}
+        {/* Drift detection panel (8.7) — renders null internally when driftCount === 0 */}
+        {projectId && activeContextId && (
+          <DriftPanel projectId={projectId} collapsed={isCollapsed} />
+        )}
+      </div>
 
-      {/* Drift detection panel (8.7) — renders null internally when driftCount === 0 */}
-      {projectId && activeContextId && (
-        <DriftPanel projectId={projectId} collapsed={isCollapsed} />
-      )}
-
-      {/* Bottom nav items — utilities */}
+      {/* Bottom nav items — utilities (always visible, never scrolled away) */}
       <div className="border-t border-border p-space-2 space-y-0.5">
         <button type="button" onClick={() => setImportOpen(true)}
           className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
