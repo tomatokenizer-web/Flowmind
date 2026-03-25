@@ -10,6 +10,7 @@ import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPo
 import { DriftIndicator } from "~/components/drift/DriftIndicator";
 import { UnitAIActionsMenu } from "./UnitAIActionsMenu";
 import { usePanelStore } from "~/stores/panel-store";
+import { useSidebarStore } from "~/stores/sidebar-store";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -145,6 +146,7 @@ export function UnitCard({
   const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
   const isSelected = selectedUnitId === unit.id;
 
   const utils = api.useUtils();
@@ -292,7 +294,7 @@ export function UnitCard({
               <span onClick={(e) => e.stopPropagation()}>
                 <UnitAIActionsMenu
                   unit={{ id: unit.id, content: unit.content, unitType: unit.unitType }}
-                  contextId={undefined}
+                  contextId={activeContextId ?? undefined}
                   onCreateUnit={(content, type) => {
                     if (!projectId) return;
                     createUnit.mutate({
