@@ -116,7 +116,7 @@ export function AssemblyTemplateDialog({ open, onOpenChange, projectId, contextI
   const [mappingError, setMappingError] = React.useState<string | null>(null);
 
   const proposeSlotMappings = api.assembly.proposeSlotMappings.useQuery(
-    { contextId: contextId!, templateType: selected },
+    { contextId: contextId, templateType: selected },
     {
       enabled: false, // manual trigger only
     },

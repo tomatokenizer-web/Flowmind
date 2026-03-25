@@ -43,7 +43,8 @@ export class AnthropicProvider implements AIProvider {
     // Resolve the API key: explicit arg > env config > SDK reads process.env
     const resolvedKey = apiKey ?? env.ANTHROPIC_API_KEY;
 
-    if (!resolvedKey && !process.env.ANTHROPIC_API_KEY) {
+    // When using a proxy (ANTHROPIC_BASE_URL), API key validation is skipped
+    if (!resolvedKey && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_BASE_URL) {
       throw new Error(
         "ANTHROPIC_API_KEY is not configured. Set it in your .env file."
       );
@@ -51,6 +52,9 @@ export class AnthropicProvider implements AIProvider {
 
     this.client = new Anthropic({
       apiKey: resolvedKey,
+      ...(process.env.ANTHROPIC_BASE_URL && {
+        baseURL: process.env.ANTHROPIC_BASE_URL,
+      }),
     });
     this.defaultModel = model ?? env.AI_MODEL;
   }

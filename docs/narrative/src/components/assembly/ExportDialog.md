@@ -47,8 +47,27 @@ For `presentation` and `social`, a short `[TYPE]` tag is prepended instead.
 3. Both queries run in parallel when the dialog is open.
 4. `applyTypeConversions` combines raw content + ordered unit list → formatted preview string.
 
+## Partial Export
+
+Users can select a subset of units via checkboxes before exporting. All units are selected by default when the assembly loads. The formatted preview and all export actions only include selected units. A "Select all / Deselect all" toggle is provided.
+
+## Export History Tab
+
+A second tab lists previous export events fetched via `api.exportHistory.list`. Each entry shows format badge, unit count, and a formatted timestamp using `date-fns` `format()` with the pattern `"MMM d, yyyy, h:mm a"` (e.g. "Mar 24, 2026, 2:30 PM") for consistent locale-independent display. A changed-units badge alerts the user when units have been modified since the last export.
+
 ## Actions
 
-- **Copy** — writes `formattedContent` to the clipboard.
-- **Download** — creates a `.txt` blob named `{assembly-name}-{format}.txt`.
-- **PDF** — disabled, shows "Coming soon" tooltip.
+- **Copy** — writes `formattedContent` to the clipboard and records an export history entry.
+- **Download** — creates a `.txt` blob named `{assembly-name}-{format}.txt` and records history.
+- **PDF** — triggers a server-side PDF export via `/api/assembly/{id}/export-pdf`.
+
+## Preview Container
+
+The preview `<div>` has `min-h-[120px]` to prevent the container from collapsing when no units are selected or content is empty. Content is rendered in a `<div>` (not `<pre>`) with `whitespace-pre-wrap` to preserve newlines while allowing prose wrapping.
+
+## 2026-03-24 Changes
+
+- Renamed internal `format` state to `exportFormat` to avoid shadowing the `date-fns` `format` import.
+- Added `date-fns` `format()` import; replaced `toLocaleString()` in history entries with `format(date, "MMM d, yyyy, h:mm a")`.
+- Preview container: added `min-h-[120px]`; replaced `<pre className="... font-sans">` with `<div className="whitespace-pre-wrap ...">`.
+- Partial export unit selection and export history tab added.

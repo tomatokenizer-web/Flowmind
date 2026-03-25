@@ -95,10 +95,11 @@ const updateUnitSchema = z.object({
 });
 
 const listUnitsSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   lifecycle: lifecycleEnum.optional(),
   unitType: unitTypeEnum.optional(),
   contextId: z.string().uuid().optional(),
+  search: z.string().max(500).optional(),
   cursor: z.string().uuid().optional(),
   limit: z.number().int().min(1).max(100).default(20),
   sortBy: z.enum(["createdAt", "modifiedAt", "importance"]).default("createdAt"),
@@ -168,6 +169,9 @@ export const unitRouter = createTRPCRouter({
   list: protectedProcedure
     .input(listUnitsSchema)
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) {
+        return { items: [], nextCursor: null };
+      }
       // IDOR fix: verify the project belongs to the authenticated user
       const project = await ctx.db.project.findFirst({
         where: { id: input.projectId, userId: ctx.session.user.id! },
@@ -177,7 +181,7 @@ export const unitRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
       const service = createUnitService(ctx.db);
-      return service.list(input);
+      return service.list({ ...input, projectId: input.projectId });
     }),
 
   listByIds: protectedProcedure

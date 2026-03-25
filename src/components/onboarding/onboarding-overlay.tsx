@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { useOnboarding } from "~/hooks/use-onboarding";
 import { api } from "~/trpc/react";
 import {
@@ -87,7 +88,7 @@ export function OnboardingOverlay({ projectId }: OnboardingOverlayProps) {
               onClick={skipTour}
               className="fixed bottom-6 right-6 z-[200] rounded-lg bg-black/30 px-4 py-2 text-sm text-white/60 hover:text-white/90 transition-colors"
             >
-              Skip intro →
+              Skip intro <ArrowRight className="h-3.5 w-3.5 inline-block ml-1" />
             </button>
           </>
         )}

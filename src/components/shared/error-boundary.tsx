@@ -90,7 +90,7 @@ function DefaultErrorFallback({
         "flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-bg-secondary p-6 text-center",
         className,
       )}
-      role="alert"
+      role="status"
     >
       <AlertTriangle
         className="h-8 w-8 text-accent-warning"

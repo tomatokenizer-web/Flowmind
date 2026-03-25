@@ -206,7 +206,7 @@ export const aiRouter = createTRPCRouter({
       const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context
-      const existingUnits = await getContextUnits(ctx.db, input.contextId!, 20);
+      const existingUnits = await getContextUnits(ctx.db, input.contextId, 20);
 
       const suggestions = await aiService.suggestRelations(
         input.content,
@@ -242,7 +242,7 @@ export const aiRouter = createTRPCRouter({
       const sessionId = resolveSessionId(input.sessionId);
 
       // Get existing units in the context for relation suggestions
-      const existingUnits = await getContextUnits(ctx.db, input.contextId ?? "", 20);
+      const existingUnits = await getContextUnits(ctx.db, input.contextId, 20);
 
       try {
         const result = await aiService.decomposeText(

@@ -28,6 +28,11 @@ const upsertPerspectiveSchema = z.object({
 });
 
 const unitContextPairSchema = z.object({
+  unitId: z.string().uuid().optional(),
+  contextId: z.string().uuid().optional(),
+});
+
+const unitContextPairRequiredSchema = z.object({
   unitId: z.string().uuid(),
   contextId: z.string().uuid(),
 });
@@ -49,6 +54,7 @@ export const perspectiveRouter = createTRPCRouter({
   getForUnit: protectedProcedure
     .input(unitContextPairSchema)
     .query(async ({ ctx, input }) => {
+      if (!input.unitId || !input.contextId) return null;
       const service = createPerspectiveService(ctx.db);
       return service.getForUnit(input.unitId, input.contextId);
     }),
@@ -61,7 +67,7 @@ export const perspectiveRouter = createTRPCRouter({
     }),
 
   delete: protectedProcedure
-    .input(unitContextPairSchema)
+    .input(unitContextPairRequiredSchema)
     .mutation(async ({ ctx, input }) => {
       const service = createPerspectiveService(ctx.db);
       return service.deletePerspective(input.unitId, input.contextId);

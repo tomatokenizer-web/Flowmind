@@ -69,7 +69,7 @@ export function useContextActions(projectId: string | undefined) {
 
   function useUnitsForContext(contextId: string | null) {
     return api.context.getUnitsForContext.useQuery(
-      { id: contextId! },
+      { id: contextId ?? undefined },
       { enabled: !!contextId },
     );
   }

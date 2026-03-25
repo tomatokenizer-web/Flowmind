@@ -16,7 +16,7 @@ const createInput = z.object({
 });
 
 const listInput = z.object({
-  projectId: uuidSchema,
+  projectId: uuidSchema.optional(),
 });
 
 const updateInput = z.object({
@@ -71,6 +71,7 @@ export const customRelationTypeRouter = createTRPCRouter({
   list: protectedProcedure
     .input(listInput)
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) return [];
       return ctx.db.customRelationType.findMany({
         where: { projectId: input.projectId },
         orderBy: { createdAt: "asc" },

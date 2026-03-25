@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
-import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitCard, type UnitCardUnit } from "~/components/unit/unit-card";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -217,7 +216,6 @@ function ThreadItem({
           variant="standard"
           onLifecycleAction={onLifecycleAction}
           onClick={(u) => {
-            useSelectionStore.getState().setSelectedUnit(u.id);
             usePanelStore.getState().openPanel(u.id);
           }}
         />
@@ -242,14 +240,14 @@ export function ThreadView({
   const [searchQuery, setSearchQuery] = React.useState("");
   const [filterType, setFilterType] = React.useState<string | null>(null);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
-  const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Fetch units for the current context/project
   const { data: unitsData, isLoading } = api.unit.list.useQuery(
     {
-      projectId: projectId!,
+      projectId: projectId,
       contextId: activeContextId ?? undefined,
       limit: 100,
     },
@@ -464,13 +462,13 @@ export function ThreadView({
         e.preventDefault();
         const nextIndex = Math.min(currentIndex + 1, cardUnits.length - 1);
         if (cardUnits[nextIndex]) {
-          useSelectionStore.getState().setSelectedUnit(cardUnits[nextIndex].id);
+          usePanelStore.getState().openPanel(cardUnits[nextIndex].id);
         }
       } else if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault();
         const prevIndex = Math.max(currentIndex - 1, 0);
         if (cardUnits[prevIndex]) {
-          useSelectionStore.getState().setSelectedUnit(cardUnits[prevIndex].id);
+          usePanelStore.getState().openPanel(cardUnits[prevIndex].id);
         }
       }
     }
@@ -481,7 +479,6 @@ export function ThreadView({
 
   // Handle branch expansion — selects the unit and opens detail panel
   const handleExpandBranches = React.useCallback((unitId: string) => {
-    useSelectionStore.getState().setSelectedUnit(unitId);
     usePanelStore.getState().openPanel(unitId);
   }, []);
 

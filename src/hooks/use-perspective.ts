@@ -53,7 +53,7 @@ export function usePerspective({
   const enabled = !!unitId && !!contextId;
 
   const perspectiveQuery = api.perspective.getForUnit.useQuery(
-    { unitId: unitId!, contextId: contextId! },
+    { unitId: unitId ?? undefined, contextId: contextId ?? undefined },
     { enabled },
   );
 

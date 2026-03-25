@@ -7,6 +7,8 @@ interface AssemblyState {
   bridgeTexts: Record<string, string>;
   setBridgeText: (afterUnitId: string, text: string) => void;
   clearBridgeTexts: () => void;
+  /** Bulk-initialise bridgeTexts from server data (replaces current state) */
+  initBridgeTexts: (texts: Record<string, string>) => void;
 }
 
 export const useAssemblyStore = create<AssemblyState>((set) => ({
@@ -16,4 +18,5 @@ export const useAssemblyStore = create<AssemblyState>((set) => ({
   setBridgeText: (afterUnitId, text) =>
     set((s) => ({ bridgeTexts: { ...s.bridgeTexts, [afterUnitId]: text } })),
   clearBridgeTexts: () => set({ bridgeTexts: {} }),
+  initBridgeTexts: (texts) => set({ bridgeTexts: texts }),
 }));

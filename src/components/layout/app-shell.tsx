@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     function handleResize() {
       if (xl.matches) { setSidebarOpen(true); setMobileMenuOpen(false); }
       else if (lg.matches) { setSidebarOpen(false); setMobileMenuOpen(false); }
-      else { setSidebarOpen(true); setMobileMenuOpen(false); }
+      else { setSidebarOpen(false); setMobileMenuOpen(false); }
     }
     handleResize();
     xl.addEventListener("change", handleResize);
@@ -87,13 +87,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
 
           <div className="flex flex-1 overflow-hidden">
-            <main id="main-content" role="main" className="relative flex-1 overflow-y-auto">
-              <div className="mx-auto min-h-full max-w-content p-space-6">
-                {children}
+            <div className="relative flex flex-1 flex-col overflow-hidden">
+              <main id="main-content" role="main" className="relative flex-1 overflow-y-auto">
+                <div className="mx-auto min-h-full max-w-content p-space-6">
+                  {children}
+                </div>
+              </main>
+
+              {/* CaptureBar — sticky to the bottom of the main column, never scrolls away */}
+              <div className="sticky bottom-0 z-40 border-t border-border-subtle bg-bg-primary py-3">
+                <CaptureBar />
               </div>
-              {/* CaptureBar always visible at bottom of main content */}
-              <CaptureBar />
-            </main>
+            </div>
 
             {!focusMode && (
               <>

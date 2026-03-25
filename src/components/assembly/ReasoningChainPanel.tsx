@@ -72,7 +72,7 @@ function ChainView({ chainId, contextId, onClose }: ChainViewProps) {
   const projectId = (contextData as { projectId?: string } | undefined)?.projectId;
 
   const { data: unitsData } = api.unit.list.useQuery(
-    { projectId: projectId!, contextId, limit: 100 },
+    { projectId: projectId, contextId, limit: 100 },
     { enabled: !!projectId },
   );
 

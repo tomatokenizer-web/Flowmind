@@ -148,11 +148,11 @@ export function ContextBriefing({
                 <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
                 Open Questions
               </div>
-              <ul className="space-y-1 pl-space-6" role="list">
+              <ul className="list-disc list-inside space-y-1 pl-space-6" role="list">
                 {briefing.openQuestions.map((q, i) => (
                   <li
                     key={i}
-                    className="text-sm text-text-secondary list-disc"
+                    className="text-sm text-text-secondary"
                   >
                     {q}
                   </li>
@@ -168,11 +168,11 @@ export function ContextBriefing({
                 <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
                 Suggestions
               </div>
-              <ul className="space-y-1 pl-space-6" role="list">
+              <ul className="list-disc list-inside space-y-1 pl-space-6" role="list">
                 {briefing.aiSuggestions.map((s, i) => (
                   <li
                     key={i}
-                    className="text-sm text-text-secondary italic list-disc"
+                    className="text-sm text-text-secondary italic"
                   >
                     {s}
                   </li>
@@ -187,7 +187,7 @@ export function ContextBriefing({
               <button
                 type="button"
                 onClick={handleContinue}
-                className="inline-flex items-center gap-space-2 rounded-lg bg-accent-primary px-space-4 py-space-2 text-sm font-medium text-white transition-colors duration-fast hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2"
+                className="inline-flex items-center gap-space-2 rounded-lg bg-accent-primary px-space-4 py-space-2 text-sm font-medium text-white transition-colors duration-fast hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2"
                 aria-label="Continue where you left off"
               >
                 Continue where I left off

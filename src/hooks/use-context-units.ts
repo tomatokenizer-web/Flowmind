@@ -41,7 +41,7 @@ export function useContextUnits({
   // Fetch units filtered by context (or all units when no context)
   const unitsQuery = api.unit.list.useQuery(
     {
-      projectId: projectId!,
+      projectId: projectId,
       contextId: activeContextId ?? undefined,
       cursor,
       limit,

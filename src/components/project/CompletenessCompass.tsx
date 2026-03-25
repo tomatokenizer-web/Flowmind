@@ -38,7 +38,7 @@ export function CompletenessCompass({ className }: { className?: string }) {
   const [open, setOpen] = React.useState(false);
 
   const { data: stats } = api.project.getCompletenessStats.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId },
   );
 

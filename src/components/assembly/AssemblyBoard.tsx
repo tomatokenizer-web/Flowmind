@@ -20,7 +20,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, X, Eye, Edit3, Plus, Download, Loader2, Layers, ArrowLeft } from "lucide-react";
+import { GripVertical, X, Eye, Edit3, Plus, Download, Loader2, Layers, ArrowLeft, Shuffle } from "lucide-react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "~/trpc/react";
@@ -151,7 +151,7 @@ function SortableUnitCard({
         ) : (
           <button
             data-bridge={item.unitId}
-            onClick={(e) => (e.currentTarget as HTMLElement).focus()}
+            onClick={() => setBridgeText(item.unitId, " ")}
             className="w-full rounded-lg border border-dashed border-transparent py-1 text-xs text-text-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:border-border hover:text-text-secondary"
           >
             + Add bridge text
@@ -160,6 +160,108 @@ function SortableUnitCard({
       </div>
     </div>
   );
+}
+
+// ─── Auto-arrange ordering maps ───────────────────────────────────
+
+/**
+ * For each template type, defines the preferred unit type ordering.
+ * Lower index = earlier in document. Unit types not listed fall to the end.
+ */
+const TEMPLATE_UNIT_ORDER: Record<string, string[]> = {
+  essay: [
+    "question",
+    "context",
+    "background",
+    "thesis",
+    "claim",
+    "argument",
+    "warrant",
+    "evidence",
+    "example",
+    "counter",
+    "rebuttal",
+    "summary",
+    "conclusion",
+    "reflection",
+  ],
+  report: [
+    "summary",
+    "context",
+    "background",
+    "question",
+    "claim",
+    "evidence",
+    "data",
+    "finding",
+    "analysis",
+    "argument",
+    "recommendation",
+    "conclusion",
+  ],
+  research_paper: [
+    "summary",
+    "question",
+    "context",
+    "background",
+    "thesis",
+    "claim",
+    "evidence",
+    "data",
+    "finding",
+    "analysis",
+    "counter",
+    "rebuttal",
+    "conclusion",
+  ],
+  presentation: [
+    "question",
+    "context",
+    "thesis",
+    "claim",
+    "evidence",
+    "example",
+    "argument",
+    "summary",
+    "conclusion",
+    "recommendation",
+  ],
+  debate_brief: [
+    "thesis",
+    "claim",
+    "warrant",
+    "argument",
+    "evidence",
+    "example",
+    "counter",
+    "rebuttal",
+    "summary",
+  ],
+  blank: [],
+};
+
+/**
+ * Fallback order used when template type is blank or unknown.
+ * Mirrors the essay order which is the most general-purpose sequence.
+ */
+const DEFAULT_UNIT_ORDER = TEMPLATE_UNIT_ORDER.essay!;
+
+function getUnitTypeRank(unitType: string, order: string[]): number {
+  const idx = order.indexOf(unitType.toLowerCase());
+  return idx === -1 ? order.length : idx;
+}
+
+function autoArrangeItems(
+  items: AssemblyItemData[],
+  templateType: string | null | undefined,
+): AssemblyItemData[] {
+  const key = (templateType ?? "").toLowerCase();
+  const order = TEMPLATE_UNIT_ORDER[key] ?? DEFAULT_UNIT_ORDER;
+  return [...items].sort((a, b) => {
+    const rankA = getUnitTypeRank(a.unit?.unitType ?? "", order);
+    const rankB = getUnitTypeRank(b.unit?.unitType ?? "", order);
+    return rankA - rankB;
+  });
 }
 
 // ─── Main Component ───────────────────────────────────────────────
@@ -229,6 +331,8 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
   const [localItems, setLocalItems] = React.useState<AssemblyItemData[]>([]);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const bridgeTexts = useAssemblyStore((s) => s.bridgeTexts);
+  const initBridgeTexts = useAssemblyStore((s) => s.initBridgeTexts);
 
   const utils = api.useUtils();
 
@@ -240,8 +344,14 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
         .filter((item): item is typeof item & { unitId: string } => item.unitId !== null)
         .map((item) => item as unknown as AssemblyItemData);
       setLocalItems(validItems);
+
+      const texts: Record<string, string> = {};
+      validItems.forEach((item) => {
+        if (item.bridgeText) texts[item.unitId] = item.bridgeText;
+      });
+      initBridgeTexts(texts);
     }
-  }, [assembly?.items]);
+  }, [assembly?.items, initBridgeTexts]);
 
   const reorderMutation = api.assembly.reorderUnits.useMutation({
     onSuccess: () => utils.assembly.getById.invalidate({ id: assemblyId }),
@@ -255,6 +365,17 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  function handleAutoArrange() {
+    if (localItems.length < 2) return;
+    const templateType = (assembly as { templateType?: string | null }).templateType;
+    const reordered = autoArrangeItems(localItems, templateType);
+    setLocalItems(reordered);
+    void reorderMutation.mutateAsync({
+      assemblyId,
+      orderedUnitIds: reordered.map((i) => i.unitId),
+    });
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(event.active.id as string);
@@ -327,6 +448,22 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!isPreview && localItems.length >= 2 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAutoArrange}
+              disabled={reorderMutation.isPending}
+              title="Auto-arrange units by template type"
+            >
+              {reorderMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Shuffle className="h-4 w-4" />
+              )}
+              Auto-arrange
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -336,9 +473,9 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
             {isPreview ? <Edit3 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {isPreview ? "Edit" : "Preview"}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setExportOpen(true)}>
+          <Button variant={isPreview ? "primary" : "ghost"} size="sm" onClick={() => setExportOpen(true)}>
             <Download className="h-4 w-4" />
-            Export
+            {isPreview ? "Export now" : "Export"}
           </Button>
         </div>
       </div>
@@ -355,7 +492,7 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
           /* Preview mode — read-only */
           <div className="mx-auto max-w-2xl space-y-6">
             {localItems.map((item) => {
-              const bridgeText = useAssemblyStore.getState().bridgeTexts[item.unitId];
+              const bridgeText = bridgeTexts[item.unitId];
               return (
                 <div key={item.id}>
                   {item.slotName && (
@@ -370,6 +507,15 @@ export function AssemblyBoard({ assemblyId, projectId }: AssemblyBoardProps) {
                 </div>
               );
             })}
+
+            {/* Export CTA at end of preview */}
+            <div className="mt-10 flex flex-col items-center gap-3 border-t border-border pt-8">
+              <p className="text-sm font-medium text-text-secondary">Looks good?</p>
+              <Button variant="primary" size="sm" onClick={() => setExportOpen(true)}>
+                <Download className="h-4 w-4" />
+                Export this assembly
+              </Button>
+            </div>
           </div>
         ) : (
           /* Edit mode — drag and drop */

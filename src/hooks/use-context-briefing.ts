@@ -5,7 +5,7 @@ import { api } from "~/trpc/react";
 
 export function useContextBriefing(contextId: string | null | undefined) {
   const briefingQuery = api.contextVisit.getBriefing.useQuery(
-    { contextId: contextId! },
+    { contextId: contextId ?? undefined },
     { enabled: !!contextId },
   );
 

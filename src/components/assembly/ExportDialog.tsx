@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Download, Copy, FileText, Presentation, Mail, Hash, FileDown, History, Clock } from "lucide-react";
+import { format } from "date-fns";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -31,8 +32,8 @@ type UnitType =
   | "idea"
   | string;
 
-function applyUnitTypeFormatting(content: string, unitType: UnitType, format: ExportFormat): string {
-  if (format === "presentation" || format === "social") {
+function applyUnitTypeFormatting(content: string, unitType: UnitType, fmt: ExportFormat): string {
+  if (fmt === "presentation" || fmt === "social") {
     const label: Record<string, string> = {
       claim: "CLAIM",
       evidence: "EVIDENCE",
@@ -86,36 +87,36 @@ function applyUnitTypeFormatting(content: string, unitType: UnitType, format: Ex
 function applyTypeConversions(
   rawContent: string,
   units: Array<{ id: string; content: string; type: string }>,
-  format: ExportFormat,
+  fmt: ExportFormat,
 ): string {
   if (units.length === 0) return rawContent;
 
-  if (format === "essay") {
+  if (fmt === "essay") {
     return units
-      .map((u) => applyUnitTypeFormatting(u.content, u.type, format))
+      .map((u) => applyUnitTypeFormatting(u.content, u.type, fmt))
       .join("\n\n");
   }
 
-  if (format === "email") {
+  if (fmt === "email") {
     const actions = units.filter((u) => u.type === "action");
     const others = units.filter((u) => u.type !== "action");
-    let out = `Key Points:\n${others.map((u) => `• ${applyUnitTypeFormatting(u.content, u.type, format)}`).join("\n")}`;
+    let out = `Key Points:\n${others.map((u) => `• ${applyUnitTypeFormatting(u.content, u.type, fmt)}`).join("\n")}`;
     if (actions.length > 0) {
-      out += `\n\nAction Items:\n${actions.map((u) => applyUnitTypeFormatting(u.content, u.type, format)).join("\n")}`;
+      out += `\n\nAction Items:\n${actions.map((u) => applyUnitTypeFormatting(u.content, u.type, fmt)).join("\n")}`;
     }
     return out;
   }
 
-  if (format === "presentation") {
+  if (fmt === "presentation") {
     return units
-      .map((u, i) => `Slide ${i + 1}\n• ${applyUnitTypeFormatting(u.content, u.type, format)}`)
+      .map((u, i) => `Slide ${i + 1}\n• ${applyUnitTypeFormatting(u.content, u.type, fmt)}`)
       .join("\n\n");
   }
 
-  if (format === "social") {
+  if (fmt === "social") {
     return units
       .map((u) => {
-        const formatted = applyUnitTypeFormatting(u.content, u.type, format);
+        const formatted = applyUnitTypeFormatting(u.content, u.type, fmt);
         return formatted.length > 240 ? formatted.slice(0, 237) + "..." : formatted;
       })
       .join("\n\n---\n\n");
@@ -136,13 +137,13 @@ interface ExportDialogProps {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: ExportDialogProps) {
-  const [format, setFormat] = React.useState<ExportFormat>("essay");
+  const [exportFormat, setExportFormat] = React.useState<ExportFormat>("essay");
   const [copied, setCopied] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ActiveTab>("export");
 
   // Fetch raw export content
   const { data: exportData, isLoading: exportLoading } = api.assembly.export.useQuery(
-    { assemblyId, format },
+    { assemblyId, format: exportFormat },
     { enabled: open },
   );
 
@@ -191,12 +192,12 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
   // Apply client-side formatting only to selected units
   const formattedContent = React.useMemo(() => {
     if (!exportData?.content) return "";
-    return applyTypeConversions(exportData.content, selectedUnits, format);
-  }, [exportData?.content, selectedUnits, format]);
+    return applyTypeConversions(exportData.content, selectedUnits, exportFormat);
+  }, [exportData?.content, selectedUnits, exportFormat]);
 
   // Changed-units badge
   const { data: changedData } = api.exportHistory.getChangedUnits.useQuery(
-    { assemblyId, format, currentContent: formattedContent },
+    { assemblyId, format: exportFormat, currentContent: formattedContent },
     { enabled: open && formattedContent.length > 0 },
   );
 
@@ -212,11 +213,11 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
     if (!formattedContent) return;
     createExportHistory.mutate({
       assemblyId,
-      format,
+      format: exportFormat,
       unitIds: selectedUnits.map((u) => u.id),
       content: formattedContent,
     });
-  }, [assemblyId, format, formattedContent, selectedUnits, createExportHistory]);
+  }, [assemblyId, exportFormat, formattedContent, selectedUnits, createExportHistory]);
 
   const handleCopy = async () => {
     if (!formattedContent) return;
@@ -232,7 +233,7 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${assemblyName.replace(/\s+/g, "-").toLowerCase()}-${format}.txt`;
+    a.download = `${assemblyName.replace(/\s+/g, "-").toLowerCase()}-${exportFormat}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     recordExport();
@@ -322,10 +323,10 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                 {FORMATS.map(({ id, label, icon: Icon, description }) => (
                   <button
                     key={id}
-                    onClick={() => setFormat(id)}
+                    onClick={() => setExportFormat(id)}
                     className={cn(
                       "flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors",
-                      format === id
+                      exportFormat === id
                         ? "border-accent-primary bg-accent-primary/5 text-accent-primary"
                         : "border-border text-text-secondary hover:border-border-hover hover:text-text-primary",
                     )}
@@ -387,7 +388,7 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
               )}
 
               {/* Preview */}
-              <div className="flex-1 overflow-y-auto rounded-xl border border-border bg-bg-primary p-4">
+              <div className="flex-1 overflow-y-auto rounded-xl border border-border bg-bg-primary p-4 min-h-[120px]">
                 {isLoading ? (
                   <div className="space-y-2">
                     {[1, 2, 3, 4].map((i) => (
@@ -397,9 +398,9 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                 ) : selectedUnits.length === 0 ? (
                   <p className="text-sm text-text-tertiary">Select at least one unit to preview.</p>
                 ) : (
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-text-primary leading-relaxed">
+                  <div className="whitespace-pre-wrap text-sm text-text-primary leading-relaxed">
                     {formattedContent || "No content to export"}
-                  </pre>
+                  </div>
                 )}
               </div>
 
@@ -475,7 +476,7 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
                         <Clock className="h-3 w-3" />
-                        {new Date(entry.createdAt).toLocaleString()}
+                        {format(new Date(entry.createdAt), "MMM d, yyyy, h:mm a")}
                       </div>
                     </div>
                   ))}

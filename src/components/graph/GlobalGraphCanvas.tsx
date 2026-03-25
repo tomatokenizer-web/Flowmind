@@ -13,7 +13,6 @@ import {
 } from "d3-force";
 import { useGraphStore } from "~/stores/graphStore";
 import { usePanelStore } from "~/stores/panel-store";
-import { useSelectionStore } from "~/stores/selectionStore";
 import { announceToScreenReader } from "~/lib/accessibility";
 import { usePrefersReducedMotion } from "~/hooks/use-prefers-reduced-motion";
 import { UNIT_TYPE_COLORS as UNIT_TYPE_COLOR_TOKENS } from "~/lib/unit-types";
@@ -280,9 +279,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
   // Counter for throttled mini-map updates (every ~10 frames)
   const miniMapFrameRef = React.useRef(0);
   const openPanel = usePanelStore((s) => s.openPanel);
-  const closePanel = usePanelStore((s) => s.closePanel);
-  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
-  const clearSelection = useSelectionStore((s) => s.clearSelection);
+  const clearSelection = usePanelStore((s) => s.clearSelection);
 
   const prefersReducedMotion = usePrefersReducedMotion();
 
@@ -660,12 +657,11 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
 
   const selectNode = React.useCallback(
     (node: SimNode) => {
-      setSelectedUnit(node.id);
       openPanel(node.id);
       setLocalHub(node.id);
       setLayer("local");
     },
-    [setSelectedUnit, openPanel, setLocalHub, setLayer],
+    [openPanel, setLocalHub, setLayer],
   );
 
   const focusNode = React.useCallback(
@@ -765,12 +761,11 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         e.preventDefault();
         setFocusedNodeId(null);
         clearSelection();
-        closePanel();
         announceToScreenReader("Node deselected");
         return;
       }
     },
-    [focusNode, selectNode, clearSelection, closePanel],
+    [focusNode, selectNode, clearSelection],
   );
 
   // Hit test helper
@@ -845,8 +840,12 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
       const node = hitTest(e.clientX, e.clientY);
       if (node) {
         setFocusedNodeId(node.id);
-        selectNode(node);
-        onNodeClick?.(node.id);
+        if (onNodeClick) {
+          // Merge mode: only fire callback, don't switch to local view
+          onNodeClick(node.id);
+        } else {
+          selectNode(node);
+        }
       }
     },
     [hitTest, selectNode, onNodeClick],
@@ -912,7 +911,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         onKeyDown={handleKeyDown}
       />
       {/* Edge style legend */}
-      <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-border bg-bg-secondary/90 px-3 py-2 text-xs text-text-secondary backdrop-blur-sm">
+      <div className="pointer-events-none absolute bottom-[120px] left-3 z-10 rounded-lg border border-border bg-bg-secondary/90 px-3 py-2 text-xs text-text-secondary backdrop-blur-sm">
         <div className="mb-1 font-medium text-text-primary">Edge types</div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">

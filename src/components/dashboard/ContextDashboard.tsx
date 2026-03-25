@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useSelectionStore } from "~/stores/selectionStore";
+import { usePanelStore } from "~/stores/panel-store";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -96,7 +96,7 @@ export function ContextDashboard({
   projectId,
   className,
 }: ContextDashboardProps) {
-  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const openPanel = usePanelStore((s) => s.openPanel);
 
   // Contradiction analysis — triggered on demand
   const [contradictionCount, setContradictionCount] = React.useState<number | null>(null);
@@ -178,9 +178,9 @@ export function ContextDashboard({
 
   const handleUnitClick = React.useCallback(
     (unitId: string) => {
-      setSelectedUnit(unitId);
+      openPanel(unitId);
     },
-    [setSelectedUnit],
+    [openPanel],
   );
 
   if (!context) {

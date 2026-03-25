@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useKeyboardShortcuts } from "~/hooks/use-keyboard-shortcuts";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useCaptureStore } from "~/stores/capture-store";
-import { useSelectionStore } from "~/stores/selectionStore";
+import { usePanelStore } from "~/stores/panel-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
 import { useUnitLifecycle } from "~/hooks/use-unit-lifecycle";
 import { useUndoRedo } from "~/hooks/use-undo-redo";
@@ -27,7 +27,7 @@ export function GlobalKeyboardShortcuts() {
   const captureToggle = useCaptureStore((s) => s.toggle);
   const captureToggleMode = useCaptureStore((s) => s.toggleMode);
   const captureIsOpen = useCaptureStore((s) => s.isOpen);
-  const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const toggleFocusMode = useFocusModeStore((s) => s.toggleFocusMode);
 
   // Lifecycle transitions for D/P/C shortcuts

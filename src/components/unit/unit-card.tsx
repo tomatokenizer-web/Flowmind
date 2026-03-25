@@ -9,7 +9,6 @@ import { NudgeBadge } from "./NudgeBadge";
 import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPopover";
 import { DriftIndicator } from "~/components/drift/DriftIndicator";
 import { UnitAIActionsMenu } from "./UnitAIActionsMenu";
-import { useSelectionStore } from "~/stores/selectionStore";
 import { usePanelStore } from "~/stores/panel-store";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/lib/utils";
@@ -140,8 +139,7 @@ export function UnitCard({
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
-  const selectedUnitId = useSelectionStore((s) => s.selectedUnitId);
-  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const openPanel = usePanelStore((s) => s.openPanel);
   const isSelected = selectedUnitId === unit.id;
 
@@ -233,7 +231,7 @@ export function UnitCard({
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}
-      onClick={() => { setSelectedUnit(unit.id); onClick?.(unit); }}
+      onClick={() => { openPanel(unit.id); onClick?.(unit); }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -452,7 +450,6 @@ export function UnitCard({
                 className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedUnit(unit.id);
                   openPanel(unit.id);
                 }}
               >

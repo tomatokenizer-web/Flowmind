@@ -28,9 +28,20 @@ export function AddUnitToContext({
 
   const utils = api.useUtils();
 
-  // All units in the project
+  // Debounced search value to avoid firing a query on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Server-side search — the API supports `search` param for content filtering
   const { data: allUnits, isLoading: loadingAll } = api.unit.list.useQuery(
-    { projectId, limit: 100 },
+    {
+      projectId,
+      limit: 50,
+      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+    },
     { enabled: open },
   );
 
@@ -46,16 +57,11 @@ export function AddUnitToContext({
     [contextUnits],
   );
 
-  // Filter: not in context + matches search
+  // Filter out units already in context (search is handled server-side)
   const candidates = React.useMemo(() => {
     const items = allUnits?.items ?? [];
-    return items.filter(
-      (u) =>
-        !contextUnitIds.has(u.id) &&
-        (search === "" ||
-          u.content.toLowerCase().includes(search.toLowerCase())),
-    );
-  }, [allUnits, contextUnitIds, search]);
+    return items.filter((u) => !contextUnitIds.has(u.id));
+  }, [allUnits, contextUnitIds]);
 
   const addUnit = api.context.addUnit.useMutation({
     // Optimistic: immediately refetch the context units list

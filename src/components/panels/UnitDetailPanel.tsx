@@ -374,9 +374,15 @@ function MetadataTab({
           {unit.sourceSpan && (
             <div className="flex items-center justify-between text-xs">
               <span className="text-text-secondary">Source Span</span>
-              <span className="text-text-primary truncate max-w-[160px]">
-                {JSON.stringify(unit.sourceSpan)}
-              </span>
+              {typeof unit.sourceSpan === "object" &&
+              unit.sourceSpan !== null &&
+              "splitFrom" in (unit.sourceSpan as Record<string, unknown>) ? (
+                <span className="text-text-primary">Split from unit</span>
+              ) : (
+                <code className="text-text-primary truncate max-w-[160px] font-mono">
+                  {JSON.stringify(unit.sourceSpan).slice(0, 80)}
+                </code>
+              )}
             </div>
           )}
         </div>
@@ -457,13 +463,13 @@ function RelationsTab({ unitId, projectId }: { unitId: string; projectId?: strin
 
   // Fetch custom relation types to merge into the dropdown
   const { data: customTypes = [] } = api.customRelationType.list.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId },
   );
 
   // Search units to link to
   const { data: searchResults } = api.unit.list.useQuery(
-    { projectId: projectId!, limit: 50, lifecycle: "confirmed" },
+    { projectId: projectId, limit: 50, lifecycle: "confirmed" },
     { enabled: !!projectId && creating },
   );
 
@@ -868,7 +874,7 @@ export function UnitDetailPanel({
                 className="flex-1 gap-1.5 text-xs"
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">{label}</span>
+                <span>{label}</span>
               </TabsTrigger>
             ))}
           </TabsList>

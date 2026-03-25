@@ -20,7 +20,7 @@ export function CaptureBar() {
 
   return (
     <motion.div
-      className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2"
+      className="flex justify-center"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1], delay: 0.5 }}

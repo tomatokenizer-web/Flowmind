@@ -5,8 +5,9 @@ import { createContextBriefingService } from "@/server/services/contextBriefingS
 
 export const contextVisitRouter = createTRPCRouter({
   getBriefing: protectedProcedure
-    .input(z.object({ contextId: z.string().uuid() }))
+    .input(z.object({ contextId: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.contextId) return null;
       const service = createContextBriefingService(ctx.db);
       return service.getBriefing(ctx.session.user.id!, input.contextId);
     }),

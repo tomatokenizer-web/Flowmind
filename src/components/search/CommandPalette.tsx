@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useSelectionStore } from "~/stores/selectionStore";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { usePanelStore } from "~/stores/panel-store";
@@ -97,7 +96,6 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nlqQuery, isNLQMode, projectId, contextId]);
 
-  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
   const openPanel = usePanelStore((s) => s.openPanel);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
   const setActiveContext = useSidebarStore((s) => s.setActiveContext);
@@ -159,7 +157,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
   // Recent units (last visited)
   const { data: recentUnits } = api.unit.list.useQuery(
     {
-      projectId: projectId ?? "",
+      projectId: projectId,
       limit: 5,
       sortBy: "modifiedAt",
       sortOrder: "desc",
@@ -171,7 +169,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
 
   // Contexts list
   const { data: contexts } = api.context.list.useQuery(
-    { projectId: projectId ?? "" },
+    { projectId: projectId },
     { enabled: !!projectId && !debouncedQuery },
   );
 
@@ -235,7 +233,6 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
           section: "AI Results",
           unitType: r.unitType as UnitType,
           action: () => {
-            setSelectedUnit(r.unitId);
             openPanel(r.unitId);
             setOpen(false);
           },
@@ -255,7 +252,6 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
           section: "Search Results",
           unitType: r.unitType,
           action: () => {
-            setSelectedUnit(r.unitId);
             openPanel(r.unitId);
             setOpen(false);
           },
@@ -272,7 +268,6 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
             section: "Recent",
             unitType: unit.unitType,
             action: () => {
-              setSelectedUnit(unit.id);
               openPanel(unit.id);
               setOpen(false);
             },
@@ -319,7 +314,6 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
     recentUnits,
     contexts,
     quickActions,
-    setSelectedUnit,
     openPanel,
     setOpen,
   ]);

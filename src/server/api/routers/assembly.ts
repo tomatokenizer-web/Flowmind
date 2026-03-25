@@ -90,8 +90,9 @@ export const assemblyRouter = createTRPCRouter({
    * List assemblies for a project with item counts
    */
   list: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid() }))
+    .input(z.object({ projectId: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) return [];
       const service = createAssemblyService(ctx.db);
       return service.list(input.projectId, ctx.session.user.id!);
     }),
@@ -341,11 +342,12 @@ export const assemblyRouter = createTRPCRouter({
   proposeSlotMappings: protectedProcedure
     .input(
       z.object({
-        contextId: z.string().uuid(),
+        contextId: z.string().uuid().optional(),
         templateType: z.string().max(50),
       })
     )
     .query(async ({ ctx, input }) => {
+      if (!input.contextId) return [];
       // Fetch units in this context via UnitContext join
       const unitContexts = await ctx.db.unitContext.findMany({
         where: { contextId: input.contextId },

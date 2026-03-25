@@ -45,13 +45,13 @@ export function Toolbar({
   // Fetch context name for breadcrumb when a context is active
   const { data: contextData } = api.context.getById.useQuery(
     { id: activeContextId! },
-    { enabled: !!activeContextId },
+    { enabled: !!activeContextId && !focusMode },
   );
 
   // Fetch unit content snippet for breadcrumb when a unit panel is open
   const { data: unitData } = api.unit.getById.useQuery(
     { id: selectedUnitId! },
-    { enabled: !!selectedUnitId && panelIsOpen },
+    { enabled: !!selectedUnitId && panelIsOpen && !focusMode },
   );
 
   // View mode label for breadcrumb
@@ -72,13 +72,11 @@ export function Toolbar({
       });
     }
 
-    // Add view mode segment when not in default canvas mode
+    // Add view mode segment when not in default canvas mode (no href — not navigable)
     if (viewMode !== "canvas") {
       segs.push({
         label: viewModeLabel,
         depth: "view",
-        // If a unit is also selected, this segment gets an href so it's clickable
-        href: panelIsOpen && selectedUnitId ? undefined : undefined,
       });
     }
 

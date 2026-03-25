@@ -1,6 +1,6 @@
 # SearchView Component
 
-> **Last Updated**: 2026-03-19
+> **Last Updated**: 2026-03-24
 > **Code Location**: `src/components/search/SearchView.tsx`
 > **Status**: Active
 
@@ -128,13 +128,13 @@ This directly supports the Re-entry promise: even months after capturing a thoug
 
 **Why We Use It**: Skeleton loading is a modern UX pattern that reduces perceived wait time. Users see structure immediately, so the transition from loading to loaded feels seamless rather than jarring.
 
-### Escape Key Handler
+### Escape Key Handler and Focus Trap
 
-**Technical**: A `useEffect` registers a global `keydown` listener that calls `onClose()` when the Escape key is pressed. The listener is cleaned up on unmount.
+**Technical**: A `useEffect` registers a global `keydown` listener that handles two keys. `Escape` calls `onClose()`. `Tab`/`Shift+Tab` queries all focusable elements inside `dialogRef` and cycles focus among them, preventing focus from escaping the overlay. The listener is cleaned up on unmount.
 
-**Plain English**: Like being able to press Escape to close a dialog in any desktop application. It's a universal expectation that full-screen overlays can be dismissed with Escape.
+**Plain English**: Like being able to press Escape to close a dialog in any desktop application. It's a universal expectation that full-screen overlays can be dismissed with Escape. The Tab cycling ensures keyboard users cannot accidentally tab out of the search panel to the content hidden behind it.
 
-**Why We Use It**: Full-screen modals can feel trapping without an obvious exit. The X button is visible, but keyboard-first users expect Escape to work. This is especially important because SearchView auto-focuses the input, and Escape is the fastest way to cancel without reaching for the mouse.
+**Why We Use It**: `aria-modal="true"` signals to screen readers that the dialog traps focus, but browsers do not enforce this automatically. The explicit Tab trap fulfills the accessibility contract. Escape is the fastest keyboard exit path.
 
 ### Result Click Navigation
 
@@ -146,15 +146,21 @@ This directly supports the Re-entry promise: even months after capturing a thoug
 
 ### Empty States
 
-**Technical**: Two distinct empty states: (1) when no query has been entered and only one layer is active, showing "Start typing to search" with a hint about layer toggles; (2) when a query returns zero results, showing "No results found" with a hint to adjust keywords or filters.
+**Technical**: Two visually distinct empty states: (1) when no query has been entered and only one layer is active — shows a `Keyboard` icon with "Type to search or press ⌘K"; (2) when a query returns zero results — shows a `SearchX` icon with "No results found" and a tip to try different keywords or filters.
 
-**Plain English**: Like a helpful sign in an empty room. Before you search, it tells you "this is where results will appear -- start typing." After a failed search, it tells you "nothing matched, but try different words or filters."
+**Plain English**: Like a helpful sign in an empty room. Before you search, a keyboard icon prompts action with a shortcut reminder. After a failed search, a crossed-out search icon and targeted copy signal that the search ran but found nothing.
 
-**Why We Use It**: Empty states are a critical UX moment. Without guidance, users might think the feature is broken. Clear empty state messaging sets expectations and suggests next actions.
+**Why We Use It**: The two states were previously identical (same `Search` icon, similar text). Differentiating them with distinct icons and copy removes ambiguity — the user knows immediately whether they haven't searched yet or their search genuinely returned nothing.
 
 ---
 
 ## Change History
+
+### 2026-03-24 - Accessibility and UX Fixes
+
+- **What Changed**: Added Tab/Shift-Tab focus trap via `dialogRef`; differentiated "Start typing" (Keyboard icon) and "No results" (SearchX icon) empty states.
+- **Why**: `aria-modal="true"` requires an actual focus trap to be meaningful. Identical empty state icons caused user confusion about whether a search had run.
+- **Impact**: Keyboard and screen-reader users can no longer tab out of the overlay; sighted users get clearer feedback about search state.
 
 ### 2026-03-19 - Initial Implementation (Epic 6)
 

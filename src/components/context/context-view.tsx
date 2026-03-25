@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { ChevronDown, ChevronRight, Layers, Loader2, Merge, Scissors, Sparkles, Wand2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Layers, Loader2, Merge, Scissors, Search, Sparkles, Wand2, X } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
@@ -33,8 +33,22 @@ import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
 
 // ─── Insights Accordion ─────────────────────────────────────────────
 
-function InsightsSection({ children }: { children: React.ReactNode }) {
-  const [expanded, setExpanded] = React.useState(false);
+function InsightsSection({
+  children,
+  contextId,
+}: {
+  children: React.ReactNode;
+  contextId: string;
+}) {
+  const [expanded, setExpanded] = React.useState(true);
+
+  // Piggyback on the same query MissingArgumentAlert runs — React Query deduplicates
+  const { data: missingArgs } = api.ai.detectMissingArguments.useQuery(
+    { contextId },
+    { enabled: !!contextId },
+  );
+  const gapCount = missingArgs?.gaps?.length ?? 0;
+
   return (
     <div className="mx-4 mt-3">
       <button
@@ -43,7 +57,17 @@ function InsightsSection({ children }: { children: React.ReactNode }) {
         className="flex w-full items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
       >
         <ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} />
-        Insights & Analysis
+        <span className="flex items-center gap-1.5">
+          Insights & Analysis
+          {!expanded && gapCount > 0 && (
+            <span className="inline-flex items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
+              {gapCount}
+            </span>
+          )}
+          {!expanded && gapCount === 0 && (
+            <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+          )}
+        </span>
       </button>
       {expanded && (
         <div className="mt-2 space-y-3">
@@ -95,7 +119,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   );
 
   const lifecycleMutation = api.unit.lifecycleTransition.useMutation({
-    onSuccess: () => void utils.unit.list.invalidate({ projectId: projectId! }),
+    onSuccess: () => void utils.unit.list.invalidate({ projectId }),
     onError: (err) => toast.error("Failed to update unit", { description: err.message }),
   });
 
@@ -107,33 +131,40 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     [lifecycleMutation],
   );
 
+  const bulkLifecycleMutation = api.unit.lifecycleBulkTransition.useMutation({
+    onSuccess: () => void utils.unit.list.invalidate({ projectId }),
+    onError: (err) => toast.error("Bulk operation failed", { description: err.message }),
+  });
+
   // Bulk approve all selected units
   const handleBulkApprove = React.useCallback(async () => {
+    const ids = Array.from(selectedUnitIds);
+    setSelectedUnitIds(new Set());
     try {
-      const promises = Array.from(selectedUnitIds).map((id) =>
-        lifecycleMutation.mutateAsync({ id, targetState: "confirmed" })
-      );
-      await Promise.all(promises);
-      setSelectedUnitIds(new Set());
+      const result = await bulkLifecycleMutation.mutateAsync({ ids, targetState: "confirmed" });
+      if (result.skipped.length > 0) {
+        toast.warning(`${result.updatedCount} approved, ${result.skipped.length} skipped`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error("Bulk approve failed", { description: msg });
     }
-  }, [selectedUnitIds, lifecycleMutation]);
+  }, [selectedUnitIds, bulkLifecycleMutation]);
 
   // Bulk reject all selected units
   const handleBulkReject = React.useCallback(async () => {
+    const ids = Array.from(selectedUnitIds);
+    setSelectedUnitIds(new Set());
     try {
-      const promises = Array.from(selectedUnitIds).map((id) =>
-        lifecycleMutation.mutateAsync({ id, targetState: "archived" })
-      );
-      await Promise.all(promises);
-      setSelectedUnitIds(new Set());
+      const result = await bulkLifecycleMutation.mutateAsync({ ids, targetState: "archived" });
+      if (result.skipped.length > 0) {
+        toast.warning(`${result.updatedCount} archived, ${result.skipped.length} skipped`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error("Bulk reject failed", { description: msg });
     }
-  }, [selectedUnitIds, lifecycleMutation]);
+  }, [selectedUnitIds, bulkLifecycleMutation]);
 
   // Clear multi-selection
   const handleDismissSelection = React.useCallback(() => {
@@ -166,6 +197,9 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   const [showAiInsights, setShowAiInsights] = React.useState(false);
 
+  // Search / filter state for units in this context
+  const [unitSearch, setUnitSearch] = React.useState("");
+
   // Split / Merge / Prompt dialog state
   const [splitOpen, setSplitOpen] = React.useState(false);
   const [mergeOpen, setMergeOpen] = React.useState(false);
@@ -175,7 +209,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   // Fetch sibling contexts for the merge picker (only when a context is active and projectId is known)
   const { data: allContexts } = api.context.list.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId && !!activeContextId },
   );
   const siblingContexts = React.useMemo(
@@ -199,7 +233,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   const removeUnitMutation = api.context.removeUnit.useMutation({
     onSuccess: async () => {
       if (activeContextId) {
-        await utils.unit.list.invalidate({ projectId: projectId! });
+        await utils.unit.list.invalidate({ projectId });
         await utils.context.getById.invalidate({ id: activeContextId });
       }
     },
@@ -335,12 +369,18 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     });
   }, [units, perspectiveMap, activeContextId]);
 
-  // Apply starred filter and hide units that are pending removal (undo window)
+  // Apply search filter and hide units that are pending removal (undo window)
   const visibleUnits = React.useMemo(() => {
-    return pendingRemovalIds.size > 0
-      ? cardUnits.filter((u) => !pendingRemovalIds.has(u.id))
-      : cardUnits;
-  }, [cardUnits, pendingRemovalIds]);
+    let filtered = cardUnits;
+    if (pendingRemovalIds.size > 0) {
+      filtered = filtered.filter((u) => !pendingRemovalIds.has(u.id));
+    }
+    if (unitSearch.trim()) {
+      const q = unitSearch.trim().toLowerCase();
+      filtered = filtered.filter((u) => u.content.toLowerCase().includes(q));
+    }
+    return filtered;
+  }, [cardUnits, pendingRemovalIds, unitSearch]);
 
   return (
     <ComponentErrorBoundary>
@@ -426,14 +466,43 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                 )}
               </div>
 
+              {/* Search units in this context */}
+              <div className="relative flex items-center">
+                <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-text-tertiary" aria-hidden="true" />
+                <input
+                  type="text"
+                  placeholder="Filter units..."
+                  value={unitSearch}
+                  onChange={(e) => setUnitSearch(e.target.value)}
+                  aria-label="Filter units by content"
+                  className={cn(
+                    "h-8 w-36 rounded-md border border-border bg-bg-primary py-1 pl-7 pr-7 text-xs text-text-primary",
+                    "placeholder:text-text-tertiary outline-none transition-colors duration-fast",
+                    "focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20",
+                  )}
+                />
+                {unitSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setUnitSearch("")}
+                    className="absolute right-1.5 rounded p-0.5 text-text-tertiary hover:text-text-secondary"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
               {/* Add Unit to Context button */}
-              <AddUnitToContext
-                contextId={activeContextId}
-                projectId={projectId!}
-                onAdded={() => {
-                  void utils.unit.list.invalidate({ projectId: projectId! });
-                }}
-              />
+              {projectId && (
+                <AddUnitToContext
+                  contextId={activeContextId}
+                  projectId={projectId}
+                  onAdded={() => {
+                    void utils.unit.list.invalidate({ projectId });
+                  }}
+                />
+              )}
             </div>
           </div>
         ) : null)}
@@ -450,7 +519,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
       {/* Insights & Analysis — collapsed accordion to avoid pushing unit list down */}
       {activeContextId && !isLoading && (
-        <InsightsSection>
+        <InsightsSection contextId={activeContextId}>
           <ContextStatsPanel contextId={activeContextId} />
 
           <MissingArgumentAlert
@@ -510,14 +579,20 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         </div>
       ) : visibleUnits.length === 0 ? (
         <EmptyState
-          icon={Layers}
+          icon={unitSearch.trim() ? Search : Layers}
           headline={
-            activeContextId ? "No units in this context" : "No thought units yet"
+            unitSearch.trim()
+              ? "No matching units"
+              : activeContextId
+                ? "No units in this context"
+                : "No thought units yet"
           }
           description={
-            activeContextId
-              ? "Add units to this context to see them here."
-              : "Capture your first thought to get started."
+            unitSearch.trim()
+              ? "Try a different search term or clear the filter."
+              : activeContextId
+                ? "Add units to this context to see them here."
+                : "Capture your first thought to get started."
           }
         />
       ) : (
@@ -564,13 +639,15 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       )}
 
       {/* Bulk approval bar for multi-select */}
-      <BulkApprovalBar
-        selectedCount={selectedUnitIds.size}
-        onApproveAll={handleBulkApprove}
-        onRejectAll={handleBulkReject}
-        onDismiss={handleDismissSelection}
-        disabled={lifecycleMutation.isPending}
-      />
+      {selectedUnitIds.size > 0 && (
+        <BulkApprovalBar
+          selectedCount={selectedUnitIds.size}
+          onApproveAll={handleBulkApprove}
+          onRejectAll={handleBulkReject}
+          onDismiss={handleDismissSelection}
+          disabled={lifecycleMutation.isPending}
+        />
+      )}
 
       {/* Split dialog */}
       {activeContextId && projectId && (

@@ -6,13 +6,11 @@ import {
   ChevronRight,
   Settings,
   Link2,
-  GitBranch,
-  List,
-  BookOpen,
   Compass,
 } from "lucide-react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { usePathname } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -25,6 +23,7 @@ import { ExternalImportDialog } from "~/components/import/ExternalImportDialog";
 import { DriftPanel } from "~/components/drift/DriftPanel";
 import { SimilarUnitsPanel } from "~/components/feedback/SimilarUnitsPanel";
 import { OrphanRecoveryPanel } from "~/components/feedback/OrphanRecoveryPanel";
+import { IncubationQueue } from "~/components/incubation/IncubationQueue";
 
 const SIDEBAR_WIDTH = 260;
 const SIDEBAR_COLLAPSED_WIDTH = 60;
@@ -36,10 +35,10 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
-  const setViewMode = useLayoutStore((s) => s.setViewMode);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
+  const pathname = usePathname();
   const [importOpen, setImportOpen] = React.useState(false);
 
   const isExpanded = sidebarOpen && sidebarWidth !== 0;
@@ -62,11 +61,19 @@ export function Sidebar({ className }: SidebarProps) {
     >
       {/* Sidebar header */}
       <div className="flex h-10 items-center justify-between border-b border-border px-space-3">
-        {isExpanded && (
-          <span className="truncate text-sm font-medium text-text-primary">
-            Flowmind
-          </span>
-        )}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="truncate text-sm font-medium text-text-primary"
+            >
+              Flowmind
+            </motion.span>
+          )}
+        </AnimatePresence>
         <Button
           variant="ghost"
           size="icon"
@@ -91,9 +98,9 @@ export function Sidebar({ className }: SidebarProps) {
       <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
       {/* Navigator panel — separate section from contexts */}
-      {isExpanded && activeContextId && (
+      {isExpanded && activeContextId && projectId && (
         <div className="border-t border-border">
-          <NavigatorPanel contextId={activeContextId} />
+          <NavigatorPanel contextId={activeContextId} projectId={projectId} />
         </div>
       )}
       {isCollapsed && activeContextId && (
@@ -102,52 +109,36 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       )}
 
+      {/* Incubation queue — shows units awaiting triage */}
+      <IncubationQueue collapsed={isCollapsed} />
+
       {/* Spacer to push bottom nav down */}
       <div className="flex-1" />
 
-      {/* Orphan recovery panel (8.3) */}
-      {projectId && (
+      {/* Orphan recovery panel (8.3) — renders null internally when count === 0 */}
+      {projectId && activeContextId && (
         <OrphanRecoveryPanel projectId={projectId} collapsed={isCollapsed} />
       )}
 
-      {/* Similar units panel (8.2) */}
-      {projectId && (
+      {/* Similar units panel (8.2) — renders null internally when count === 0 */}
+      {projectId && activeContextId && (
         <SimilarUnitsPanel projectId={projectId} collapsed={isCollapsed} />
       )}
 
-      {/* Drift detection panel (8.7) */}
-      {projectId && (
+      {/* Drift detection panel (8.7) — renders null internally when driftCount === 0 */}
+      {projectId && activeContextId && (
         <DriftPanel projectId={projectId} collapsed={isCollapsed} />
       )}
 
-      {/* Bottom nav items — view shortcuts + utilities */}
+      {/* Bottom nav items — utilities */}
       <div className="border-t border-border p-space-2 space-y-0.5">
-        {/* View shortcuts */}
-        <button type="button" onClick={() => setViewMode("thread")}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="Thread View">
-          <List className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Thread View</span>}
-        </button>
-        <button type="button" onClick={() => setViewMode("graph")}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="Graph View">
-          <GitBranch className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Graph View</span>}
-        </button>
-        <button type="button" onClick={() => setViewMode("assembly")}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="Assembly View">
-          <BookOpen className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Assembly View</span>}
-        </button>
         <button type="button" onClick={() => setImportOpen(true)}
           className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
           title="Import External Content">
           <Link2 className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Import</span>}
         </button>
-        <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}>
+        <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm transition-colors", isCollapsed && "justify-center px-0", pathname?.startsWith("/settings") ? "bg-bg-hover text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary")}>
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </Link>

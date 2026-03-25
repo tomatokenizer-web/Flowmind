@@ -342,8 +342,9 @@ export const projectRouter = createTRPCRouter({
 
   // ─── Story 9.7: Project-level dashboard stats ──────────────────
   getProjectStats: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid() }))
+    .input(z.object({ projectId: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) return null;
       const userId = ctx.session.user.id!;
 
       const project = await ctx.db.project.findFirst({
@@ -411,8 +412,9 @@ export const projectRouter = createTRPCRouter({
    * Get completeness stats for a project
    */
   getCompletenessStats: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid() }))
+    .input(z.object({ projectId: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) return null;
       const userId = ctx.session.user.id!;
 
       const project = await ctx.db.project.findFirst({

@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Search, X, Layers, Clock, FileText, Sparkles } from "lucide-react";
+import { Search, SearchX, Keyboard, X, Layers, Clock, FileText, Sparkles } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { useSelectionStore } from "~/stores/selectionStore";
+import { usePanelStore } from "~/stores/panel-store";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import type { UnitType, Lifecycle } from "@prisma/client";
 
@@ -136,7 +136,8 @@ export function SearchView({
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [activeLayers, setActiveLayers] = React.useState<SearchLayer[]>(["text"]);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const setSelectedUnit = useSelectionStore((s) => s.setSelectedUnit);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const openPanel = usePanelStore((s) => s.openPanel);
 
   // Debounce query input
   React.useEffect(() => {
@@ -151,11 +152,34 @@ export function SearchView({
     inputRef.current?.focus();
   }, []);
 
-  // Handle escape key
+  // Handle escape key and focus trap (Tab cycling within dialog)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
+        return;
+      }
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        const focusableArray = Array.from(focusable).filter(
+          (el) => !el.hasAttribute("disabled"),
+        );
+        if (focusableArray.length === 0) return;
+        const first = focusableArray[0]!;
+        const last = focusableArray[focusableArray.length - 1]!;
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -189,10 +213,10 @@ export function SearchView({
 
   const handleResultClick = React.useCallback(
     (unitId: string) => {
-      setSelectedUnit(unitId);
+      openPanel(unitId);
       onClose();
     },
-    [setSelectedUnit, onClose],
+    [openPanel, onClose],
   );
 
   return (
@@ -206,6 +230,12 @@ export function SearchView({
       aria-modal="true"
       aria-label="Search"
     >
+      {/* Inner content with focus trap ref */}
+      <div
+        ref={dialogRef}
+        className="flex flex-col h-full"
+      >
+
       {/* Header */}
       <div className="flex-shrink-0 border-b border-border">
         <div className="max-w-3xl mx-auto p-4">
@@ -296,9 +326,9 @@ export function SearchView({
             </div>
           ) : !debouncedQuery && activeLayers.length === 1 ? (
             <div className="text-center py-12">
-              <Search className="h-12 w-12 mx-auto text-text-tertiary mb-4" />
+              <Keyboard className="h-12 w-12 mx-auto text-text-tertiary mb-4" />
               <p className="text-text-secondary">
-                Start typing to search your thoughts
+                Type to search or press ⌘K
               </p>
               <p className="text-sm text-text-tertiary mt-1">
                 Use layer toggles to filter by structure or time
@@ -319,7 +349,7 @@ export function SearchView({
             </div>
           ) : (
             <div className="text-center py-12">
-              <Search className="h-12 w-12 mx-auto text-text-tertiary mb-4" />
+              <SearchX className="h-12 w-12 mx-auto text-text-tertiary mb-4" />
               <p className="text-text-secondary">No results found</p>
               <p className="text-sm text-text-tertiary mt-1">
                 Try different keywords or adjust layer filters
@@ -327,6 +357,8 @@ export function SearchView({
             </div>
           )}
         </div>
+      </div>
+
       </div>
     </div>
   );

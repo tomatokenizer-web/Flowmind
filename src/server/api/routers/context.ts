@@ -25,7 +25,7 @@ const updateContextSchema = z.object({
 });
 
 const listContextsSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   parentId: z.string().uuid().nullish(),
 });
 
@@ -137,6 +137,7 @@ export const contextRouter = createTRPCRouter({
   list: protectedProcedure
     .input(listContextsSchema)
     .query(async ({ ctx, input }) => {
+      if (!input.projectId) return [];
       await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.listContexts(input.projectId, input.parentId);
@@ -178,8 +179,9 @@ export const contextRouter = createTRPCRouter({
     }),
 
   getUnitsForContext: protectedProcedure
-    .input(contextIdSchema)
+    .input(z.object({ id: z.string().uuid().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.id) return [];
       await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
       const service = createContextService(ctx.db);
       return service.getUnitsForContext(input.id);

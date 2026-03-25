@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen } from "lucide-react";
+import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen, Clock } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useAssemblyStore } from "~/stores/assemblyStore";
+import { useCaptureStore } from "~/stores/capture-store";
 import { cn } from "~/lib/utils";
 import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
@@ -50,7 +51,7 @@ function QuickActionCard({ icon: Icon, label, description, onClick, accent }: Qu
   );
 }
 
-function ProjectStatsBar({ projectId }: { projectId: string }) {
+function ProjectStatsBar({ projectId, onCreateContext }: { projectId: string; onCreateContext: () => void }) {
   const setViewMode = useLayoutStore((s) => s.setViewMode);
 
   const { data: stats, isLoading } = api.project.getProjectStats.useQuery(
@@ -59,19 +60,12 @@ function ProjectStatsBar({ projectId }: { projectId: string }) {
   );
 
   const handleCreateContext = React.useCallback(() => {
-    // Fire a custom event the sidebar captures, or fall back to setting a flag
-    window.dispatchEvent(new CustomEvent("flowmind:open-create-context"));
-  }, []);
+    onCreateContext();
+  }, [onCreateContext]);
 
   const handleStartCapture = React.useCallback(() => {
-    // Scroll to capture bar or open the canvas view
-    setViewMode("canvas");
-    // Focus the capture bar once the view renders
-    setTimeout(() => {
-      const captureBar = document.querySelector<HTMLElement>("[data-capture-bar]");
-      captureBar?.focus();
-    }, 100);
-  }, [setViewMode]);
+    useCaptureStore.getState().open();
+  }, []);
 
   const handleViewGraph = React.useCallback(() => {
     setViewMode("graph");
@@ -177,7 +171,7 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
   const [compareIds, setCompareIds] = React.useState<[string, string] | null>(null);
   const [formalizeOpen, setFormalizeOpen] = React.useState(false);
   const { data: assemblies = [], isLoading } = api.assembly.list.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId },
   );
 
@@ -283,13 +277,94 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
     </section>
   );
 }
+// ─── Context overview grid (shown when no context is selected) ────────
+function ContextOverviewGrid({ projectId, onCreateContext }: { projectId: string; onCreateContext: () => void }) {
+  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
+  const { data: contexts = [], isLoading } = api.context.list.useQuery(
+    { projectId },
+    { staleTime: 30_000 },
+  );
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-28 animate-pulse rounded-xl bg-bg-secondary" />
+        ))}
+      </div>
+    );
+  }
+
+  if (contexts.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center px-4">
+        <FolderOpen className="h-10 w-10 text-text-tertiary" />
+        <p className="font-medium text-text-secondary">No contexts yet</p>
+        <p className="text-sm text-text-tertiary">Create a context to start organizing your units.</p>
+        <button
+          type="button"
+          onClick={onCreateContext}
+          className="mt-2 flex items-center gap-2 rounded-xl bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" /> Create Context
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
+      {contexts.map((ctx: { id: string; name: string; description?: string | null; updatedAt: Date; _count?: { unitContexts?: number } }) => (
+        <button
+          key={ctx.id}
+          type="button"
+          onClick={() => setActiveContext(ctx.id)}
+          className="flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 text-left hover:shadow-hover hover:border-accent-primary/30 transition-all"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FolderOpen className="h-4 w-4 text-accent-primary shrink-0" />
+            <span className="font-medium text-text-primary truncate">{ctx.name}</span>
+          </div>
+          {ctx.description && (
+            <p className="text-xs text-text-tertiary line-clamp-2">{ctx.description}</p>
+          )}
+          <div className="flex items-center gap-3 text-xs text-text-tertiary mt-auto pt-1">
+            <span className="flex items-center gap-1">
+              <Layers className="h-3 w-3" />
+              {ctx._count?.unitContexts ?? 0} units
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {new Date(ctx.updatedAt).toLocaleDateString()}
+            </span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
   const activeAssemblyId = useAssemblyStore((s) => s.activeAssemblyId);
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
   const isLoading = useProjectLoading();
   const [createContextOpen, setCreateContextOpen] = React.useState(false);
+
+  // Clear active context when landing on the dashboard so breadcrumb shows
+  // the overview grid instead of a stale context from a previous navigation.
+  React.useEffect(() => {
+    useSidebarStore.getState().setActiveContext(null);
+  }, []);
+
+  // Clear active assembly when switching away from assembly view mode
+  React.useEffect(() => {
+    if (viewMode !== "assembly") {
+      useAssemblyStore.getState().setActiveAssembly(null);
+    }
+  }, [viewMode]);
 
   if (isLoading) {
     return (
@@ -334,15 +409,24 @@ export default function DashboardPage() {
   return (
     <>
       {/* Story 9.7: Project stats + quick actions */}
-      <ProjectStatsBar projectId={projectId} />
+      <ProjectStatsBar projectId={projectId} onCreateContext={() => setCreateContextOpen(true)} />
 
-      {/* Completeness Compass — top-right of the context view */}
-      {projectId && (
-        <div className="flex justify-end px-4 pt-3">
-          <CompletenessCompass />
-        </div>
+      {activeContextId ? (
+        <>
+          {/* Completeness Compass — top-right of the context view */}
+          <div className="flex justify-end px-4 pt-3">
+            <CompletenessCompass />
+          </div>
+          <ContextView projectId={projectId} />
+        </>
+      ) : (
+        /* No context selected — show context overview grid */
+        <ContextOverviewGrid
+          projectId={projectId}
+          onCreateContext={() => setCreateContextOpen(true)}
+        />
       )}
-      <ContextView projectId={projectId} />
+
       {projectId && (
         <CreateContextDialog
           open={createContextOpen}

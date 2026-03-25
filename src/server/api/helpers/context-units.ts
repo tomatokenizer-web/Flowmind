@@ -9,9 +9,10 @@ import type { PrismaClient } from "@prisma/client";
  */
 export async function getContextUnits(
   db: PrismaClient,
-  contextId: string,
+  contextId: string | undefined | null,
   limit = 30,
 ) {
+  if (!contextId) return [];
   const units = await db.unit.findMany({
     where: {
       perspectives: { some: { contextId } },

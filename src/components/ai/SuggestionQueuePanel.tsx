@@ -167,6 +167,13 @@ export function SuggestionQueuePanel({
     },
     onError: (err) => toast.error("Failed to apply suggestion", { description: err.message }),
   });
+  const createRelationMutation = api.relation.create.useMutation({
+    onSuccess: () => {
+      void utils.relation.listByUnit.invalidate();
+      void utils.relation.listByUnits.invalidate();
+    },
+    onError: (err) => toast.error("Failed to create relation", { description: err.message }),
+  });
 
   // Generate suggestions for pending units in the context
   const generateSuggestions = React.useCallback(async () => {
@@ -243,12 +250,19 @@ export function SuggestionQueuePanel({
           id: item.unitId,
           unitType: item.suggestion as Parameters<typeof updateUnitMutation.mutate>[0]["unitType"],
         });
+      } else if (item.category === "relation" && item.targetUnitId) {
+        createRelationMutation.mutate({
+          sourceUnitId: item.unitId,
+          targetUnitId: item.targetUnitId,
+          type: item.relationType ?? item.suggestion,
+          strength: item.confidence ?? 0.7,
+          direction: "one_way",
+        });
       }
-      // Relation acceptance would require a relation.create call — remove from queue for now
       setSuggestions((prev) => prev.filter((s) => s.id !== item.id));
       toast.success("Suggestion accepted");
     },
-    [updateUnitMutation],
+    [updateUnitMutation, createRelationMutation],
   );
 
   const handleDismiss = React.useCallback((itemId: string) => {
@@ -269,10 +283,23 @@ export function SuggestionQueuePanel({
   }, [suggestions, updateUnitMutation]);
 
   const handleAcceptAllRelations = React.useCallback(() => {
-    const relItems = suggestions.filter((s) => s.category === "relation");
+    const relItems = suggestions.filter(
+      (s): s is RelationSuggestionItem => s.category === "relation",
+    );
+    relItems.forEach((item) => {
+      if (item.targetUnitId) {
+        createRelationMutation.mutate({
+          sourceUnitId: item.unitId,
+          targetUnitId: item.targetUnitId,
+          type: item.relationType ?? item.suggestion,
+          strength: item.confidence ?? 0.7,
+          direction: "one_way",
+        });
+      }
+    });
     setSuggestions((prev) => prev.filter((s) => s.category !== "relation"));
     toast.success(`Accepted ${relItems.length} relation suggestion${relItems.length !== 1 ? "s" : ""}`);
-  }, [suggestions]);
+  }, [suggestions, createRelationMutation]);
 
   const handleDismissAll = React.useCallback(() => {
     setSuggestions([]);

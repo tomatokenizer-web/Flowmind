@@ -116,7 +116,7 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
   const toggleNode = useSidebarStore((s) => s.toggleNode);
 
   const { data: contexts, isLoading, refetch } = api.context.list.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId },
   );
 

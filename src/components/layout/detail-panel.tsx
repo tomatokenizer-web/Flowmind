@@ -39,6 +39,28 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
         createdAt: unitData.createdAt,
         modifiedAt: unitData.modifiedAt,
         originType: unitData.originType ?? undefined,
+        sourceSpan: unitData.sourceSpan as Record<string, unknown> | null | undefined,
+        aiTrustLevel: unitData.aiTrustLevel ?? undefined,
+        certainty: unitData.certainty ?? undefined,
+        completeness: unitData.completeness ?? undefined,
+        evidenceDomain: unitData.evidenceDomain ?? undefined,
+        scope: unitData.scope ?? undefined,
+        stance: unitData.stance ?? undefined,
+        branchPotential: unitData.branchPotential ?? undefined,
+        versionCount: unitData.versions?.length ?? 0,
+        relationCount: unitData.perspectives?.reduce(
+          (sum, p) => sum + (p.relations?.length ?? 0),
+          0,
+        ) ?? 0,
+        resources: unitData.resources?.map((ur) => ({
+          id: ur.resource.id,
+          resourceType: ur.resource.resourceType,
+          url: ur.resource.url,
+          fileName: ur.resource.fileName ?? null,
+          mimeType: ur.resource.mimeType ?? null,
+          fileSize: ur.resource.fileSize ?? null,
+          metadata: ur.resource.metadata as Record<string, unknown> | null | undefined,
+        })) ?? [],
       }
     : null;
 

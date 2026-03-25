@@ -43,7 +43,7 @@ export function IncubationQueue({ collapsed, className }: IncubationQueueProps) 
 
   // Fetch contexts for the promote popover
   const { data: contexts } = api.context.list.useQuery(
-    { projectId: projectId! },
+    { projectId: projectId },
     { enabled: !!projectId },
   );
 

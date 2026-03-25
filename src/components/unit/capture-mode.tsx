@@ -196,18 +196,22 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
 
       const isMod = e.metaKey || e.ctrlKey;
 
-      // Cmd+Enter: submit
+      // Cmd/Ctrl+Enter: always submit
       if (e.key === "Enter" && isMod) {
         e.preventDefault();
         void submit();
         return;
       }
 
-      // Enter without Shift: submit single-line thought
+      // Enter without Shift: submit if single-line, newline if multiline
       if (e.key === "Enter" && !e.shiftKey && !isMod) {
-        e.preventDefault();
-        void submit();
-        return;
+        const hasMultipleLines = pendingText.includes("\n");
+        if (!hasMultipleLines && pendingText.trim().length > 0) {
+          e.preventDefault();
+          void submit();
+          return;
+        }
+        // Otherwise allow natural newline
       }
 
       // Cmd+Shift+N: toggle mode
@@ -266,7 +270,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
       )}
 
       {/* Content area */}
-      <div className="w-full max-w-2xl px-6">
+      <div className="w-full max-w-3xl px-6">
         <AnimatePresence mode="wait">
           {/* Input phase */}
           {phase === "input" && (
@@ -282,9 +286,9 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 placeholder="What are you thinking about?"
-                className="w-full resize-none bg-transparent text-xl leading-relaxed text-[#1D1D1F] placeholder-[#AEAEB2] caret-[#0071E3] outline-none motion-reduce:transition-none"
+                className="w-full resize-none bg-transparent text-sm leading-relaxed text-[#1D1D1F] placeholder-[#AEAEB2] caret-[#0071E3] outline-none motion-reduce:transition-none max-h-[60vh] overflow-y-auto"
                 style={{ fontFamily: "var(--font-primary, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif)" }}
-                rows={1}
+                rows={3}
                 disabled={isSubmitting}
                 aria-label="Thought input"
               />
@@ -317,16 +321,9 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
               <p className="mt-4 text-sm text-[#AEAEB2]">
                 <span className="inline-flex items-center gap-1.5">
                   <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-                    Enter
+                    ⌘+Enter
                   </kbd>
                   <span>to {mode === "organize" ? "decompose" : "capture"}</span>
-                </span>
-                <span className="mx-2">·</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-                    Shift+Enter
-                  </kbd>
-                  <span>new line</span>
                 </span>
                 <span className="mx-2">·</span>
                 <span className="inline-flex items-center gap-1.5">

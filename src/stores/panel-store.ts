@@ -12,6 +12,8 @@ interface PanelState {
 
   openPanel: (unitId: string) => void;
   closePanel: () => void;
+  /** Close the panel and clear the selected unit ID. */
+  clearSelection: () => void;
   /** Toggle open/closed. If a different unitId is passed while open, switches to that unit. */
   togglePanel: (unitId: string) => void;
   setActiveTab: (tab: DetailTab) => void;
@@ -27,6 +29,9 @@ export const usePanelStore = create<PanelState>((set, get) => ({
 
   closePanel: () =>
     set({ isOpen: false }),
+
+  clearSelection: () =>
+    set({ isOpen: false, selectedUnitId: null }),
 
   togglePanel: (unitId) => {
     const { isOpen, selectedUnitId } = get();

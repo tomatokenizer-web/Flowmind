@@ -54,6 +54,7 @@ export interface ListUnitsInput {
   lifecycle?: string;
   unitType?: string;
   contextId?: string;
+  search?: string;
   cursor?: string;
   limit?: number;
   sortBy?: "createdAt" | "modifiedAt" | "importance";
@@ -176,9 +177,12 @@ export function createUnitService(db: PrismaClient) {
         where.unitType = input.unitType as Prisma.EnumUnitTypeFilter;
       }
       if (input.contextId) {
-        where.perspectives = {
+        where.unitContexts = {
           some: { contextId: input.contextId },
         };
+      }
+      if (input.search) {
+        where.content = { contains: input.search, mode: "insensitive" };
       }
 
       const sortField = input.sortBy ?? "createdAt";
@@ -264,22 +268,66 @@ export function createUnitService(db: PrismaClient) {
       targetState: string,
       userId: string,
     ) {
-      const results: Array<{ id: string; success: boolean; error?: string }> = [];
+      // 1. Fetch current lifecycle for all requested units (ownership-scoped)
+      const units = await repo.findLifecyclesByIds(ids, userId);
 
+      const ownedIds = new Set(units.map((u) => u.id));
+      const skipped: Array<{ id: string; reason: string }> = [];
+
+      // Flag any IDs not found / not owned
       for (const id of ids) {
-        try {
-          await this.transitionLifecycle(id, targetState, userId);
-          results.push({ id, success: true });
-        } catch (err) {
-          results.push({
-            id,
-            success: false,
-            error: err instanceof Error ? err.message : "Unknown error",
+        if (!ownedIds.has(id)) {
+          skipped.push({ id, reason: "Not found or access denied" });
+        }
+      }
+
+      // 2. Determine which current states are valid for this target
+      const allowedFromStates: string[] = [];
+      for (const [from, targets] of Object.entries(VALID_TRANSITIONS)) {
+        if (targets.includes(targetState)) {
+          allowedFromStates.push(from);
+        }
+      }
+
+      // Flag units whose transition is invalid
+      const eligibleIds: string[] = [];
+      for (const unit of units) {
+        if (allowedFromStates.includes(unit.lifecycle)) {
+          eligibleIds.push(unit.id);
+        } else {
+          skipped.push({
+            id: unit.id,
+            reason: `Invalid transition: ${unit.lifecycle} -> ${targetState}`,
           });
         }
       }
 
-      return results;
+      // 3. Single batch update for all eligible units
+      let updatedCount = 0;
+      if (eligibleIds.length > 0) {
+        updatedCount = await repo.bulkUpdateLifecycle(
+          eligibleIds,
+          targetState,
+          userId,
+          allowedFromStates,
+        );
+
+        // Emit events for updated units
+        for (const id of eligibleIds) {
+          await eventBus.emit({
+            type: "unit.lifecycleChanged",
+            payload: {
+              unitId: id,
+              userId,
+              unit: undefined,
+              changes: { lifecycle: targetState as unknown as undefined },
+            },
+            timestamp: new Date(),
+          });
+        }
+      }
+
+      return { updatedCount, skipped };
     },
 
     async archive(id: string, userId: string) {

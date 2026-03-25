@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Lifecycle } from "@prisma/client";
 
 export type UnitWithRelations = Prisma.UnitGetPayload<{
   include: {
@@ -6,6 +7,9 @@ export type UnitWithRelations = Prisma.UnitGetPayload<{
       include: { relations: true };
     };
     versions: true;
+    resources: {
+      include: { resource: true };
+    };
   };
 }>;
 
@@ -32,6 +36,10 @@ export function createUnitRepository(db: PrismaClient) {
           versions: {
             orderBy: { version: "desc" },
             take: 5,
+          },
+          resources: {
+            include: { resource: true },
+            orderBy: { sortOrder: "asc" },
           },
         },
       });
@@ -81,10 +89,44 @@ export function createUnitRepository(db: PrismaClient) {
     },
 
     /**
-     * Find the first non-archived unit in `projectId` whose content is an
-     * exact (case-sensitive) match for `content`.
-     * Used by the duplicate-content check in unitService.create().
+     * Bulk-update lifecycle for units matching the given IDs.
+     * Only updates units owned by `userId` whose current lifecycle is
+     * in `allowedFromStates` (i.e. the transition is valid).
+     * Returns the count of updated rows.
      */
+    async bulkUpdateLifecycle(
+      ids: string[],
+      targetLifecycle: string,
+      userId: string,
+      allowedFromStates: string[],
+    ) {
+      const result = await db.unit.updateMany({
+        where: {
+          id: { in: ids },
+          project: { userId },
+          lifecycle: { in: allowedFromStates as Lifecycle[] },
+        },
+        data: {
+          lifecycle: targetLifecycle as Lifecycle,
+          modifiedAt: new Date(),
+        },
+      });
+      return result.count;
+    },
+
+    /**
+     * Return id + lifecycle for units matching given IDs, scoped to userId.
+     */
+    async findLifecyclesByIds(ids: string[], userId: string) {
+      return db.unit.findMany({
+        where: {
+          id: { in: ids },
+          project: { userId },
+        },
+        select: { id: true, lifecycle: true },
+      });
+    },
+
     async findByExactContent(projectId: string, content: string) {
       return db.unit.findFirst({
         where: {

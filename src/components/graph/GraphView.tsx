@@ -139,7 +139,7 @@ export function GraphView({ projectId }: GraphViewProps) {
   // Fetch units for the current context/project
   const { data: unitsData } = api.unit.list.useQuery(
     {
-      projectId: projectId!,
+      projectId: projectId,
       contextId: activeContextId ?? undefined,
       limit: 100,
     },
