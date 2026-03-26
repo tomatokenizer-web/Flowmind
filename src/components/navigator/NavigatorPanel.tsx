@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, ChevronRight, Compass, X, Search, Loader2 } from "lucide-react";
+import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play } from "lucide-react";
+import { FlowReader } from "./FlowReader";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -25,6 +26,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
   const [newName, setNewName] = React.useState("");
   const [activeNavId, setActiveNavId] = React.useState<string | null>(null);
   const [activeStep, setActiveStep] = React.useState(0);
+  const [flowReaderNav, setFlowReaderNav] = React.useState<{ id: string; path: string[]; step: number } | null>(null);
   const utils = api.useUtils();
 
   const { data: navigators = [] } = api.navigator.list.useQuery({ contextId });
@@ -80,6 +82,18 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
     },
     onError: () => {
       toast.error("Failed to remove step");
+    },
+  });
+
+  const generatePath = api.navigator.generatePath.useMutation({
+    onSuccess: (nav) => {
+      void utils.navigator.list.invalidate({ contextId });
+      setActiveNavId(nav.id);
+      setActiveStep(0);
+      toast.success("Flow path generated", { description: `${nav.path.length} steps from relations` });
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to generate path");
     },
   });
 
@@ -147,7 +161,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
         )}
 
         {navigators.length === 0 && !creating && (
-          <p className="text-xs text-text-tertiary">No navigators yet. Create one to define a reading path.</p>
+          <p className="text-xs text-text-tertiary">No navigators yet. Create one or auto-generate from relations.</p>
         )}
 
         {navigators.map((nav) => (
@@ -181,6 +195,14 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
                 <div className="flex items-center justify-between text-xs text-text-tertiary mb-2">
                   <span>Step {activeStep + 1} of {totalSteps}</span>
                   <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setFlowReaderNav({ id: nav.id, path: nav.path ?? [], step: activeStep })}
+                      className="px-2 py-0.5 rounded border border-border hover:bg-bg-hover hover:text-accent-primary flex items-center gap-1"
+                      title="Open Flow Reader"
+                    >
+                      <Play className="h-3 w-3" />
+                    </button>
                     <button disabled={activeStep === 0} onClick={() => handleStep(activeStep - 1)} className="px-2 py-0.5 rounded border border-border disabled:opacity-40 hover:bg-bg-hover">
                       <span aria-hidden="true">&larr;</span>
                       <span className="sr-only">Previous step</span>
@@ -245,8 +267,41 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
                 </p>
               </div>
             )}
+
+            {/* Actions row (visible when expanded) */}
+            {activeNavId === nav.id && (
+              <div className="border-t border-border px-2 py-1.5 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => deleteNav.mutate({ id: nav.id })}
+                  disabled={deleteNav.isPending}
+                  className="text-[10px] text-text-tertiary hover:text-accent-danger transition-colors px-1.5 py-0.5 rounded hover:bg-bg-hover"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
         ))}
+
+        {/* AI Auto-Generate section — when user has selected a unit */}
+        <GenerateFromUnitButton
+          contextId={contextId}
+          generatePath={generatePath}
+        />
+
+        {/* Flow Reader overlay */}
+        {flowReaderNav && flowReaderNav.path.length > 0 && (
+          <FlowReader
+            path={flowReaderNav.path}
+            initialStep={flowReaderNav.step}
+            navigatorId={flowReaderNav.id}
+            contextId={contextId}
+            projectId={projectId}
+            onClose={() => setFlowReaderNav(null)}
+            onUnitSelect={(unitId) => openPanel(unitId)}
+          />
+        )}
       </div>
     </TooltipProvider>
   );
@@ -371,5 +426,40 @@ function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitP
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+// ─── GenerateFromUnitButton: uses selected unit to auto-generate a flow path ─
+
+interface GenerateFromUnitButtonProps {
+  contextId: string;
+  generatePath: ReturnType<typeof api.navigator.generatePath.useMutation>;
+}
+
+function GenerateFromUnitButton({ contextId, generatePath }: GenerateFromUnitButtonProps) {
+  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
+
+  if (!selectedUnitId) return null;
+
+  return (
+    <button
+      type="button"
+      disabled={generatePath.isPending}
+      onClick={() =>
+        generatePath.mutate({ startUnitId: selectedUnitId, contextId })
+      }
+      className={cn(
+        "flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-accent-primary/40 py-2 text-xs font-medium text-accent-primary transition-colors",
+        "hover:border-accent-primary hover:bg-accent-primary/5",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+    >
+      {generatePath.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      {generatePath.isPending ? "Generating…" : "Auto-generate flow from selected unit"}
+    </button>
   );
 }
