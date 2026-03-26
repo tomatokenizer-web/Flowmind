@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play } from "lucide-react";
+import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap } from "lucide-react";
 import { FlowReader } from "./FlowReader";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
@@ -82,6 +82,18 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
     },
     onError: () => {
       toast.error("Failed to remove step");
+    },
+  });
+
+  const autoRelate = api.ai.autoRelate.useMutation({
+    onSuccess: (result) => {
+      void utils.navigator.list.invalidate({ contextId });
+      toast.success(`${result.created} relations created`, {
+        description: `Analyzed ${result.analyzed} units${result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} duplicates skipped` : ""}`,
+      });
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to auto-relate units");
     },
   });
 
@@ -287,7 +299,37 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
           </div>
         ))}
 
-        {/* AI Auto-Generate section */}
+        {/* AI Auto-Relate: analyze units and create relations */}
+        <button
+          type="button"
+          disabled={autoRelate.isPending}
+          onClick={() => autoRelate.mutate({ contextId })}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors",
+            autoRelate.isPending
+              ? "border-yellow-500/30 text-yellow-500/60 cursor-not-allowed"
+              : "border-yellow-500/40 text-yellow-600 hover:border-yellow-500 hover:bg-yellow-500/5 dark:text-yellow-400",
+          )}
+        >
+          {autoRelate.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Zap className="h-3.5 w-3.5" />
+          )}
+          {autoRelate.isPending ? "AI analyzing units…" : "AI: Auto-create relations"}
+        </button>
+
+        {/* Show auto-relate results */}
+        {autoRelate.data && (
+          <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2 text-xs text-text-secondary">
+            <span className="font-medium text-yellow-600 dark:text-yellow-400">
+              {autoRelate.data.created} relations created
+            </span>
+            {" from "}{autoRelate.data.analyzed} units
+          </div>
+        )}
+
+        {/* AI Auto-Generate paths */}
         <button
           type="button"
           disabled={analyzeAndGenerate.isPending}
@@ -304,7 +346,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
           ) : (
             <Sparkles className="h-3.5 w-3.5" />
           )}
-          {analyzeAndGenerate.isPending ? "Analyzing relations…" : "AI: Auto-generate paths"}
+          {analyzeAndGenerate.isPending ? "Generating paths…" : "AI: Auto-generate paths"}
         </button>
 
         {/* Show generation results */}

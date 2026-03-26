@@ -39,6 +39,22 @@ export function handleAIError(err: unknown, operation: string): never {
     });
   }
 
+  if (
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("ECONNRESET") ||
+    msg.includes("fetch failed") ||
+    msg.includes("Connection error") ||
+    msg.includes("ENOTFOUND")
+  ) {
+    const baseUrl = process.env.ANTHROPIC_BASE_URL;
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: baseUrl
+        ? `Cannot connect to AI provider at ${baseUrl}. Is the proxy running?`
+        : "Cannot connect to Anthropic API. Check your network connection.",
+    });
+  }
+
   if (msg.includes("rate_limit") || msg.includes("429")) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",
