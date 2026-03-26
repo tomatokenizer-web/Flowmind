@@ -158,11 +158,18 @@ export const navigatorRouter = createTRPCRouter({
       const unitIds = contextUnits.map((u) => u.unitId);
 
       if (unitIds.length < 2) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units with relations to generate paths." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to generate paths." });
       }
 
-      // Fetch all relations between units in this context
-      const allRelations = await ctx.db.relation.findMany({
+      // Get unit data for naming AND for auto-relation creation
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: unitIds } },
+        select: { id: true, content: true, unitType: true, importance: true },
+      });
+      const unitMap = new Map(units.map((u) => [u.id, u]));
+
+      // Fetch existing relations between units in this context
+      let allRelations = await ctx.db.relation.findMany({
         where: {
           OR: [
             { sourceUnitId: { in: unitIds } },
@@ -179,16 +186,39 @@ export const navigatorRouter = createTRPCRouter({
         },
       });
 
-      if (allRelations.length === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "No relations found between units. Create relations first." });
+      // ─── Auto-create relations if insufficient ───────────────────────
+      // We need enough relations to build meaningful paths (at least unitCount - 1 edges)
+      const minRelationsNeeded = Math.max(unitIds.length - 1, 5);
+      let autoCreatedCount = 0;
+
+      if (allRelations.length < minRelationsNeeded) {
+        const existingPairs = new Set(
+          allRelations.map((r) => `${r.sourceUnitId}|${r.targetUnitId}`),
+        );
+        autoCreatedCount = await autoCreateRelations(ctx.db, units, existingPairs);
+
+        // Re-fetch all relations after auto-creation
+        allRelations = await ctx.db.relation.findMany({
+          where: {
+            OR: [
+              { sourceUnitId: { in: unitIds } },
+              { targetUnitId: { in: unitIds } },
+            ],
+          },
+          select: {
+            id: true,
+            sourceUnitId: true,
+            targetUnitId: true,
+            type: true,
+            strength: true,
+            direction: true,
+          },
+        });
       }
 
-      // Get unit data for naming
-      const units = await ctx.db.unit.findMany({
-        where: { id: { in: unitIds } },
-        select: { id: true, content: true, unitType: true, importance: true },
-      });
-      const unitMap = new Map(units.map((u) => [u.id, u]));
+      if (allRelations.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Could not find or create relations between units. Units may be too dissimilar." });
+      }
 
       // Find the "hub" unit — most connected
       const connectionCount = new Map<string, number>();
@@ -210,25 +240,25 @@ export const navigatorRouter = createTRPCRouter({
           name: "Argument chain",
           purpose: "argument",
           types: ["supports", "contradicts", "questions", "defines"],
-          minSteps: 2,
+          minSteps: 5,
         },
         {
           name: "Derivation trail",
           purpose: "derivation",
           types: ["derives_from", "expands", "elaborates", "transforms_into"],
-          minSteps: 2,
+          minSteps: 5,
         },
         {
           name: "Evidence & examples",
           purpose: "evidence",
           types: ["exemplifies", "references", "grounded_in", "instantiates"],
-          minSteps: 2,
+          minSteps: 5,
         },
         {
           name: "Full exploration",
           purpose: "exploration",
           types: null, // all relation types
-          minSteps: 3,
+          minSteps: 5,
         },
       ];
 
@@ -291,10 +321,109 @@ export const navigatorRouter = createTRPCRouter({
       return {
         generated: created,
         totalRelationsAnalyzed: allRelations.length,
+        autoCreatedRelations: autoCreatedCount,
         totalUnits: unitIds.length,
       };
     }),
 });
+
+// ─── Auto-relation helpers ──────────────────────────────────────────
+
+function wordSet(text: string): Set<string> {
+  return new Set(text.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(Boolean));
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  let intersection = 0;
+  for (const w of a) if (b.has(w)) intersection++;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/** Infer a relation type based on unit type pairing. */
+function inferRelationType(
+  sourceType: string,
+  targetType: string,
+  similarity: number,
+): { type: string; direction: string } {
+  const pair = `${sourceType}→${targetType}`;
+  switch (pair) {
+    case "evidence→claim":
+    case "evidence→thesis":
+      return { type: "supports", direction: "one_way" };
+    case "claim→evidence":
+    case "thesis→evidence":
+      return { type: "grounded_in", direction: "one_way" };
+    case "question→claim":
+    case "question→thesis":
+      return { type: "questions", direction: "one_way" };
+    case "claim→claim":
+    case "thesis→thesis":
+      return similarity > 0.5
+        ? { type: "supports", direction: "bidirectional" }
+        : { type: "references", direction: "bidirectional" };
+    case "definition→claim":
+    case "definition→thesis":
+      return { type: "defines", direction: "one_way" };
+    case "example→claim":
+    case "example→thesis":
+      return { type: "exemplifies", direction: "one_way" };
+    default:
+      if (similarity > 0.5) return { type: "expands", direction: "bidirectional" };
+      return { type: "references", direction: "bidirectional" };
+  }
+}
+
+/** Build relations automatically between all unit pairs using content similarity. */
+async function autoCreateRelations(
+  db: PrismaClient,
+  units: Array<{ id: string; content: string; unitType: string }>,
+  existingRelationPairs: Set<string>,
+) {
+  const THRESHOLD = 0.15; // low threshold for broader coverage
+  const toCreate: Array<{
+    sourceUnitId: string;
+    targetUnitId: string;
+    type: string;
+    strength: number;
+    direction: string;
+  }> = [];
+
+  const wordSets = units.map((u) => ({ id: u.id, type: u.unitType, ws: wordSet(u.content) }));
+
+  for (let i = 0; i < wordSets.length; i++) {
+    for (let j = i + 1; j < wordSets.length; j++) {
+      const a = wordSets[i]!;
+      const b = wordSets[j]!;
+
+      // Skip if relation already exists in either direction
+      const pairKey1 = `${a.id}|${b.id}`;
+      const pairKey2 = `${b.id}|${a.id}`;
+      if (existingRelationPairs.has(pairKey1) || existingRelationPairs.has(pairKey2)) continue;
+
+      const sim = jaccardSimilarity(a.ws, b.ws);
+      if (sim < THRESHOLD) continue;
+
+      const { type, direction } = inferRelationType(a.type, b.type, sim);
+      // Strength maps from similarity: 0.15→0.3, 0.5→0.7, 1.0→1.0
+      const strength = Math.min(1, 0.3 + sim * 0.7);
+
+      toCreate.push({
+        sourceUnitId: a.id,
+        targetUnitId: b.id,
+        type,
+        strength: Math.round(strength * 100) / 100,
+        direction,
+      });
+    }
+  }
+
+  if (toCreate.length > 0) {
+    await db.relation.createMany({ data: toCreate });
+  }
+
+  return toCreate.length;
+}
 
 // ─── Path builder helper ─────────────────────────────────────────────
 
@@ -309,6 +438,7 @@ type RelationEdge = {
 const TYPE_PRIORITY: Record<string, number> = {
   derives_from: 5, expands: 4, supports: 3, defines: 3,
   exemplifies: 2, references: 2, contradicts: 1, questions: 1,
+  grounded_in: 2,
 };
 
 function buildGreedyPath(

@@ -88,8 +88,11 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
   const analyzeAndGenerate = api.navigator.analyzeAndGenerate.useMutation({
     onSuccess: (result) => {
       void utils.navigator.list.invalidate({ contextId });
+      const autoMsg = result.autoCreatedRelations > 0
+        ? ` (auto-created ${result.autoCreatedRelations} relations)`
+        : "";
       toast.success(`${result.generated.length} paths generated`, {
-        description: `Analyzed ${result.totalRelationsAnalyzed} relations across ${result.totalUnits} units`,
+        description: `Analyzed ${result.totalRelationsAnalyzed} relations across ${result.totalUnits} units${autoMsg}`,
       });
     },
     onError: (err) => {
