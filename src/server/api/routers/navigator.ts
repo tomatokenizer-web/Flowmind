@@ -113,7 +113,6 @@ export const navigatorRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
 
-      // Verify the start unit exists and belongs to user
       const startUnit = await ctx.db.unit.findFirst({
         where: { id: input.startUnitId, project: { userId: ctx.session.user.id! } },
         select: { id: true, content: true },
@@ -122,74 +121,234 @@ export const navigatorRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Start unit not found" });
       }
 
-      // Get the relation subgraph (depth 3) from the start unit
       const relationService = createRelationService(ctx.db);
-      const { relations } = await relationService.neighborsByDepth(
-        input.startUnitId,
-        3,
-        input.contextId,
-      );
+      const { relations } = await relationService.neighborsByDepth(input.startUnitId, 3, input.contextId);
 
       if (relations.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No relations found from this unit. Add relations first.",
-        });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No relations found from this unit." });
       }
 
-      // Build adjacency list weighted by relation type priority + strength
-      const TYPE_PRIORITY: Record<string, number> = {
-        derives_from: 5, expands: 4, supports: 3, defines: 3,
-        exemplifies: 2, references: 2, contradicts: 1, questions: 1,
-      };
+      const path = buildGreedyPath(input.startUnitId, relations, null);
 
-      type Edge = { target: string; weight: number };
-      const adj = new Map<string, Edge[]>();
-
-      for (const r of relations) {
-        const typePriority = TYPE_PRIORITY[r.type] ?? 1;
-        const weight = typePriority * r.strength;
-
-        // Forward direction
-        if (!adj.has(r.sourceUnitId)) adj.set(r.sourceUnitId, []);
-        adj.get(r.sourceUnitId)!.push({ target: r.targetUnitId, weight });
-
-        // Bidirectional or reverse traversal (lower weight)
-        if (r.direction === "bidirectional" || true) {
-          if (!adj.has(r.targetUnitId)) adj.set(r.targetUnitId, []);
-          adj.get(r.targetUnitId)!.push({ target: r.sourceUnitId, weight: weight * 0.6 });
-        }
-      }
-
-      // Greedy BFS: always pick the highest-weight unvisited neighbor
-      const path: string[] = [input.startUnitId];
-      const visited = new Set<string>([input.startUnitId]);
-
-      let current = input.startUnitId;
-      for (let i = 0; i < 30; i++) { // max 30 steps
-        const neighbors = adj.get(current) ?? [];
-        const unvisited = neighbors
-          .filter((e) => !visited.has(e.target))
-          .sort((a, b) => b.weight - a.weight);
-
-        if (unvisited.length === 0) break;
-
-        const next = unvisited[0]!;
-        path.push(next.target);
-        visited.add(next.target);
-        current = next.target;
-      }
-
-      // Create navigator with generated path
       const navName = input.name ?? `Flow from "${startUnit.content.slice(0, 30)}${startUnit.content.length > 30 ? "…" : ""}"`;
 
       return ctx.db.navigator.create({
-        data: {
-          name: navName,
-          contextId: input.contextId,
-          purpose: "ai-generated",
-          path,
-        },
+        data: { name: navName, contextId: input.contextId, purpose: "ai-generated", path },
       });
     }),
+
+  /**
+   * Analyze all relations in a context and generate multiple purpose-driven
+   * navigation paths. Each path follows a different relation strategy:
+   * - Argument chain (supports/contradicts)
+   * - Derivation trail (derives_from/expands)
+   * - Exploration (all relations, breadth-first)
+   * - Debate (contradicts/questions)
+   */
+  analyzeAndGenerate: protectedProcedure
+    .input(z.object({ contextId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+
+      // Get all units in this context
+      const contextUnits = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unitId: true },
+      });
+      const unitIds = contextUnits.map((u) => u.unitId);
+
+      if (unitIds.length < 2) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units with relations to generate paths." });
+      }
+
+      // Fetch all relations between units in this context
+      const allRelations = await ctx.db.relation.findMany({
+        where: {
+          OR: [
+            { sourceUnitId: { in: unitIds } },
+            { targetUnitId: { in: unitIds } },
+          ],
+        },
+        select: {
+          id: true,
+          sourceUnitId: true,
+          targetUnitId: true,
+          type: true,
+          strength: true,
+          direction: true,
+        },
+      });
+
+      if (allRelations.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No relations found between units. Create relations first." });
+      }
+
+      // Get unit data for naming
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: unitIds } },
+        select: { id: true, content: true, unitType: true, importance: true },
+      });
+      const unitMap = new Map(units.map((u) => [u.id, u]));
+
+      // Find the "hub" unit — most connected
+      const connectionCount = new Map<string, number>();
+      for (const r of allRelations) {
+        connectionCount.set(r.sourceUnitId, (connectionCount.get(r.sourceUnitId) ?? 0) + 1);
+        connectionCount.set(r.targetUnitId, (connectionCount.get(r.targetUnitId) ?? 0) + 1);
+      }
+      const hubId = [...connectionCount.entries()]
+        .sort((a, b) => b[1] - a[1])[0]?.[0] ?? unitIds[0]!;
+
+      // Define path strategies
+      const strategies: Array<{
+        name: string;
+        purpose: string;
+        types: string[] | null; // null = all types
+        minSteps: number;
+      }> = [
+        {
+          name: "Argument chain",
+          purpose: "argument",
+          types: ["supports", "contradicts", "questions", "defines"],
+          minSteps: 2,
+        },
+        {
+          name: "Derivation trail",
+          purpose: "derivation",
+          types: ["derives_from", "expands", "elaborates", "transforms_into"],
+          minSteps: 2,
+        },
+        {
+          name: "Evidence & examples",
+          purpose: "evidence",
+          types: ["exemplifies", "references", "grounded_in", "instantiates"],
+          minSteps: 2,
+        },
+        {
+          name: "Full exploration",
+          purpose: "exploration",
+          types: null, // all relation types
+          minSteps: 3,
+        },
+      ];
+
+      // Generate paths for each strategy
+      const created: Array<{ id: string; name: string; purpose: string; steps: number }> = [];
+
+      // Delete existing ai-generated navigators for this context to avoid duplicates
+      await ctx.db.navigator.deleteMany({
+        where: { contextId: input.contextId, purpose: { in: strategies.map((s) => s.purpose) } },
+      });
+
+      for (const strategy of strategies) {
+        const filtered = strategy.types
+          ? allRelations.filter((r) => strategy.types!.includes(r.type))
+          : allRelations;
+
+        if (filtered.length === 0) continue;
+
+        // Find best start unit for this strategy (most connections of this type)
+        const counts = new Map<string, number>();
+        for (const r of filtered) {
+          counts.set(r.sourceUnitId, (counts.get(r.sourceUnitId) ?? 0) + 1);
+          counts.set(r.targetUnitId, (counts.get(r.targetUnitId) ?? 0) + 1);
+        }
+        const startId = [...counts.entries()]
+          .sort((a, b) => b[1] - a[1])[0]?.[0] ?? hubId;
+
+        const path = buildGreedyPath(startId, filtered, strategy.types);
+
+        if (path.length < strategy.minSteps) continue;
+
+        // Name using the start unit content
+        const startContent = unitMap.get(startId)?.content ?? "Unit";
+        const shortContent = startContent.slice(0, 25) + (startContent.length > 25 ? "…" : "");
+
+        const nav = await ctx.db.navigator.create({
+          data: {
+            name: `${strategy.name}: ${shortContent}`,
+            contextId: input.contextId,
+            purpose: strategy.purpose,
+            path,
+          },
+        });
+
+        created.push({
+          id: nav.id,
+          name: nav.name,
+          purpose: strategy.purpose ?? "",
+          steps: path.length,
+        });
+      }
+
+      if (created.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Not enough relations to generate meaningful paths. Add more relations between units.",
+        });
+      }
+
+      return {
+        generated: created,
+        totalRelationsAnalyzed: allRelations.length,
+        totalUnits: unitIds.length,
+      };
+    }),
 });
+
+// ─── Path builder helper ─────────────────────────────────────────────
+
+type RelationEdge = {
+  sourceUnitId: string;
+  targetUnitId: string;
+  type: string;
+  strength: number;
+  direction: string;
+};
+
+const TYPE_PRIORITY: Record<string, number> = {
+  derives_from: 5, expands: 4, supports: 3, defines: 3,
+  exemplifies: 2, references: 2, contradicts: 1, questions: 1,
+};
+
+function buildGreedyPath(
+  startId: string,
+  relations: RelationEdge[],
+  allowedTypes: string[] | null,
+): string[] {
+  type Edge = { target: string; weight: number };
+  const adj = new Map<string, Edge[]>();
+
+  for (const r of relations) {
+    if (allowedTypes && !allowedTypes.includes(r.type)) continue;
+
+    const typePriority = TYPE_PRIORITY[r.type] ?? 1;
+    const weight = typePriority * r.strength;
+
+    if (!adj.has(r.sourceUnitId)) adj.set(r.sourceUnitId, []);
+    adj.get(r.sourceUnitId)!.push({ target: r.targetUnitId, weight });
+
+    if (!adj.has(r.targetUnitId)) adj.set(r.targetUnitId, []);
+    adj.get(r.targetUnitId)!.push({ target: r.sourceUnitId, weight: weight * 0.6 });
+  }
+
+  const path: string[] = [startId];
+  const visited = new Set<string>([startId]);
+  let current = startId;
+
+  for (let i = 0; i < 30; i++) {
+    const neighbors = adj.get(current) ?? [];
+    const unvisited = neighbors
+      .filter((e) => !visited.has(e.target))
+      .sort((a, b) => b.weight - a.weight);
+
+    if (unvisited.length === 0) break;
+
+    const next = unvisited[0]!;
+    path.push(next.target);
+    visited.add(next.target);
+    current = next.target;
+  }
+
+  return path;
+}

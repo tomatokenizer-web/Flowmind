@@ -85,15 +85,15 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
     },
   });
 
-  const generatePath = api.navigator.generatePath.useMutation({
-    onSuccess: (nav) => {
+  const analyzeAndGenerate = api.navigator.analyzeAndGenerate.useMutation({
+    onSuccess: (result) => {
       void utils.navigator.list.invalidate({ contextId });
-      setActiveNavId(nav.id);
-      setActiveStep(0);
-      toast.success("Flow path generated", { description: `${nav.path.length} steps from relations` });
+      toast.success(`${result.generated.length} paths generated`, {
+        description: `Analyzed ${result.totalRelationsAnalyzed} relations across ${result.totalUnits} units`,
+      });
     },
     onError: (err) => {
-      toast.error(err.message || "Failed to generate path");
+      toast.error(err.message || "Failed to generate paths");
     },
   });
 
@@ -284,11 +284,40 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
           </div>
         ))}
 
-        {/* AI Auto-Generate section — when user has selected a unit */}
-        <GenerateFromUnitButton
-          contextId={contextId}
-          generatePath={generatePath}
-        />
+        {/* AI Auto-Generate section */}
+        <button
+          type="button"
+          disabled={analyzeAndGenerate.isPending}
+          onClick={() => analyzeAndGenerate.mutate({ contextId })}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors",
+            analyzeAndGenerate.isPending
+              ? "border-accent-primary/30 text-accent-primary/60 cursor-not-allowed"
+              : "border-accent-primary/40 text-accent-primary hover:border-accent-primary hover:bg-accent-primary/5",
+          )}
+        >
+          {analyzeAndGenerate.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {analyzeAndGenerate.isPending ? "Analyzing relations…" : "AI: Auto-generate paths"}
+        </button>
+
+        {/* Show generation results */}
+        {analyzeAndGenerate.data && (
+          <div className="rounded-lg border border-accent-primary/20 bg-accent-primary/5 p-2 text-xs text-text-secondary space-y-1">
+            <p className="font-medium text-accent-primary">
+              {analyzeAndGenerate.data.generated.length} paths generated
+            </p>
+            {analyzeAndGenerate.data.generated.map((g) => (
+              <div key={g.id} className="flex items-center justify-between">
+                <span className="truncate">{g.name}</span>
+                <span className="shrink-0 text-text-tertiary">{g.steps} steps</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Flow Reader overlay */}
         {flowReaderNav && flowReaderNav.path.length > 0 && (
@@ -429,37 +458,3 @@ function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitP
   );
 }
 
-// ─── GenerateFromUnitButton: uses selected unit to auto-generate a flow path ─
-
-interface GenerateFromUnitButtonProps {
-  contextId: string;
-  generatePath: ReturnType<typeof api.navigator.generatePath.useMutation>;
-}
-
-function GenerateFromUnitButton({ contextId, generatePath }: GenerateFromUnitButtonProps) {
-  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
-
-  if (!selectedUnitId) return null;
-
-  return (
-    <button
-      type="button"
-      disabled={generatePath.isPending}
-      onClick={() =>
-        generatePath.mutate({ startUnitId: selectedUnitId, contextId })
-      }
-      className={cn(
-        "flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-accent-primary/40 py-2 text-xs font-medium text-accent-primary transition-colors",
-        "hover:border-accent-primary hover:bg-accent-primary/5",
-        "disabled:opacity-50 disabled:cursor-not-allowed",
-      )}
-    >
-      {generatePath.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Sparkles className="h-3.5 w-3.5" />
-      )}
-      {generatePath.isPending ? "Generating…" : "Auto-generate flow from selected unit"}
-    </button>
-  );
-}
