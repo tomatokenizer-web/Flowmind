@@ -146,6 +146,7 @@ export function UnitCard({
   const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const openSpotlight = usePanelStore((s) => s.openSpotlight);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const isSelected = selectedUnitId === unit.id;
 
@@ -237,7 +238,7 @@ export function UnitCard({
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}
-      onClick={() => { openPanel(unit.id); onClick?.(unit); }}
+      onClick={() => { openSpotlight(unit.id); onClick?.(unit); }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();

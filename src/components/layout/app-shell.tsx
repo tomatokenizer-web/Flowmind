@@ -10,6 +10,7 @@ import { DetailPanel } from "./detail-panel";
 import { CaptureBar } from "~/components/unit/capture-bar";
 import { CaptureOverlay } from "~/components/unit/capture-mode";
 import { CommandPalette } from "~/components/search";
+import { UnitSpotlight } from "~/components/unit/UnitSpotlight";
 import { useProjectId } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
 
@@ -114,6 +115,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <CaptureOverlay projectId={projectId} contextId={activeContextId ?? ""} />
       )}
       <CommandPalette />
+      <UnitSpotlight />
     </div>
   );
 }

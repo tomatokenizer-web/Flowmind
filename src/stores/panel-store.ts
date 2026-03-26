@@ -9,6 +9,8 @@ interface PanelState {
   selectedUnitId: string | null;
   /** Currently active tab */
   activeTab: DetailTab;
+  /** ID of unit shown in spotlight card overlay (null = closed) */
+  spotlightUnitId: string | null;
 
   openPanel: (unitId: string) => void;
   closePanel: () => void;
@@ -17,12 +19,16 @@ interface PanelState {
   /** Toggle open/closed. If a different unitId is passed while open, switches to that unit. */
   togglePanel: (unitId: string) => void;
   setActiveTab: (tab: DetailTab) => void;
+  /** Open a unit in the centered card spotlight overlay */
+  openSpotlight: (unitId: string) => void;
+  closeSpotlight: () => void;
 }
 
 export const usePanelStore = create<PanelState>((set, get) => ({
   isOpen: false,
   selectedUnitId: null,
   activeTab: "content",
+  spotlightUnitId: null,
 
   openPanel: (unitId) =>
     set({ isOpen: true, selectedUnitId: unitId }),
@@ -44,4 +50,10 @@ export const usePanelStore = create<PanelState>((set, get) => ({
 
   setActiveTab: (tab) =>
     set({ activeTab: tab }),
+
+  openSpotlight: (unitId) =>
+    set({ spotlightUnitId: unitId }),
+
+  closeSpotlight: () =>
+    set({ spotlightUnitId: null }),
 }));
