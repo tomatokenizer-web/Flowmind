@@ -304,7 +304,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
   const selectNode = React.useCallback(
     (node: SimNode) => {
       openPanel(node.id);
-      setLocalHub(node.id);
+      setLocalHub(node.id, node.content);
       setLayer("local");
     },
     [openPanel, setLocalHub, setLayer],

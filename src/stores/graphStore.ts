@@ -12,6 +12,7 @@ interface GraphState {
   layer: GraphLayer;
   selectedNodeId: string | null;
   localHubId: string | null;
+  localHubLabel: string | null;
   localDepth: number;
   zoomLevel: number;
   panOffset: { x: number; y: number };
@@ -23,7 +24,7 @@ interface GraphState {
 
   setLayer: (layer: GraphLayer) => void;
   setSelectedNode: (id: string | null) => void;
-  setLocalHub: (id: string | null) => void;
+  setLocalHub: (id: string | null, label?: string) => void;
   setLocalDepth: (depth: number) => void;
   setZoom: (zoom: number) => void;
   setPan: (offset: { x: number; y: number }) => void;
@@ -37,6 +38,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   layer: "global",
   selectedNodeId: null,
   localHubId: null,
+  localHubLabel: null,
   localDepth: 2,
   zoomLevel: 1,
   panOffset: { x: 0, y: 0 },
@@ -48,7 +50,7 @@ export const useGraphStore = create<GraphState>((set) => ({
 
   setLayer: (layer) => set({ layer }),
   setSelectedNode: (id) => set({ selectedNodeId: id }),
-  setLocalHub: (id) => set({ localHubId: id }),
+  setLocalHub: (id, label) => set({ localHubId: id, localHubLabel: label ?? null }),
   setLocalDepth: (depth) => set({ localDepth: Math.max(1, Math.min(3, depth)) }),
   setZoom: (zoom) => set({ zoomLevel: Math.max(0.3, Math.min(5, zoom)) }),
   setPan: (offset) => set({ panOffset: offset }),

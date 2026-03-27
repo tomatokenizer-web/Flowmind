@@ -47,9 +47,14 @@ const RELATION_CATEGORIES = [
   { key: "questions", label: "Questions", color: "#F97316" },
 ] as const;
 
+function sanitizeContent(s: string): string {
+  return s.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ");
+}
+
 export function GraphControls() {
   const layer = useGraphStore((s) => s.layer);
   const localHubId = useGraphStore((s) => s.localHubId);
+  const localHubLabel = useGraphStore((s) => s.localHubLabel);
   const zoomLevel = useGraphStore((s) => s.zoomLevel);
   const setZoom = useGraphStore((s) => s.setZoom);
   const setPan = useGraphStore((s) => s.setPan);
@@ -74,7 +79,7 @@ export function GraphControls() {
         <div className="rounded-lg bg-bg-secondary/90 px-3 py-1.5 text-sm font-medium text-text-primary shadow-md backdrop-blur-sm border border-border">
           {layer === "global"
             ? "Global Overview"
-            : `Local: ${localHubId?.slice(0, 8) ?? ""}...`}
+            : `Local: ${localHubLabel ? sanitizeContent(localHubLabel).slice(0, 30) + (localHubLabel.length > 30 ? "..." : "") : localHubId?.slice(0, 8) + "..."}`}
         </div>
         <TooltipProvider>
           <Tooltip>
