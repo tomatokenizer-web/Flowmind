@@ -99,8 +99,13 @@ export const RELATION_TYPE_CATEGORY: Record<string, RelationCategory> = {
 
 // ─── Node visual constants ─────────────────────────────────────────
 
-export const NODE_RADIUS = 6;
-export const FOCUS_RING_RADIUS = NODE_RADIUS + 4;
+export const NODE_RADIUS_MIN = 8;
+export const NODE_RADIUS_MAX = 24;
+export const LABEL_ZOOM_THRESHOLD = 0.8;
+
+/** @deprecated Use getNodeRadius() instead */
+export const NODE_RADIUS = NODE_RADIUS_MIN;
+
 export const FOCUS_RING_COLOR = "#FFFFFF";
 export const FOCUS_RING_WIDTH = 2;
 export const FIT_ALL_PADDING = 60;

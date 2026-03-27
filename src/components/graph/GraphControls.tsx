@@ -1,10 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Minus, Maximize2, List, BookOpen } from "lucide-react";
+import { Plus, Minus, Maximize2, List, BookOpen, Filter } from "lucide-react";
 import { useGraphStore } from "~/stores/graphStore";
 import { useLayoutStore } from "~/stores/layout-store";
 import { Button } from "~/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -109,73 +114,42 @@ export function GraphControls() {
         </TooltipProvider>
       </div>
 
-      {/* Top: filter pills */}
+      {/* Top-left: compact filter popovers */}
       {layer === "global" && (
-        <div className="absolute left-4 top-4 z-10 flex max-w-[calc(100%-12rem)] flex-col gap-2">
-          {/* Unit type filters */}
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by unit type">
-            {UNIT_TYPES.map((ut) => {
-              const isHidden = filters.unitTypes.includes(ut.key);
-              return (
-                <button
-                  key={ut.key}
-                  type="button"
-                  onClick={() => toggleUnitTypeFilter(ut.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-                    prefersReducedMotion ? "" : "transition-all",
-                    "border border-border hover:shadow-sm",
-                    isHidden
-                      ? "bg-bg-secondary text-text-tertiary opacity-50"
-                      : "bg-bg-primary text-text-primary",
-                  )}
-                  aria-pressed={!isHidden}
-                  aria-label={`${isHidden ? "Show" : "Hide"} ${ut.label} units`}
-                >
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{
-                      backgroundColor: ut.color,
-                      opacity: isHidden ? 0.3 : 1,
-                    }}
-                  />
-                  {ut.label}
-                </button>
-              );
-            })}
-          </div>
-          {/* Relation type filters */}
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by relation type">
-            {RELATION_CATEGORIES.map((rc) => {
-              const isHidden = filters.relationCategories.includes(rc.key);
-              return (
-                <button
-                  key={rc.key}
-                  type="button"
-                  onClick={() => toggleRelationCategoryFilter(rc.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    prefersReducedMotion ? "" : "transition-all",
-                    "border border-border/60 hover:shadow-sm",
-                    isHidden
-                      ? "bg-bg-secondary text-text-tertiary opacity-40"
-                      : "bg-bg-primary/80 text-text-secondary",
-                  )}
-                  aria-pressed={!isHidden}
-                  aria-label={`${isHidden ? "Show" : "Hide"} ${rc.label} relations`}
-                >
-                  <span
-                    className="inline-block h-1.5 w-3 rounded-sm"
-                    style={{
-                      backgroundColor: rc.color,
-                      opacity: isHidden ? 0.3 : 0.8,
-                    }}
-                  />
-                  {rc.label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="absolute left-4 top-4 z-10 flex items-center gap-1.5">
+          {/* Unit types filter popover */}
+          <FilterPopover
+            label="Types"
+            items={UNIT_TYPES}
+            hiddenKeys={filters.unitTypes}
+            onToggle={toggleUnitTypeFilter}
+            renderSwatch={(item, hidden) => (
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{
+                  backgroundColor: item.color,
+                  opacity: hidden ? 0.3 : 1,
+                }}
+              />
+            )}
+          />
+
+          {/* Relation types filter popover */}
+          <FilterPopover
+            label="Relations"
+            items={RELATION_CATEGORIES}
+            hiddenKeys={filters.relationCategories}
+            onToggle={toggleRelationCategoryFilter}
+            renderSwatch={(item, hidden) => (
+              <span
+                className="inline-block h-2 w-4 shrink-0 rounded-sm"
+                style={{
+                  backgroundColor: item.color,
+                  opacity: hidden ? 0.3 : 0.8,
+                }}
+              />
+            )}
+          />
         </div>
       )}
 
@@ -233,6 +207,127 @@ export function GraphControls() {
         onClose={() => setGlossaryOpen(false)}
       />
     </>
+  );
+}
+
+// ─── Filter popover ──────────────────────────────────────────────
+
+interface FilterItem {
+  readonly key: string;
+  readonly label: string;
+  readonly color: string;
+}
+
+function FilterPopover<T extends FilterItem>({
+  label,
+  items,
+  hiddenKeys,
+  onToggle,
+  renderSwatch,
+}: {
+  label: string;
+  items: readonly T[];
+  hiddenKeys: string[];
+  onToggle: (key: string) => void;
+  renderSwatch: (item: T, hidden: boolean) => React.ReactNode;
+}) {
+  const total = items.length;
+  const activeCount = total - hiddenKeys.length;
+  const allVisible = hiddenKeys.length === 0;
+  const noneVisible = hiddenKeys.length === total;
+
+  const handleToggleAll = React.useCallback(() => {
+    if (allVisible) {
+      // Hide all: toggle each visible item
+      for (const item of items) {
+        if (!hiddenKeys.includes(item.key)) onToggle(item.key);
+      }
+    } else {
+      // Show all: toggle each hidden item
+      for (const item of items) {
+        if (hiddenKeys.includes(item.key)) onToggle(item.key);
+      }
+    }
+  }, [allVisible, hiddenKeys, items, onToggle]);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium",
+            "border border-border bg-bg-secondary/90 backdrop-blur-sm",
+            "hover:bg-bg-secondary transition-colors",
+            "text-text-primary shadow-sm",
+          )}
+          aria-label={`Filter ${label}`}
+        >
+          <Filter className="h-3 w-3 text-text-tertiary" />
+          {label}
+          {!allVisible && (
+            <span className="rounded bg-accent-primary/15 px-1 py-px text-[10px] font-semibold text-accent-primary">
+              {activeCount}/{total}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-52 p-2"
+      >
+        {/* Show all / Hide all toggle */}
+        <button
+          type="button"
+          onClick={handleToggleAll}
+          className="mb-1.5 w-full rounded px-2 py-1 text-left text-[11px] font-medium text-text-secondary hover:bg-bg-secondary transition-colors"
+        >
+          {allVisible ? "Hide all" : noneVisible ? "Show all" : "Show all"}
+        </button>
+        <div className="h-px bg-border mb-1.5" />
+        {/* Filter items */}
+        <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter by ${label.toLowerCase()}`}>
+          {items.map((item) => {
+            const isHidden = hiddenKeys.includes(item.key);
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onToggle(item.key)}
+                className={cn(
+                  "flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors",
+                  "hover:bg-bg-secondary",
+                  isHidden ? "text-text-tertiary" : "text-text-primary",
+                )}
+                aria-pressed={!isHidden}
+                aria-label={`${isHidden ? "Show" : "Hide"} ${item.label}`}
+              >
+                {/* Checkbox indicator */}
+                <span
+                  className={cn(
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                    isHidden
+                      ? "border-border bg-transparent"
+                      : "border-accent-primary bg-accent-primary",
+                  )}
+                >
+                  {!isHidden && (
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                      <path d="M1.5 4L3.2 5.7L6.5 2.3" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                {/* Color swatch */}
+                {renderSwatch(item, isHidden)}
+                {/* Label */}
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

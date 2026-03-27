@@ -10,6 +10,8 @@ export interface GraphUnit {
   content: string;
   unitType: string;
   lifecycle?: string;
+  /** Per-context type override from UnitPerspective; null when no override exists */
+  perspectiveType?: string | null;
 }
 
 export interface GraphRelation {
@@ -27,8 +29,13 @@ export interface GraphRelation {
 export interface SimNode extends SimulationNodeDatum {
   id: string;
   content: string;
+  /** Effective type used for display (perspective override applied if present) */
   unitType: string;
+  /** Canonical unit type (before perspective override); present when an override exists */
+  canonicalUnitType?: string;
   lifecycle: string;
+  relationCount: number;
+  label: string;
   x?: number;
   y?: number;
 }

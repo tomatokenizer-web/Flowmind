@@ -15,9 +15,9 @@ import { announceToScreenReader } from "~/lib/accessibility";
 import { usePrefersReducedMotion } from "~/hooks/use-prefers-reduced-motion";
 
 import type { SimNode, SimLink, Props } from "./graph-types";
-import { UNIT_TYPE_COLORS, NODE_RADIUS, FIT_ALL_PADDING } from "./graph-constants";
+import { UNIT_TYPE_COLORS, NODE_RADIUS_MAX, FIT_ALL_PADDING } from "./graph-constants";
 import { calcBoundingBox, findNearestInDirection } from "./graph-layout";
-import { renderGraph } from "./graph-renderer";
+import { renderGraph, getNodeRadius } from "./graph-renderer";
 
 export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -92,6 +92,8 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     y: number;
     content: string;
     unitType: string;
+    /** Present when a perspective override is active and differs from the canonical type */
+    canonicalUnitType?: string;
     lifecycle: string;
   } | null>(null);
 
@@ -105,12 +107,28 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
 
   // Build simulation
   React.useEffect(() => {
-    const nodes: SimNode[] = filteredUnits.map((u) => ({
-      id: u.id,
-      content: u.content,
-      unitType: u.unitType,
-      lifecycle: u.lifecycle ?? "confirmed",
-    }));
+    // Count relations per unit for sizing
+    const unitIdSet = new Set(filteredUnits.map((u) => u.id));
+    const relationCountMap = new Map<string, number>();
+    for (const r of relations) {
+      if (!unitIdSet.has(r.sourceUnitId) || !unitIdSet.has(r.targetUnitId)) continue;
+      relationCountMap.set(r.sourceUnitId, (relationCountMap.get(r.sourceUnitId) ?? 0) + 1);
+      relationCountMap.set(r.targetUnitId, (relationCountMap.get(r.targetUnitId) ?? 0) + 1);
+    }
+
+    const nodes: SimNode[] = filteredUnits.map((u) => {
+      const effectiveType = u.perspectiveType ?? u.unitType;
+      const hasOverride = !!u.perspectiveType && u.perspectiveType !== u.unitType;
+      return {
+        id: u.id,
+        content: u.content,
+        unitType: effectiveType,
+        canonicalUnitType: hasOverride ? u.unitType : undefined,
+        lifecycle: u.lifecycle ?? "confirmed",
+        relationCount: relationCountMap.get(u.id) ?? 0,
+        label: u.content.length > 25 ? u.content.slice(0, 25) + "..." : u.content,
+      };
+    });
 
     const nodeIds = new Set(nodes.map((n) => n.id));
     const links: SimLink[] = relations
@@ -134,7 +152,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
       )
       .force("charge", forceManyBody().strength(-250))
       .force("center", forceCenter(0, 0))
-      .force("collide", forceCollide(NODE_RADIUS * 3));
+      .force("collide", forceCollide(NODE_RADIUS_MAX * 2));
 
     simRef.current = sim;
 
@@ -176,9 +194,9 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
 
       // Calculate zoom to fit bounding box + padding
       const scaleX =
-        (canvasW - FIT_ALL_PADDING * 2) / (bbox.width + NODE_RADIUS * 4);
+        (canvasW - FIT_ALL_PADDING * 2) / (bbox.width + NODE_RADIUS_MAX * 4);
       const scaleY =
-        (canvasH - FIT_ALL_PADDING * 2) / (bbox.height + NODE_RADIUS * 4);
+        (canvasH - FIT_ALL_PADDING * 2) / (bbox.height + NODE_RADIUS_MAX * 4);
       const newZoom = Math.max(0.3, Math.min(5, Math.min(scaleX, scaleY)));
 
       // Pan so bounding-box center lands at canvas center
@@ -409,11 +427,13 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
       const gx = (mx - rect.width / 2 - panOffset.x) / zoomLevel;
       const gy = (my - rect.height / 2 - panOffset.y) / zoomLevel;
 
+      const maxRel = Math.max(1, ...nodesRef.current.map((n) => n.relationCount));
       for (const node of nodesRef.current) {
         if (node.x == null || node.y == null) continue;
         const dx = gx - node.x;
         const dy = gy - node.y;
-        if (dx * dx + dy * dy <= (NODE_RADIUS + 4) * (NODE_RADIUS + 4)) {
+        const r = getNodeRadius(node.relationCount, maxRel) + 4;
+        if (dx * dx + dy * dy <= r * r) {
           return node;
         }
       }
@@ -472,6 +492,7 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
           y: e.clientY - rect.top - 12,
           content: node.content.slice(0, 50) + (node.content.length > 50 ? "..." : ""),
           unitType: node.unitType,
+          canonicalUnitType: node.canonicalUnitType,
           lifecycle: node.lifecycle,
         });
       } else {
@@ -619,6 +640,11 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
             style={{ backgroundColor: UNIT_TYPE_COLORS[tooltip.unitType] ?? "#6B7280" }}
           />
           <span className="font-medium capitalize">{tooltip.unitType}</span>
+          {tooltip.canonicalUnitType && (
+            <span className="ml-1 text-text-tertiary capitalize">
+              (&#8592;&nbsp;{tooltip.canonicalUnitType})
+            </span>
+          )}
           <span className="mx-1 text-text-tertiary">|</span>
           <span className="capitalize text-text-secondary">{tooltip.lifecycle}</span>
           <span className="mx-1 text-text-tertiary">|</span>

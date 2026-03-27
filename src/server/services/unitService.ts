@@ -193,6 +193,7 @@ export function createUnitService(db: PrismaClient) {
         orderBy,
         cursor: input.cursor,
         take: input.limit ?? 20,
+        contextId: input.contextId,
       });
     },
 

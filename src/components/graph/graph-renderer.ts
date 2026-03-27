@@ -5,12 +5,32 @@ import {
   RELATION_TYPE_WEIGHT,
   WEIGHT_STROKE,
   RELATION_TYPE_CATEGORY,
-  NODE_RADIUS,
-  FOCUS_RING_RADIUS,
+  NODE_RADIUS_MIN,
+  NODE_RADIUS_MAX,
+  LABEL_ZOOM_THRESHOLD,
   FOCUS_RING_COLOR,
   FOCUS_RING_WIDTH,
   DIMMED_OPACITY,
 } from "./graph-constants";
+
+/**
+ * Compute node radius based on relation count.
+ * 0 relations = NODE_RADIUS_MIN, maxRelations = NODE_RADIUS_MAX.
+ */
+export function getNodeRadius(relationCount: number, maxRelations = 10): number {
+  const t = Math.min(relationCount / Math.max(maxRelations, 1), 1);
+  return NODE_RADIUS_MIN + t * (NODE_RADIUS_MAX - NODE_RADIUS_MIN);
+}
+
+/**
+ * Darken a hex color by a given factor (0-1, where 0 = black).
+ */
+function darkenColor(hex: string, factor: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+}
 
 /**
  * Render one frame of the graph onto the given canvas context.
@@ -48,6 +68,9 @@ export function renderGraph(
   const now = performance.now();
   const hId = hoveredNodeId;
   const hasHover = hId !== null;
+
+  // Compute max relation count across all nodes for radius scaling
+  const maxRelations = Math.max(1, ...nodes.map((n) => n.relationCount));
 
   // ── Draw links ────────────────────────────────────────────────────
 
@@ -99,7 +122,8 @@ export function renderGraph(
     }
 
     if (link.isLoopback) {
-      const loopRadius = NODE_RADIUS * 3;
+      const sourceRadius = getNodeRadius(source.relationCount, maxRelations);
+      const loopRadius = sourceRadius * 3;
       ctx.beginPath();
       ctx.arc(source.x, source.y - loopRadius, loopRadius, 0, Math.PI * 2);
       ctx.setLineDash(lineDash.length ? lineDash : [4, 3]);
@@ -117,13 +141,15 @@ export function renderGraph(
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < 1) continue; // degenerate
 
-      // Shorten line to stop at node boundary
+      // Shorten line to stop at node boundary (using per-node radius)
+      const sourceRadius = getNodeRadius(source.relationCount, maxRelations);
+      const targetRadius = getNodeRadius(target.relationCount, maxRelations);
       const ux = dx / dist;
       const uy = dy / dist;
-      const sx = source.x + ux * NODE_RADIUS;
-      const sy = source.y + uy * NODE_RADIUS;
-      const tx = target.x - ux * (NODE_RADIUS + 6); // leave room for arrowhead
-      const ty = target.y - uy * (NODE_RADIUS + 6);
+      const sx = source.x + ux * sourceRadius;
+      const sy = source.y + uy * sourceRadius;
+      const tx = target.x - ux * (targetRadius + 6); // leave room for arrowhead
+      const ty = target.y - uy * (targetRadius + 6);
 
       // Curved line — offset perpendicular for visual separation
       const mx = (sx + tx) / 2;
@@ -149,8 +175,8 @@ export function renderGraph(
       // Arrowhead at target
       const arrowLen = 6 + baseLineWidth;
       const arrowAngle = 0.42; // radians (~24°)
-      const ax = target.x - ux * NODE_RADIUS;
-      const ay = target.y - uy * NODE_RADIUS;
+      const ax = target.x - ux * targetRadius;
+      const ay = target.y - uy * targetRadius;
       const headAngle = Math.atan2(uy, ux);
 
       ctx.beginPath();
@@ -190,29 +216,87 @@ export function renderGraph(
       (connectedNodeIds !== null && !connectedNodeIds.has(node.id)) ||
       (hasHover && !isHoverConnected);
 
+    const radius = getNodeRadius(node.relationCount, maxRelations);
+    const fillColor = UNIT_TYPE_COLORS[node.unitType] ?? "#6B7280";
+
     // Draw focus ring if this node is keyboard-focused
     if (focusedNodeId === node.id) {
+      const focusRingRadius = radius + 4;
+
       // Outer glow
       ctx.beginPath();
-      ctx.arc(node.x, node.y, FOCUS_RING_RADIUS + 2, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, focusRingRadius + 2, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
       ctx.lineWidth = FOCUS_RING_WIDTH + 2;
       ctx.stroke();
 
       // Inner focus ring
       ctx.beginPath();
-      ctx.arc(node.x, node.y, FOCUS_RING_RADIUS, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, focusRingRadius, 0, Math.PI * 2);
       ctx.strokeStyle = FOCUS_RING_COLOR;
       ctx.lineWidth = FOCUS_RING_WIDTH;
       ctx.stroke();
     }
 
+    // Node circle
     ctx.beginPath();
-    ctx.arc(node.x, node.y, NODE_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = UNIT_TYPE_COLORS[node.unitType] ?? "#6B7280";
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = fillColor;
     ctx.globalAlpha = isDimmed ? DIMMED_OPACITY : 1;
     ctx.fill();
+
+    // Subtle border stroke for definition
+    ctx.strokeStyle = darkenColor(fillColor.startsWith("#") ? fillColor : "#6B7280", 0.7);
+    ctx.lineWidth = 1;
+    ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+
+  // ── Draw labels (only when zoomed in enough) ───────────────────────
+
+  if (zoomLevel >= LABEL_ZOOM_THRESHOLD) {
+    ctx.font = "10px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    for (const node of nodes) {
+      if (node.x == null || node.y == null) continue;
+      if (!node.label) continue;
+
+      const radius = getNodeRadius(node.relationCount, maxRelations);
+
+      // Dim label when node is dimmed
+      const isHoverConnected =
+        !hasHover ||
+        node.id === hId ||
+        links.some((l) => {
+          const s = (l.source as SimNode).id;
+          const t = (l.target as SimNode).id;
+          return (s === hId && t === node.id) || (t === hId && s === node.id);
+        });
+      const isDimmed =
+        (connectedNodeIds !== null && !connectedNodeIds.has(node.id)) ||
+        (hasHover && !isHoverConnected);
+
+      if (isDimmed) continue; // skip labels for dimmed nodes
+
+      const labelY = node.y + radius + 4;
+      const textWidth = ctx.measureText(node.label).width;
+      const padding = 3;
+
+      // Background rect for readability
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.fillRect(
+        node.x - textWidth / 2 - padding,
+        labelY - 1,
+        textWidth + padding * 2,
+        13,
+      );
+
+      // Label text
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(node.label, node.x, labelY);
+    }
   }
 
   ctx.restore();

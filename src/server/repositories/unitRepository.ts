@@ -18,6 +18,8 @@ export interface FindManyOptions {
   orderBy?: Prisma.UnitOrderByWithRelationInput;
   cursor?: string;
   take?: number;
+  /** When provided, include the perspective type override for this context */
+  contextId?: string;
 }
 
 export function createUnitRepository(db: PrismaClient) {
@@ -45,7 +47,7 @@ export function createUnitRepository(db: PrismaClient) {
       });
     },
 
-    async findMany({ where, orderBy, cursor, take = 20 }: FindManyOptions) {
+    async findMany({ where, orderBy, cursor, take = 20, contextId }: FindManyOptions) {
       const args: Prisma.UnitFindManyArgs = {
         where,
         orderBy: orderBy ?? { createdAt: "desc" },
@@ -67,6 +69,15 @@ export function createUnitRepository(db: PrismaClient) {
           incubating: true,
           projectId: true,
           userId: true,
+          ...(contextId
+            ? {
+                perspectives: {
+                  where: { contextId },
+                  select: { type: true },
+                  take: 1,
+                },
+              }
+            : {}),
         },
       };
 
@@ -75,9 +86,20 @@ export function createUnitRepository(db: PrismaClient) {
         args.skip = 1; // Skip the cursor itself
       }
 
-      const items = await db.unit.findMany(args);
-      const hasMore = items.length > take;
-      if (hasMore) items.pop();
+      const rawItems = await db.unit.findMany(args);
+      const hasMore = rawItems.length > take;
+      if (hasMore) rawItems.pop();
+
+      // Flatten perspective type override into a top-level field
+      const items = rawItems.map((item) => {
+        const { perspectives, ...rest } = item as typeof item & {
+          perspectives?: Array<{ type: string | null }>;
+        };
+        return {
+          ...rest,
+          perspectiveType: perspectives?.[0]?.type ?? null,
+        };
+      });
 
       return {
         items,

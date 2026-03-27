@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Link2 } from "lucide-react";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -67,6 +67,32 @@ function buildBezierPath(
   const cp1x = x1 + cpOffset;
   const cp2x = x2 - cpOffset;
   return `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
+}
+
+// ── Utility: compute the midpoint of a cubic bezier ──────────────
+
+function bezierMidpoint(
+  x1: number, y1: number,
+  x2: number, y2: number,
+): { x: number; y: number } {
+  const dx = x2 - x1;
+  const cpOffset = Math.abs(dx) * 0.4;
+  const cp1x = x1 + cpOffset;
+  const cp2x = x2 - cpOffset;
+  // t=0.5 on cubic bezier: B(0.5) = (1-t)^3*P0 + 3*(1-t)^2*t*P1 + 3*(1-t)*t^2*P2 + t^3*P3
+  const t = 0.5;
+  const mt = 1 - t;
+  const x = mt ** 3 * x1 + 3 * mt ** 2 * t * cp1x + 3 * mt * t ** 2 * cp2x + t ** 3 * x2;
+  const y = mt ** 3 * y1 + 3 * mt ** 2 * t * y1 + 3 * mt * t ** 2 * y2 + t ** 3 * y2;
+  return { x, y };
+}
+
+// ── Utility: map strength to line opacity ────────────────────────
+
+function strengthToOpacity(strength: number): number {
+  if (strength >= 0.8) return 0.9;
+  if (strength >= 0.5) return 0.6;
+  return 0.4;
 }
 
 // ── Card position anchor interface ───────────────────────────────
@@ -201,6 +227,16 @@ export function LocalCardArray() {
     }
     return set;
   }, [hoveredUnitId, relations]);
+
+  // Build relation count per unit
+  const relationCountMap = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of relations) {
+      map.set(r.sourceUnitId, (map.get(r.sourceUnitId) ?? 0) + 1);
+      map.set(r.targetUnitId, (map.get(r.targetUnitId) ?? 0) + 1);
+    }
+    return map;
+  }, [relations]);
 
   // Recalculate card anchors after render
   const recalcAnchors = React.useCallback(() => {
@@ -378,27 +414,54 @@ export function LocalCardArray() {
 
               const isHighlighted = highlightedRelationIds === null || highlightedRelationIds.has(r.id);
               const isFaded = highlightedRelationIds !== null && !highlightedRelationIds.has(r.id);
+              const baseOpacity = strengthToOpacity(r.strength);
+              const mid = bezierMidpoint(x1, y1, x2, y2);
 
               return (
-                <motion.path
+                <motion.g
                   key={r.id}
-                  d={buildBezierPath(x1, y1, x2, y2)}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={isFaded ? 1 : Math.max(1.5, r.strength * 4)}
-                  strokeLinecap="round"
                   custom={depthLayer}
                   variants={lineVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   style={{
-                    opacity: isFaded ? 0.1 : undefined,
+                    opacity: isFaded ? 0.1 : baseOpacity,
                     filter: isHighlighted && highlightedRelationIds !== null
                       ? `drop-shadow(0 0 3px ${color})`
                       : undefined,
                   }}
-                />
+                >
+                  <path
+                    d={buildBezierPath(x1, y1, x2, y2)}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={isFaded ? 1 : Math.max(1.5, r.strength * 4)}
+                    strokeLinecap="round"
+                  />
+                  {/* Relation type label at midpoint */}
+                  <rect
+                    x={mid.x - (r.type.length * 3 + 6)}
+                    y={mid.y - 9}
+                    width={r.type.length * 6 + 12}
+                    height={18}
+                    rx={9}
+                    fill={color}
+                    fillOpacity={isFaded ? 0.05 : 0.15}
+                  />
+                  <text
+                    x={mid.x}
+                    y={mid.y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={color}
+                    fontSize={9}
+                    fontWeight={600}
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
+                    {r.type}
+                  </text>
+                </motion.g>
               );
             })}
           </AnimatePresence>
@@ -451,6 +514,7 @@ export function LocalCardArray() {
                     const isHub = id === localHubId;
                     const isFaded = highlightedIds !== null && !highlightedIds.has(id);
                     const isActive = highlightedIds !== null && highlightedIds.has(id);
+                    const relCount = relationCountMap.get(id) ?? 0;
 
                     return (
                       <motion.div
@@ -498,6 +562,17 @@ export function LocalCardArray() {
                             selected={isHub}
                             className={isHub ? "border-accent-primary" : ""}
                           />
+
+                          {/* Relation count badge */}
+                          {relCount > 0 && (
+                            <span
+                              className="absolute -right-1.5 -top-1.5 z-20 flex items-center gap-0.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary ring-1 ring-border shadow-sm"
+                              aria-label={`${relCount} link${relCount !== 1 ? "s" : ""}`}
+                            >
+                              <Link2 className="h-2.5 w-2.5" />
+                              {relCount}
+                            </span>
+                          )}
                         </div>
                       </motion.div>
                     );
@@ -509,8 +584,13 @@ export function LocalCardArray() {
 
           {/* Empty state */}
           {columns.length === 0 && (
-            <div className="flex items-center justify-center text-sm text-text-tertiary">
-              No connections found. Try increasing the depth.
+            <div className="flex flex-col items-center justify-center gap-2 text-center text-text-tertiary">
+              <Link2 className="h-8 w-8 opacity-30" />
+              <p className="text-sm font-medium">No relations found</p>
+              <p className="max-w-xs text-xs">
+                Use AI Auto-create relations or manually link units to build
+                connections from this hub.
+              </p>
             </div>
           )}
         </div>
