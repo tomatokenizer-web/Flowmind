@@ -6,11 +6,26 @@ import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useGraphStore } from "~/stores/graphStore";
-import { UnitCard } from "~/components/unit/unit-card";
 import { Button } from "~/components/ui/button";
 import { CATEGORY_COLORS, getRelationCategory } from "~/lib/relation-utils";
+import { UNIT_TYPE_COLORS } from "~/lib/unit-types";
+import type { UnitType } from "@prisma/client";
 
-// ── Framer Motion variants ───────────────────────────────────────
+// -- Utility: strip HTML tags and decode common entities --
+
+function sanitizeContent(raw: string): string {
+  return raw
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+// -- Framer Motion variants --
 
 const cardVariants: Variants = {
   hidden: { opacity: 0, y: 20, scale: 0.95 },
@@ -40,7 +55,7 @@ const columnVariants: Variants = {
   exit: { opacity: 0, transition: { duration: 0.15 } },
 };
 
-// ── SVG line drawing variant ─────────────────────────────────────
+// -- SVG line drawing variant --
 
 const lineVariants: Variants = {
   hidden: { pathLength: 0, opacity: 0 },
@@ -56,7 +71,7 @@ const lineVariants: Variants = {
   exit: { opacity: 0, transition: { duration: 0.15 } },
 };
 
-// ── Utility: build a cubic bezier path between two points ────────
+// -- Utility: build a cubic bezier path between two points --
 
 function buildBezierPath(
   x1: number, y1: number,
@@ -69,7 +84,7 @@ function buildBezierPath(
   return `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
 }
 
-// ── Utility: compute the midpoint of a cubic bezier ──────────────
+// -- Utility: compute the midpoint of a cubic bezier --
 
 function bezierMidpoint(
   x1: number, y1: number,
@@ -79,7 +94,6 @@ function bezierMidpoint(
   const cpOffset = Math.abs(dx) * 0.4;
   const cp1x = x1 + cpOffset;
   const cp2x = x2 - cpOffset;
-  // t=0.5 on cubic bezier: B(0.5) = (1-t)^3*P0 + 3*(1-t)^2*t*P1 + 3*(1-t)*t^2*P2 + t^3*P3
   const t = 0.5;
   const mt = 1 - t;
   const x = mt ** 3 * x1 + 3 * mt ** 2 * t * cp1x + 3 * mt * t ** 2 * cp2x + t ** 3 * x2;
@@ -87,7 +101,7 @@ function bezierMidpoint(
   return { x, y };
 }
 
-// ── Utility: map strength to line opacity ────────────────────────
+// -- Utility: map strength to line opacity --
 
 function strengthToOpacity(strength: number): number {
   if (strength >= 0.8) return 0.9;
@@ -95,7 +109,7 @@ function strengthToOpacity(strength: number): number {
   return 0.4;
 }
 
-// ── Card position anchor interface ───────────────────────────────
+// -- Card position anchor interface --
 
 interface CardAnchor {
   left: number;
@@ -103,7 +117,7 @@ interface CardAnchor {
   centerY: number;
 }
 
-// ── Component ────────────────────────────────────────────────────
+// -- Component --
 
 export function LocalCardArray() {
   const localHubId = useGraphStore((s) => s.localHubId);
@@ -113,10 +127,31 @@ export function LocalCardArray() {
   const activeContextId = useSidebarStore((s) => s.activeContextId);
 
   const [hoveredUnitId, setHoveredUnitId] = React.useState<string | null>(null);
+  const [hiddenRelTypes, setHiddenRelTypes] = React.useState<Set<string>>(new Set());
+  const [hintVisible, setHintVisible] = React.useState(true);
+  const hintTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const cardRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
   const containerRef = React.useRef<HTMLDivElement>(null);
   const svgRef = React.useRef<SVGSVGElement>(null);
   const [anchors, setAnchors] = React.useState<Map<string, CardAnchor>>(new Map());
+
+  // Auto-hide hint after 3 seconds
+  React.useEffect(() => {
+    hintTimerRef.current = setTimeout(() => setHintVisible(false), 3000);
+    return () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    };
+  }, []);
+
+  // Hide hint on first hover
+  const handleCardHover = React.useCallback((id: string) => {
+    setHoveredUnitId(id);
+    if (hintVisible) {
+      setHintVisible(false);
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    }
+  }, [hintVisible]);
 
   // Fetch multi-depth subgraph
   const { data: subgraph } = api.relation.neighborsByDepth.useQuery(
@@ -238,6 +273,28 @@ export function LocalCardArray() {
     return map;
   }, [relations]);
 
+  // Collect unique relation types present in the current subgraph
+  const relTypeSet = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const r of relations) {
+      set.add(r.type);
+    }
+    return set;
+  }, [relations]);
+
+  // Toggle a relation type filter
+  const toggleRelType = React.useCallback((type: string) => {
+    setHiddenRelTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  }, []);
+
   // Recalculate card anchors after render
   const recalcAnchors = React.useCallback(() => {
     const container = containerRef.current;
@@ -259,7 +316,6 @@ export function LocalCardArray() {
 
   // Recalculate anchors on data change and resize
   React.useEffect(() => {
-    // Small delay so DOM has rendered the cards
     const timer = setTimeout(recalcAnchors, 60);
     return () => clearTimeout(timer);
   }, [allIds, units, localDepth, recalcAnchors]);
@@ -281,24 +337,6 @@ export function LocalCardArray() {
     }
   }, []);
 
-  // Build unit card props for reuse
-  const buildUnitCardProps = React.useCallback(
-    (unit: NonNullable<typeof units>[number], isHub: boolean) => ({
-      id: unit.id,
-      content: unit.content,
-      unitType: unit.unitType,
-      createdAt: new Date(unit.createdAt),
-      lifecycle: (
-        ["draft", "pending", "confirmed", "deferred", "complete"].includes(unit.lifecycle)
-          ? unit.lifecycle
-          : "draft"
-      ) as "draft" | "pending" | "confirmed" | "deferred" | "complete",
-      originType: unit.originType ?? undefined,
-      sourceSpan: typeof unit.sourceSpan === "string" ? unit.sourceSpan : null,
-    }),
-    [],
-  );
-
   // Determine the depth layer for a relation line (for animation delay)
   const getRelationDepthLayer = React.useCallback(
     (sourceId: string, targetId: string): number => {
@@ -315,6 +353,11 @@ export function LocalCardArray() {
     if (depth === 1) return "Direct";
     return `Depth ${depth}`;
   };
+
+  // Visible relations (filtered by type)
+  const visibleRelations = React.useMemo(() => {
+    return relations.filter((r) => !hiddenRelTypes.has(r.type));
+  }, [relations, hiddenRelTypes]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg-primary">
@@ -346,7 +389,7 @@ export function LocalCardArray() {
 
         {hubUnit && (
           <span className="truncate text-sm font-medium text-text-primary">
-            Hub: {hubUnit.content.slice(0, 40)}
+            Hub: {sanitizeContent(hubUnit.content).slice(0, 40)}
             {hubUnit.content.length > 40 ? "..." : ""}
           </span>
         )}
@@ -373,11 +416,62 @@ export function LocalCardArray() {
         </div>
       </div>
 
+      {/* Relation type filter row */}
+      {relTypeSet.size > 0 && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-4 py-2">
+          <span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-text-tertiary">
+            Filter:
+          </span>
+          {Array.from(relTypeSet).sort().map((type) => {
+            const category = getRelationCategory(type);
+            const color = CATEGORY_COLORS[category] ?? "#6B7280";
+            const isHidden = hiddenRelTypes.has(type);
+            return (
+              <button
+                key={type}
+                onClick={() => toggleRelType(type)}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-all"
+                style={{
+                  backgroundColor: isHidden ? "transparent" : `${color}20`,
+                  color: isHidden ? "#9CA3AF" : color,
+                  border: `1px solid ${isHidden ? "#D1D5DB" : color}40`,
+                  opacity: isHidden ? 0.5 : 1,
+                  textDecoration: isHidden ? "line-through" : "none",
+                }}
+                aria-label={`${isHidden ? "Show" : "Hide"} ${type} relations`}
+                aria-pressed={!isHidden}
+              >
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: isHidden ? "#9CA3AF" : color }}
+                />
+                {type}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Main content area: columns with SVG overlay */}
       <div
         ref={containerRef}
         className="relative flex-1 overflow-auto"
       >
+        {/* Hover hint */}
+        <AnimatePresence>
+          {hintVisible && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.3 }}
+              className="absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-bg-secondary/90 px-3 py-1 text-[11px] text-text-tertiary shadow-sm backdrop-blur-sm"
+            >
+              Hover a card to see its connections
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* SVG overlay for bezier connection lines */}
         <svg
           ref={svgRef}
@@ -385,7 +479,7 @@ export function LocalCardArray() {
           style={{ minHeight: "100%", minWidth: "100%" }}
         >
           <AnimatePresence mode="popLayout">
-            {relations.map((r) => {
+            {visibleRelations.map((r) => {
               const sourceAnchor = anchors.get(r.sourceUnitId);
               const targetAnchor = anchors.get(r.targetUnitId);
               if (!sourceAnchor || !targetAnchor) return null;
@@ -394,7 +488,6 @@ export function LocalCardArray() {
               const color = CATEGORY_COLORS[category] ?? "#6B7280";
               const depthLayer = getRelationDepthLayer(r.sourceUnitId, r.targetUnitId);
 
-              // Determine connection points: from the right edge of the source to the left edge of the target
               const sourceDepth = unitDepthMap.get(r.sourceUnitId) ?? 0;
               const targetDepth = unitDepthMap.get(r.targetUnitId) ?? 0;
 
@@ -412,8 +505,9 @@ export function LocalCardArray() {
                 y2 = sourceAnchor.centerY;
               }
 
-              const isHighlighted = highlightedRelationIds === null || highlightedRelationIds.has(r.id);
-              const isFaded = highlightedRelationIds !== null && !highlightedRelationIds.has(r.id);
+              // Progressive disclosure: lines only visible when a connected card is hovered
+              const isConnectedToHovered = highlightedRelationIds !== null && highlightedRelationIds.has(r.id);
+              const shouldShow = hoveredUnitId !== null && isConnectedToHovered;
               const baseOpacity = strengthToOpacity(r.strength);
               const mid = bezierMidpoint(x1, y1, x2, y2);
 
@@ -426,53 +520,58 @@ export function LocalCardArray() {
                   animate="visible"
                   exit="exit"
                   style={{
-                    opacity: isFaded ? 0.1 : baseOpacity,
-                    filter: isHighlighted && highlightedRelationIds !== null
+                    opacity: shouldShow ? baseOpacity : 0,
+                    filter: shouldShow
                       ? `drop-shadow(0 0 3px ${color})`
                       : undefined,
+                    transition: "opacity 0.25s ease",
                   }}
                 >
                   <path
                     d={buildBezierPath(x1, y1, x2, y2)}
                     fill="none"
                     stroke={color}
-                    strokeWidth={isFaded ? 1 : Math.max(1.5, r.strength * 4)}
+                    strokeWidth={Math.max(1.5, r.strength * 4)}
                     strokeLinecap="round"
                   />
-                  {/* Relation type label at midpoint */}
-                  <rect
-                    x={mid.x - (r.type.length * 3 + 6)}
-                    y={mid.y - 9}
-                    width={r.type.length * 6 + 12}
-                    height={18}
-                    rx={9}
-                    fill={color}
-                    fillOpacity={isFaded ? 0.05 : 0.15}
-                  />
-                  <text
-                    x={mid.x}
-                    y={mid.y}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill={color}
-                    fontSize={9}
-                    fontWeight={600}
-                    style={{ pointerEvents: "none", userSelect: "none" }}
-                  >
-                    {r.type}
-                  </text>
+                  {/* Relation type label at midpoint -- only when line is visible */}
+                  {shouldShow && (
+                    <>
+                      <rect
+                        x={mid.x - (r.type.length * 3 + 6)}
+                        y={mid.y - 9}
+                        width={r.type.length * 6 + 12}
+                        height={18}
+                        rx={9}
+                        fill={color}
+                        fillOpacity={0.15}
+                      />
+                      <text
+                        x={mid.x}
+                        y={mid.y}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill={color}
+                        fontSize={9}
+                        fontWeight={600}
+                        style={{ pointerEvents: "none", userSelect: "none" }}
+                      >
+                        {r.type}
+                      </text>
+                    </>
+                  )}
                 </motion.g>
               );
             })}
           </AnimatePresence>
         </svg>
 
-        {/* Column grid */}
+        {/* Column grid -- gap-12 for more breathing room */}
         <div
-          className="grid h-full gap-6 p-6"
+          className="grid h-full gap-12 p-6"
           style={{
             gridTemplateColumns: columns.length > 0
-              ? columns.map((col) => col.depth === 0 ? "minmax(280px, 320px)" : "minmax(240px, 1fr)").join(" ")
+              ? columns.map((col) => col.depth === 0 ? "280px" : "240px").join(" ")
               : "1fr",
             minHeight: "100%",
           }}
@@ -481,7 +580,7 @@ export function LocalCardArray() {
             {columns.map((col) => (
               <motion.div
                 key={`col-${col.depth}`}
-                className="flex flex-col gap-3"
+                className="flex flex-col gap-1.5"
                 custom={col.depth}
                 variants={columnVariants}
                 initial="hidden"
@@ -505,7 +604,7 @@ export function LocalCardArray() {
                 </div>
 
                 {/* Scrollable card list */}
-                <div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
+                <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
                   {col.unitIds.map((id) => {
                     const unit = unitMap.get(id);
                     if (!unit) return null;
@@ -513,8 +612,16 @@ export function LocalCardArray() {
                     const depthLayer = unitDepthMap.get(id) ?? 0;
                     const isHub = id === localHubId;
                     const isFaded = highlightedIds !== null && !highlightedIds.has(id);
-                    const isActive = highlightedIds !== null && highlightedIds.has(id);
+                    const isConnected = highlightedIds !== null && highlightedIds.has(id) && id !== hoveredUnitId;
+                    const isHovered = id === hoveredUnitId;
                     const relCount = relationCountMap.get(id) ?? 0;
+
+                    const typeColors = UNIT_TYPE_COLORS[unit.unitType as UnitType] ?? { bg: "#F3F4F6", accent: "#6B7280" };
+                    const cleanContent = sanitizeContent(unit.content);
+                    const maxChars = isHub ? 40 : 25;
+                    const truncated = cleanContent.length > maxChars
+                      ? cleanContent.slice(0, maxChars) + "..."
+                      : cleanContent;
 
                     return (
                       <motion.div
@@ -525,48 +632,61 @@ export function LocalCardArray() {
                         initial="hidden"
                         animate="visible"
                         exit="exit"
-                        onMouseEnter={() => setHoveredUnitId(id)}
+                        onMouseEnter={() => handleCardHover(id)}
                         onMouseLeave={() => setHoveredUnitId(null)}
                         className="relative"
                         style={{
                           opacity: isFaded ? 0.3 : 1,
-                          transition: "opacity 0.2s ease",
+                          transition: "opacity 0.2s ease, box-shadow 0.2s ease",
                         }}
                       >
-                        {/* Hub glow effect */}
-                        {isHub && (
-                          <div
-                            className="absolute -inset-1 rounded-lg bg-accent-primary/20 blur-md"
-                            aria-hidden="true"
-                          />
-                        )}
-
-                        {/* Hover highlight glow */}
-                        {isActive && highlightedIds !== null && (
-                          <div
-                            className="absolute -inset-0.5 rounded-lg bg-accent-primary/10 blur-sm"
-                            aria-hidden="true"
-                          />
-                        )}
-
+                        {/* Mini card */}
                         <div
-                          className={
-                            isHub
-                              ? "relative rounded-lg ring-2 ring-accent-primary shadow-lg"
-                              : "relative"
-                          }
+                          className="flex items-center gap-2 rounded-md border bg-bg-primary px-2.5"
+                          style={{
+                            height: isHub ? 64 : 48,
+                            width: isHub ? 280 : 240,
+                            borderLeftWidth: 3,
+                            borderLeftColor: typeColors.accent,
+                            borderColor: isConnected
+                              ? `${typeColors.accent}80`
+                              : isHovered
+                                ? typeColors.accent
+                                : undefined,
+                            boxShadow: isHovered
+                              ? `0 0 12px ${typeColors.accent}30, 0 2px 8px rgba(0,0,0,0.08)`
+                              : isConnected
+                                ? `0 0 8px ${typeColors.accent}20`
+                                : isHub
+                                  ? `0 0 0 2px ${typeColors.accent}30`
+                                  : "0 1px 2px rgba(0,0,0,0.04)",
+                            transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                          }}
                         >
-                          <UnitCard
-                            unit={buildUnitCardProps(unit, isHub)}
-                            variant="compact"
-                            selected={isHub}
-                            className={isHub ? "border-accent-primary" : ""}
-                          />
+                          {/* Type badge */}
+                          <span
+                            className="flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+                            style={{
+                              backgroundColor: `${typeColors.accent}15`,
+                              color: typeColors.accent,
+                            }}
+                          >
+                            {unit.unitType.slice(0, 4)}
+                          </span>
+
+                          {/* Content */}
+                          <span
+                            className="min-w-0 flex-1 truncate text-xs text-text-primary"
+                            style={{ fontWeight: isHub ? 600 : 400 }}
+                            title={cleanContent}
+                          >
+                            {truncated}
+                          </span>
 
                           {/* Relation count badge */}
                           {relCount > 0 && (
                             <span
-                              className="absolute -right-1.5 -top-1.5 z-20 flex items-center gap-0.5 rounded-full bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary ring-1 ring-border shadow-sm"
+                              className="flex flex-shrink-0 items-center gap-0.5 rounded-full bg-bg-secondary px-1 py-0.5 text-[9px] font-medium text-text-tertiary"
                               aria-label={`${relCount} link${relCount !== 1 ? "s" : ""}`}
                             >
                               <Link2 className="h-2.5 w-2.5" />
