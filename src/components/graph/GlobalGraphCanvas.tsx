@@ -316,6 +316,9 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     return connected;
   }, [relations, hiddenRelationTypes, filteredUnitIds]);
 
+  // Hovered node — used to highlight connections and fade unrelated edges
+  const hoveredNodeRef = React.useRef<string | null>(null);
+
   // Tooltip state
   const [tooltip, setTooltip] = React.useState<{
     x: number;
@@ -360,11 +363,11 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     const sim = forceSimulation<SimNode>(nodes)
       .force(
         "link",
-        forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id),
+        forceLink<SimNode, SimLink>(links).id((d: SimNode) => d.id).distance(120),
       )
-      .force("charge", forceManyBody().strength(-100))
+      .force("charge", forceManyBody().strength(-250))
       .force("center", forceCenter(0, 0))
-      .force("collide", forceCollide(NODE_RADIUS * 2));
+      .force("collide", forceCollide(NODE_RADIUS * 3));
 
     simRef.current = sim;
 
@@ -471,6 +474,9 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
 
       // Draw links (skip edges whose relation type is filtered out)
       const now = performance.now();
+      const hId = hoveredNodeRef.current;
+      const hasHover = hId !== null;
+
       for (const link of linksRef.current) {
         const source = link.source as SimNode;
         const target = link.target as SimNode;
@@ -479,6 +485,9 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
 
         // Hide edges whose relation type is deselected
         if (hiddenRelationTypes.has(link.type)) continue;
+
+        // Hover highlight: connected edges bright, others nearly invisible
+        const isConnected = !hasHover || source.id === hId || target.id === hId;
 
         const edgeColor =
           RELATION_TYPE_COLORS[link.type] ?? "rgba(156, 163, 175, 1)";
@@ -502,13 +511,18 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
           edgeAlpha = 0.4;
         }
 
+        // Fade unconnected edges when hovering a node
+        if (hasHover && !isConnected) {
+          edgeAlpha = 0.06;
+        }
+
         // ── Contradicts: animated pulsing dash ───────────────────────
         const isContradicts = link.type === "contradicts";
         let dashOffset = 0;
         if (isContradicts && !prefersReducedMotion) {
           lineDash = [8, 5];
           dashOffset = (now / 40) % 13; // animate offset
-          edgeAlpha = 0.85;
+          if (isConnected) edgeAlpha = 0.85;
         }
 
         if (link.isLoopback) {
@@ -538,14 +552,22 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
           const tx = target.x - ux * (NODE_RADIUS + 6); // leave room for arrowhead
           const ty = target.y - uy * (NODE_RADIUS + 6);
 
+          // Curved line — offset perpendicular for visual separation
+          const mx = (sx + tx) / 2;
+          const my = (sy + ty) / 2;
+          // Curve offset: use link index hash for consistent but varied curves
+          const curveOffset = ((link.id.charCodeAt(0) % 5) - 2) * 12;
+          const cpx = mx - uy * curveOffset;
+          const cpy = my + ux * curveOffset;
+
           ctx.beginPath();
           ctx.moveTo(sx, sy);
-          ctx.lineTo(tx, ty);
+          ctx.quadraticCurveTo(cpx, cpy, tx, ty);
           ctx.setLineDash(lineDash);
           ctx.lineDashOffset = dashOffset;
           ctx.strokeStyle = edgeColor;
           ctx.globalAlpha = edgeAlpha;
-          ctx.lineWidth = baseLineWidth;
+          ctx.lineWidth = isConnected && hasHover ? baseLineWidth * 1.5 : baseLineWidth;
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.lineDashOffset = 0;
@@ -582,8 +604,16 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
       for (const node of nodesRef.current) {
         if (node.x == null || node.y == null) continue;
 
+        // Dim if filtered out OR if hovering another node and not connected
+        const isHoverConnected = !hasHover || node.id === hId ||
+          linksRef.current.some((l) => {
+            const s = (l.source as SimNode).id;
+            const t = (l.target as SimNode).id;
+            return (s === hId && t === node.id) || (t === hId && s === node.id);
+          });
         const isDimmed =
-          connectedNodeIds !== null && !connectedNodeIds.has(node.id);
+          (connectedNodeIds !== null && !connectedNodeIds.has(node.id)) ||
+          (hasHover && !isHoverConnected);
 
         // Draw focus ring if this node is keyboard-focused
         if (currentFocusId === node.id) {
@@ -835,8 +865,9 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         return;
       }
 
-      // Hover tooltip
+      // Hover tooltip + highlight
       const node = hitTest(e.clientX, e.clientY);
+      hoveredNodeRef.current = node?.id ?? null;
       if (node) {
         const rect = canvasRef.current!.getBoundingClientRect();
         setTooltip({
