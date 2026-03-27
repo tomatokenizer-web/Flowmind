@@ -1040,8 +1040,19 @@ Focus on academic, scientific, or well-established knowledge sources. Do not inv
         throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
       }
 
-      // Get all units in this context
-      const units = await getContextUnits(ctx.db, input.contextId, 50);
+      // Get all units in this context via unitContext (not perspectives)
+      const contextLinks = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unitId: true },
+      });
+      const linkedIds = contextLinks.map((u) => u.unitId);
+      const units = linkedIds.length > 0
+        ? await ctx.db.unit.findMany({
+            where: { id: { in: linkedIds } },
+            select: { id: true, content: true, unitType: true },
+            take: 50,
+          })
+        : [];
       if (units.length < 2) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to analyze relations." });
       }

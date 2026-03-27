@@ -31,44 +31,72 @@ function getRelationCategory(type: string): string {
   return "structure_containment";
 }
 
-// ── Grid layout constants ────────────────────────────────────────
-
-const CARD_WIDTH = 280;
-const CARD_HEIGHT = 160;
-const SVG_WIDTH = 1200;
-const SVG_HEIGHT = 800;
-const CX = SVG_WIDTH / 2;
-const CY = SVG_HEIGHT / 2;
-
 // ── Framer Motion variants ───────────────────────────────────────
 
 const cardVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.6 },
+  hidden: { opacity: 0, y: 20, scale: 0.95 },
   visible: (depthLayer: number) => ({
     opacity: 1,
+    y: 0,
     scale: 1,
     transition: {
-      delay: depthLayer * 0.12,
+      delay: depthLayer * 0.1,
       duration: 0.35,
       ease: "easeOut",
     },
   }),
-  exit: { opacity: 0, scale: 0.6, transition: { duration: 0.2 } },
+  exit: { opacity: 0, y: -10, scale: 0.95, transition: { duration: 0.2 } },
 };
+
+const columnVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: (colIndex: number) => ({
+    opacity: 1,
+    transition: {
+      delay: colIndex * 0.08,
+      duration: 0.3,
+      staggerChildren: 0.06,
+    },
+  }),
+  exit: { opacity: 0, transition: { duration: 0.15 } },
+};
+
+// ── SVG line drawing variant ─────────────────────────────────────
 
 const lineVariants: Variants = {
   hidden: { pathLength: 0, opacity: 0 },
   visible: (depthLayer: number) => ({
     pathLength: 1,
-    opacity: 0.6,
+    opacity: 0.7,
     transition: {
-      delay: depthLayer * 0.12 + 0.1,
-      duration: 0.4,
+      delay: depthLayer * 0.1 + 0.15,
+      duration: 0.5,
       ease: "easeOut",
     },
   }),
   exit: { opacity: 0, transition: { duration: 0.15 } },
 };
+
+// ── Utility: build a cubic bezier path between two points ────────
+
+function buildBezierPath(
+  x1: number, y1: number,
+  x2: number, y2: number,
+): string {
+  const dx = x2 - x1;
+  const cpOffset = Math.abs(dx) * 0.4;
+  const cp1x = x1 + cpOffset;
+  const cp2x = x2 - cpOffset;
+  return `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
+}
+
+// ── Card position anchor interface ───────────────────────────────
+
+interface CardAnchor {
+  left: number;
+  right: number;
+  centerY: number;
+}
 
 // ── Component ────────────────────────────────────────────────────
 
@@ -79,7 +107,13 @@ export function LocalCardArray() {
   const setLayer = useGraphStore((s) => s.setLayer);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
 
-  // Fetch multi-depth subgraph via the new recursive endpoint
+  const [hoveredUnitId, setHoveredUnitId] = React.useState<string | null>(null);
+  const cardRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const svgRef = React.useRef<SVGSVGElement>(null);
+  const [anchors, setAnchors] = React.useState<Map<string, CardAnchor>>(new Map());
+
+  // Fetch multi-depth subgraph
   const { data: subgraph } = api.relation.neighborsByDepth.useQuery(
     {
       hubId: localHubId!,
@@ -131,37 +165,124 @@ export function LocalCardArray() {
 
   const hubUnit = units?.find((u) => u.id === localHubId);
 
-  // Calculate positions: hub at center, neighbors in concentric rings
-  const positions = React.useMemo(() => {
-    const map = new Map<string, { x: number; y: number }>();
-    if (!localHubId || layers.length === 0) return map;
+  // Build unit lookup for fast access
+  const unitMap = React.useMemo(() => {
+    const map = new Map<string, NonNullable<typeof units>[number]>();
+    if (units) {
+      for (const u of units) {
+        map.set(u.id, u);
+      }
+    }
+    return map;
+  }, [units]);
 
-    // Hub at center
-    map.set(localHubId, {
-      x: CX - CARD_WIDTH / 2,
-      y: CY - CARD_HEIGHT / 2,
+  // Group units by column (depth)
+  const columns = React.useMemo(() => {
+    const cols: Array<{ depth: number; unitIds: string[] }> = [];
+    for (let d = 0; d < layers.length; d++) {
+      const layerIds = layers[d] ?? [];
+      if (layerIds.length > 0) {
+        cols.push({ depth: d, unitIds: layerIds });
+      }
+    }
+    return cols;
+  }, [layers]);
+
+  // Build relation adjacency: unitId -> set of connected unitIds
+  const adjacency = React.useMemo(() => {
+    const adj = new Map<string, Set<string>>();
+    for (const r of relations) {
+      if (!adj.has(r.sourceUnitId)) adj.set(r.sourceUnitId, new Set());
+      if (!adj.has(r.targetUnitId)) adj.set(r.targetUnitId, new Set());
+      adj.get(r.sourceUnitId)!.add(r.targetUnitId);
+      adj.get(r.targetUnitId)!.add(r.sourceUnitId);
+    }
+    return adj;
+  }, [relations]);
+
+  // Determine which unitIds are highlighted on hover
+  const highlightedIds = React.useMemo(() => {
+    if (!hoveredUnitId) return null;
+    const connected = adjacency.get(hoveredUnitId);
+    const set = new Set<string>([hoveredUnitId]);
+    if (connected) {
+      for (const id of connected) set.add(id);
+    }
+    return set;
+  }, [hoveredUnitId, adjacency]);
+
+  // Determine which relation IDs are highlighted on hover
+  const highlightedRelationIds = React.useMemo(() => {
+    if (!hoveredUnitId) return null;
+    const set = new Set<string>();
+    for (const r of relations) {
+      if (r.sourceUnitId === hoveredUnitId || r.targetUnitId === hoveredUnitId) {
+        set.add(r.id);
+      }
+    }
+    return set;
+  }, [hoveredUnitId, relations]);
+
+  // Recalculate card anchors after render
+  const recalcAnchors = React.useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const newAnchors = new Map<string, CardAnchor>();
+
+    cardRefs.current.forEach((el, id) => {
+      const rect = el.getBoundingClientRect();
+      newAnchors.set(id, {
+        left: rect.left - containerRect.left,
+        right: rect.right - containerRect.left,
+        centerY: rect.top - containerRect.top + rect.height / 2,
+      });
     });
 
-    // Place each depth layer on its own ring
-    for (let ringIdx = 1; ringIdx < layers.length; ringIdx++) {
-      const ringNodes = layers[ringIdx]!;
-      const count = ringNodes.length;
-      if (count === 0) continue;
+    setAnchors(newAnchors);
+  }, []);
 
-      // Ring radius grows with each layer
-      const baseRadius = 220;
-      const radius = baseRadius + (ringIdx - 1) * 180;
+  // Recalculate anchors on data change and resize
+  React.useEffect(() => {
+    // Small delay so DOM has rendered the cards
+    const timer = setTimeout(recalcAnchors, 60);
+    return () => clearTimeout(timer);
+  }, [allIds, units, localDepth, recalcAnchors]);
 
-      ringNodes.forEach((id, i) => {
-        const angle = (2 * Math.PI * i) / Math.max(count, 1) - Math.PI / 2;
-        const x = CX + Math.cos(angle) * radius - CARD_WIDTH / 2;
-        const y = CY + Math.sin(angle) * radius - CARD_HEIGHT / 2;
-        map.set(id, { x, y });
-      });
+  React.useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      recalcAnchors();
+    });
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [recalcAnchors]);
+
+  // Register a card ref
+  const setCardRef = React.useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) {
+      cardRefs.current.set(id, el);
+    } else {
+      cardRefs.current.delete(id);
     }
+  }, []);
 
-    return map;
-  }, [localHubId, layers]);
+  // Build unit card props for reuse
+  const buildUnitCardProps = React.useCallback(
+    (unit: NonNullable<typeof units>[number], isHub: boolean) => ({
+      id: unit.id,
+      content: unit.content,
+      unitType: unit.unitType,
+      createdAt: new Date(unit.createdAt),
+      lifecycle: (
+        ["draft", "pending", "confirmed", "deferred", "complete"].includes(unit.lifecycle)
+          ? unit.lifecycle
+          : "draft"
+      ) as "draft" | "pending" | "confirmed" | "deferred" | "complete",
+      originType: unit.originType ?? undefined,
+      sourceSpan: typeof unit.sourceSpan === "string" ? unit.sourceSpan : null,
+    }),
+    [],
+  );
 
   // Determine the depth layer for a relation line (for animation delay)
   const getRelationDepthLayer = React.useCallback(
@@ -173,10 +294,17 @@ export function LocalCardArray() {
     [unitDepthMap],
   );
 
+  // Column header labels
+  const columnLabel = (depth: number): string => {
+    if (depth === 0) return "Hub";
+    if (depth === 1) return "Direct";
+    return `Depth ${depth}`;
+  };
+
   return (
-    <div className="h-full w-full overflow-auto bg-bg-primary p-4">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-bg-primary">
       {/* Controls bar */}
-      <div className="mb-4 flex items-center gap-4">
+      <div className="flex flex-shrink-0 items-center gap-4 border-b border-border px-4 py-3">
         <Button
           variant="ghost"
           size="sm"
@@ -202,7 +330,7 @@ export function LocalCardArray() {
         </div>
 
         {hubUnit && (
-          <span className="text-sm font-medium text-text-primary">
+          <span className="truncate text-sm font-medium text-text-primary">
             Hub: {hubUnit.content.slice(0, 40)}
             {hubUnit.content.length > 40 ? "..." : ""}
           </span>
@@ -212,125 +340,202 @@ export function LocalCardArray() {
           {allIds.length} unit{allIds.length !== 1 ? "s" : ""} &middot;{" "}
           {relations.length} relation{relations.length !== 1 ? "s" : ""}
         </span>
+
+        {/* Legend */}
+        <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="inline-block h-2 w-4 rounded" style={{ background: CATEGORY_COLORS.argument }} />
+            <span className="text-[10px] text-text-tertiary">Argument</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="inline-block h-2 w-4 rounded" style={{ background: CATEGORY_COLORS.creative_research }} />
+            <span className="text-[10px] text-text-tertiary">Creative</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="inline-block h-2 w-4 rounded" style={{ background: CATEGORY_COLORS.structure_containment }} />
+            <span className="text-[10px] text-text-tertiary">Structure</span>
+          </div>
+        </div>
       </div>
 
-      {/* SVG with animated cards and lines */}
-      <svg
-        width={SVG_WIDTH}
-        height={SVG_HEIGHT}
-        className="mx-auto rounded-lg border border-border bg-bg-secondary"
+      {/* Main content area: columns with SVG overlay */}
+      <div
+        ref={containerRef}
+        className="relative flex-1 overflow-auto"
       >
-        {/* Depth ring guides */}
-        {layers.length > 1 &&
-          Array.from({ length: layers.length - 1 }, (_, i) => {
-            const radius = 220 + i * 180;
-            return (
-              <circle
-                key={`ring-${i}`}
-                cx={CX}
-                cy={CY}
-                r={radius}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={0.5}
-                strokeDasharray="4 6"
-                className="text-text-tertiary/20"
-              />
-            );
-          })}
+        {/* SVG overlay for bezier connection lines */}
+        <svg
+          ref={svgRef}
+          className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+          style={{ minHeight: "100%", minWidth: "100%" }}
+        >
+          <AnimatePresence mode="popLayout">
+            {relations.map((r) => {
+              const sourceAnchor = anchors.get(r.sourceUnitId);
+              const targetAnchor = anchors.get(r.targetUnitId);
+              if (!sourceAnchor || !targetAnchor) return null;
 
-        {/* Animated relation lines */}
-        <AnimatePresence mode="popLayout">
-          {relations.map((r) => {
-            const sourcePos = positions.get(r.sourceUnitId);
-            const targetPos = positions.get(r.targetUnitId);
-            if (!sourcePos || !targetPos) return null;
+              const category = getRelationCategory(r.type);
+              const color = CATEGORY_COLORS[category] ?? "#6B7280";
+              const depthLayer = getRelationDepthLayer(r.sourceUnitId, r.targetUnitId);
 
-            const category = getRelationCategory(r.type);
-            const color = CATEGORY_COLORS[category] ?? "#6B7280";
-            const depthLayer = getRelationDepthLayer(r.sourceUnitId, r.targetUnitId);
+              // Determine connection points: from the right edge of the source to the left edge of the target
+              const sourceDepth = unitDepthMap.get(r.sourceUnitId) ?? 0;
+              const targetDepth = unitDepthMap.get(r.targetUnitId) ?? 0;
 
-            const x1 = sourcePos.x + CARD_WIDTH / 2;
-            const y1 = sourcePos.y + CARD_HEIGHT / 2;
-            const x2 = targetPos.x + CARD_WIDTH / 2;
-            const y2 = targetPos.y + CARD_HEIGHT / 2;
+              let x1: number, y1: number, x2: number, y2: number;
 
-            return (
-              <motion.line
-                key={r.id}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke={color}
-                strokeWidth={Math.max(1, r.strength * 4)}
-                custom={depthLayer}
-                variants={lineVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-              />
-            );
-          })}
-        </AnimatePresence>
+              if (sourceDepth <= targetDepth) {
+                x1 = sourceAnchor.right;
+                y1 = sourceAnchor.centerY;
+                x2 = targetAnchor.left;
+                y2 = targetAnchor.centerY;
+              } else {
+                x1 = targetAnchor.right;
+                y1 = targetAnchor.centerY;
+                x2 = sourceAnchor.left;
+                y2 = sourceAnchor.centerY;
+              }
 
-        {/* Animated unit cards via foreignObject */}
-        <AnimatePresence mode="popLayout">
-          {allIds.map((id) => {
-            const unit = units?.find((u) => u.id === id);
-            const pos = positions.get(id);
-            if (!unit || !pos) return null;
+              const isHighlighted = highlightedRelationIds === null || highlightedRelationIds.has(r.id);
+              const isFaded = highlightedRelationIds !== null && !highlightedRelationIds.has(r.id);
 
-            const depthLayer = unitDepthMap.get(id) ?? 0;
+              return (
+                <motion.path
+                  key={r.id}
+                  d={buildBezierPath(x1, y1, x2, y2)}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={isFaded ? 1 : Math.max(1.5, r.strength * 4)}
+                  strokeLinecap="round"
+                  custom={depthLayer}
+                  variants={lineVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  style={{
+                    opacity: isFaded ? 0.1 : undefined,
+                    filter: isHighlighted && highlightedRelationIds !== null
+                      ? `drop-shadow(0 0 3px ${color})`
+                      : undefined,
+                  }}
+                />
+              );
+            })}
+          </AnimatePresence>
+        </svg>
 
-            return (
-              <motion.foreignObject
-                key={id}
-                x={pos.x}
-                y={pos.y}
-                width={CARD_WIDTH}
-                height={CARD_HEIGHT}
-                custom={depthLayer}
-                variants={cardVariants}
+        {/* Column grid */}
+        <div
+          className="grid h-full gap-6 p-6"
+          style={{
+            gridTemplateColumns: columns.length > 0
+              ? columns.map((col) => col.depth === 0 ? "minmax(280px, 320px)" : "minmax(240px, 1fr)").join(" ")
+              : "1fr",
+            minHeight: "100%",
+          }}
+        >
+          <AnimatePresence mode="popLayout">
+            {columns.map((col) => (
+              <motion.div
+                key={`col-${col.depth}`}
+                className="flex flex-col gap-3"
+                custom={col.depth}
+                variants={columnVariants}
                 initial="hidden"
                 animate="visible"
                 exit="exit"
               >
-                <div className="h-full w-full">
-                  <UnitCard
-                    unit={{
-                      id: unit.id,
-                      content: unit.content,
-                      unitType: unit.unitType,
-                      createdAt: new Date(unit.createdAt),
-                      lifecycle: (
-                        ["draft", "pending", "confirmed", "deferred", "complete"].includes(
-                          unit.lifecycle,
-                        )
-                          ? unit.lifecycle
-                          : "draft"
-                      ) as
-                        | "draft"
-                        | "pending"
-                        | "confirmed"
-                        | "deferred"
-                        | "complete",
-                      originType: unit.originType ?? undefined,
-                      sourceSpan:
-                        typeof unit.sourceSpan === "string"
-                          ? unit.sourceSpan
-                          : null,
-                    }}
-                    variant="compact"
-                    selected={id === localHubId}
-                    className="h-full"
-                  />
+                {/* Column header */}
+                <div className="flex flex-shrink-0 items-center gap-2 pb-1">
+                  <span
+                    className={
+                      col.depth === 0
+                        ? "text-sm font-semibold text-accent-primary"
+                        : "text-xs font-medium text-text-tertiary uppercase tracking-wider"
+                    }
+                  >
+                    {columnLabel(col.depth)}
+                  </span>
+                  <span className="rounded-full bg-bg-secondary px-1.5 py-0.5 text-[10px] text-text-tertiary">
+                    {col.unitIds.length}
+                  </span>
                 </div>
-              </motion.foreignObject>
-            );
-          })}
-        </AnimatePresence>
-      </svg>
+
+                {/* Scrollable card list */}
+                <div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border">
+                  {col.unitIds.map((id) => {
+                    const unit = unitMap.get(id);
+                    if (!unit) return null;
+
+                    const depthLayer = unitDepthMap.get(id) ?? 0;
+                    const isHub = id === localHubId;
+                    const isFaded = highlightedIds !== null && !highlightedIds.has(id);
+                    const isActive = highlightedIds !== null && highlightedIds.has(id);
+
+                    return (
+                      <motion.div
+                        key={id}
+                        ref={(el) => setCardRef(id, el)}
+                        custom={depthLayer}
+                        variants={cardVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        onMouseEnter={() => setHoveredUnitId(id)}
+                        onMouseLeave={() => setHoveredUnitId(null)}
+                        className="relative"
+                        style={{
+                          opacity: isFaded ? 0.3 : 1,
+                          transition: "opacity 0.2s ease",
+                        }}
+                      >
+                        {/* Hub glow effect */}
+                        {isHub && (
+                          <div
+                            className="absolute -inset-1 rounded-lg bg-accent-primary/20 blur-md"
+                            aria-hidden="true"
+                          />
+                        )}
+
+                        {/* Hover highlight glow */}
+                        {isActive && highlightedIds !== null && (
+                          <div
+                            className="absolute -inset-0.5 rounded-lg bg-accent-primary/10 blur-sm"
+                            aria-hidden="true"
+                          />
+                        )}
+
+                        <div
+                          className={
+                            isHub
+                              ? "relative rounded-lg ring-2 ring-accent-primary shadow-lg"
+                              : "relative"
+                          }
+                        >
+                          <UnitCard
+                            unit={buildUnitCardProps(unit, isHub)}
+                            variant="compact"
+                            selected={isHub}
+                            className={isHub ? "border-accent-primary" : ""}
+                          />
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Empty state */}
+          {columns.length === 0 && (
+            <div className="flex items-center justify-center text-sm text-text-tertiary">
+              No connections found. Try increasing the depth.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
