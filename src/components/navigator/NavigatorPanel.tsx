@@ -88,6 +88,8 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
   const autoRelate = api.ai.autoRelate.useMutation({
     onSuccess: (result) => {
       void utils.navigator.list.invalidate({ contextId });
+      void utils.relation.listByUnits.invalidate();
+      void utils.relation.listByUnit.invalidate();
       toast.success(`${result.created} relations created`, {
         description: `Analyzed ${result.analyzed} units${result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} duplicates skipped` : ""}`,
       });

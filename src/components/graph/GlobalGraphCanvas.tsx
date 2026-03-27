@@ -325,12 +325,13 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     lifecycle: string;
   } | null>(null);
 
-  // Drag state
+  // Drag state — pan or node drag
   const dragRef = React.useRef<{
     dragging: boolean;
     lastX: number;
     lastY: number;
-  }>({ dragging: false, lastX: 0, lastY: 0 });
+    draggedNode: SimNode | null;
+  }>({ dragging: false, lastX: 0, lastY: 0, draggedNode: null });
 
   // Build simulation
   React.useEffect(() => {
@@ -794,12 +795,23 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
     [panOffset, zoomLevel],
   );
 
-  // Mouse handlers
+  // Mouse handlers — node drag or canvas pan
   const handleMouseDown = React.useCallback(
     (e: React.MouseEvent) => {
-      dragRef.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+      const node = hitTest(e.clientX, e.clientY);
+      if (node) {
+        // Start dragging this node — fix it in place
+        node.fx = node.x;
+        node.fy = node.y;
+        dragRef.current = { dragging: true, lastX: e.clientX, lastY: e.clientY, draggedNode: node };
+        // Reheat simulation so other nodes react
+        simRef.current?.alpha(0.3).restart();
+      } else {
+        // Canvas pan
+        dragRef.current = { dragging: true, lastX: e.clientX, lastY: e.clientY, draggedNode: null };
+      }
     },
-    [],
+    [hitTest],
   );
 
   const handleMouseMove = React.useCallback(
@@ -809,7 +821,17 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         const dy = e.clientY - dragRef.current.lastY;
         dragRef.current.lastX = e.clientX;
         dragRef.current.lastY = e.clientY;
-        setPan({ x: panOffset.x + dx, y: panOffset.y + dy });
+
+        const draggedNode = dragRef.current.draggedNode;
+        if (draggedNode) {
+          // Move the dragged node in graph coordinates
+          draggedNode.fx = (draggedNode.fx ?? 0) + dx / zoomLevel;
+          draggedNode.fy = (draggedNode.fy ?? 0) + dy / zoomLevel;
+          simRef.current?.alpha(0.1).restart();
+        } else {
+          // Pan canvas
+          setPan({ x: panOffset.x + dx, y: panOffset.y + dy });
+        }
         return;
       }
 
@@ -828,11 +850,18 @@ export function GlobalGraphCanvas({ units, relations, onNodeClick }: Props) {
         setTooltip(null);
       }
     },
-    [hitTest, panOffset, setPan],
+    [hitTest, panOffset, setPan, zoomLevel],
   );
 
   const handleMouseUp = React.useCallback(() => {
+    const draggedNode = dragRef.current.draggedNode;
+    if (draggedNode) {
+      // Release the node — unfix so simulation can settle it
+      draggedNode.fx = null;
+      draggedNode.fy = null;
+    }
     dragRef.current.dragging = false;
+    dragRef.current.draggedNode = null;
   }, []);
 
   const handleClick = React.useCallback(
