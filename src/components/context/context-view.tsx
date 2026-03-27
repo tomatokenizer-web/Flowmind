@@ -40,7 +40,7 @@ function InsightsSection({
   children: React.ReactNode;
   contextId: string;
 }) {
-  const [expanded, setExpanded] = React.useState(true);
+  const [expanded, setExpanded] = React.useState(false);
 
   // Piggyback on the same query MissingArgumentAlert runs — React Query deduplicates
   const { data: missingArgs } = api.ai.detectMissingArguments.useQuery(

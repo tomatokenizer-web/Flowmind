@@ -16,6 +16,8 @@ export interface BreadcrumbSegment {
   label: string;
   /** Navigation href — omit for current (last) segment */
   href?: string;
+  /** Click handler — used for non-link segments that still need interactivity */
+  onClick?: () => void;
   /** Semantic depth level for styling and accessibility */
   depth?: BreadcrumbDepth;
   /** Optional icon to render before the label */
@@ -83,6 +85,18 @@ function BreadcrumbItem({
     >
       {labelContent}
     </Link>
+  ) : segment.onClick ? (
+    <button
+      type="button"
+      onClick={segment.onClick}
+      className={cn(
+        "max-w-[180px] truncate text-text-secondary",
+        "transition-colors duration-fast hover:text-text-primary cursor-pointer",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-1 rounded",
+      )}
+    >
+      {labelContent}
+    </button>
   ) : (
     <span className="max-w-[180px] truncate text-text-secondary">
       {labelContent}

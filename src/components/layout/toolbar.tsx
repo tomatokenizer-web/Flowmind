@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles } from "lucide-react";
+import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -42,6 +42,7 @@ export function Toolbar({
   const toggleFocusMode = useFocusModeStore((s) => s.toggleFocusMode);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const panelIsOpen = usePanelStore((s) => s.isOpen);
+  const closePanel = usePanelStore((s) => s.closePanel);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const aiPanelOpen = useAIPanelStore((s) => s.aiPanelOpen);
   const toggleAIPanel = useAIPanelStore((s) => s.toggleAIPanel);
@@ -76,11 +77,12 @@ export function Toolbar({
       });
     }
 
-    // Add view mode segment when not in default canvas mode (no href — not navigable)
+    // Add view mode segment when not in default canvas mode — clickable to close detail panel
     if (viewMode !== "canvas") {
       segs.push({
         label: viewModeLabel,
         depth: "view",
+        ...(panelIsOpen ? { onClick: closePanel } : {}),
       });
     }
 
@@ -107,6 +109,7 @@ export function Toolbar({
     viewMode,
     viewModeLabel,
     panelIsOpen,
+    closePanel,
     selectedUnitId,
     unitData,
   ]);

@@ -20,34 +20,40 @@ import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDi
 import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
 import { FormalizeWizard } from "~/components/formalize/FormalizeWizard";
 
-// ─── Project stats + quick actions bar (Story 9.7) ───────────────────
+// ─── Project stats + quick actions bar ────────────────────────────────
+
+function StatChip({ icon: Icon, label, value, accent }: { icon: React.ElementType; label: string; value: number | string; accent?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-secondary px-2.5 py-1">
+      <Icon className={cn("h-3 w-3 shrink-0", accent ? "text-accent-primary" : "text-text-tertiary")} aria-hidden="true" />
+      <span className="text-[10px] text-text-tertiary">{label}</span>
+      <span className="text-xs font-semibold tabular-nums text-text-primary">{value}</span>
+    </div>
+  );
+}
 
 interface QuickActionProps {
   icon: React.ElementType;
   label: string;
-  description: string;
   onClick: () => void;
   accent?: boolean;
 }
 
-function QuickActionCard({ icon: Icon, label, description, onClick, accent }: QuickActionProps) {
+function QuickActionButton({ icon: Icon, label, onClick, accent }: Omit<QuickActionProps, "description"> & { accent?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition-all",
-        "hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+        "hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
         accent
-          ? "border-accent-primary/30 bg-accent-primary/5 hover:bg-accent-primary/10"
-          : "border-border bg-bg-primary hover:bg-bg-secondary",
+          ? "border-accent-primary/40 bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/15"
+          : "border-border bg-bg-primary text-text-secondary hover:bg-bg-secondary hover:text-text-primary",
       )}
     >
-      <div className={cn("flex items-center gap-2", accent ? "text-accent-primary" : "text-text-secondary")}>
-        <Icon className="h-4 w-4" aria-hidden="true" />
-        <span className="text-sm font-medium text-text-primary">{label}</span>
-      </div>
-      <p className="text-xs text-text-tertiary">{description}</p>
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {label}
     </button>
   );
 }
@@ -85,81 +91,55 @@ function ProjectStatsBar({ projectId, onCreateContext }: { projectId: string; on
   if (!stats) return null;
 
   return (
-    <div className="px-4 pt-4 flex flex-col gap-4">
-      {/* Key metrics row */}
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Project statistics">
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
-          <Layers className="h-4 w-4 text-accent-primary" aria-hidden="true" />
-          <span className="text-xs text-text-tertiary">Units</span>
-          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.totalUnits}</span>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
-          <FolderOpen className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          <span className="text-xs text-text-tertiary">Contexts</span>
-          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.contextCount}</span>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2">
-          <GitMerge className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          <span className="text-xs text-text-tertiary">Assemblies</span>
-          <span className="text-sm font-semibold tabular-nums text-text-primary">{stats.assemblyCount}</span>
-        </div>
-        {stats.mostActiveContext && (
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2 max-w-[220px]">
-            <Zap className="h-4 w-4 text-lifecycle-pending-text" aria-hidden="true" />
-            <span className="text-xs text-text-tertiary">Most active</span>
-            <span className="truncate text-sm font-medium text-text-primary">
-              {stats.mostActiveContext.name}
-            </span>
-            <span className="flex-shrink-0 text-xs tabular-nums text-text-tertiary">
-              ({stats.mostActiveContext.unitCount})
-            </span>
-          </div>
-        )}
-        {stats.templateCompletion && (
-          <div className="flex flex-col justify-center rounded-xl border border-border bg-bg-secondary px-3 py-2 min-w-[140px]">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="truncate text-xs text-text-tertiary">{stats.templateCompletion.templateName}</span>
-              <span className="flex-shrink-0 text-xs tabular-nums text-text-tertiary">
-                {stats.templateCompletion.answered}/{stats.templateCompletion.total}
+    <div className="px-6 pt-5 flex flex-col gap-3">
+      {/* Single row: stats + actions */}
+      <div className="flex items-center justify-between gap-4">
+        {/* Stats */}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Project statistics">
+          <StatChip icon={Layers} label="Units" value={stats.totalUnits} accent />
+          <StatChip icon={FolderOpen} label="Contexts" value={stats.contextCount} />
+          <StatChip icon={GitMerge} label="Assemblies" value={stats.assemblyCount} />
+          {stats.mostActiveContext && (
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-secondary px-2.5 py-1 max-w-[200px]">
+              <Zap className="h-3 w-3 text-lifecycle-pending-text shrink-0" aria-hidden="true" />
+              <span className="truncate text-xs text-text-secondary">
+                {stats.mostActiveContext.name}
+              </span>
+              <span className="shrink-0 text-[10px] tabular-nums text-text-tertiary">
+                {stats.mostActiveContext.unitCount}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-primary">
-              <div
-                className="h-full rounded-full bg-accent-primary transition-all"
-                style={{ width: `${stats.templateCompletion.pct}%` }}
-                role="progressbar"
-                aria-valuenow={stats.templateCompletion.pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`Template completion: ${stats.templateCompletion.pct}%`}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Quick actions */}
+        <div className="flex items-center gap-1.5 shrink-0" role="group" aria-label="Quick actions">
+          <QuickActionButton icon={Plus} label="Context" onClick={handleCreateContext} accent />
+          <QuickActionButton icon={Zap} label="Capture" onClick={handleStartCapture} />
+          <QuickActionButton icon={Network} label="Graph" onClick={handleViewGraph} />
+        </div>
       </div>
 
-      {/* Quick actions row */}
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Quick actions">
-        <QuickActionCard
-          icon={Plus}
-          label="Create Context"
-          description="Organize units by theme"
-          onClick={handleCreateContext}
-          accent
-        />
-        <QuickActionCard
-          icon={Zap}
-          label="Start Capture"
-          description="Add a new thought unit"
-          onClick={handleStartCapture}
-        />
-        <QuickActionCard
-          icon={Network}
-          label="View Graph"
-          description="Explore idea connections"
-          onClick={handleViewGraph}
-        />
-      </div>
+      {/* Template completion bar (if exists) */}
+      {stats.templateCompletion && (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-secondary px-3 py-1.5">
+          <span className="truncate text-xs text-text-tertiary">{stats.templateCompletion.templateName}</span>
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg-primary">
+            <div
+              className="h-full rounded-full bg-accent-primary transition-all"
+              style={{ width: `${stats.templateCompletion.pct}%` }}
+              role="progressbar"
+              aria-valuenow={stats.templateCompletion.pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Template completion: ${stats.templateCompletion.pct}%`}
+            />
+          </div>
+          <span className="shrink-0 text-[10px] tabular-nums text-text-tertiary">
+            {stats.templateCompletion.answered}/{stats.templateCompletion.total}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -314,33 +294,57 @@ function ContextOverviewGrid({ projectId, onCreateContext }: { projectId: string
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
-      {contexts.map((ctx: { id: string; name: string; description?: string | null; updatedAt: Date; _count?: { unitContexts?: number } }) => (
-        <button
-          key={ctx.id}
-          type="button"
-          onClick={() => setActiveContext(ctx.id)}
-          className="flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 text-left hover:shadow-hover hover:border-accent-primary/30 transition-all"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <FolderOpen className="h-4 w-4 text-accent-primary shrink-0" />
-            <span className="font-medium text-text-primary truncate">{ctx.name}</span>
-          </div>
-          {ctx.description && (
-            <p className="text-xs text-text-tertiary line-clamp-2">{ctx.description}</p>
-          )}
-          <div className="flex items-center gap-3 text-xs text-text-tertiary mt-auto pt-1">
-            <span className="flex items-center gap-1">
-              <Layers className="h-3 w-3" />
-              {ctx._count?.unitContexts ?? 0} units
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {new Date(ctx.updatedAt).toLocaleDateString()}
-            </span>
-          </div>
-        </button>
-      ))}
+    <div className="px-6 pb-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-text-secondary">Contexts</h2>
+        <span className="text-xs text-text-tertiary">{contexts.length} total</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {contexts.map((ctx: { id: string; name: string; description?: string | null; updatedAt: Date; _count?: { unitContexts?: number } }) => {
+          const unitCount = ctx._count?.unitContexts ?? 0;
+          const isActive = unitCount > 0;
+          return (
+            <button
+              key={ctx.id}
+              type="button"
+              onClick={() => setActiveContext(ctx.id)}
+              className={cn(
+                "group flex flex-col gap-2.5 rounded-xl border p-4 text-left transition-all",
+                "hover:-translate-y-px hover:shadow-hover",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+                isActive
+                  ? "border-border bg-bg-primary hover:border-accent-primary/30"
+                  : "border-dashed border-border/60 bg-bg-secondary/50 hover:border-border",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FolderOpen className={cn("h-4 w-4 shrink-0", isActive ? "text-accent-primary" : "text-text-tertiary")} />
+                  <span className="font-medium text-text-primary truncate">{ctx.name}</span>
+                </div>
+                {isActive && (
+                  <span className="shrink-0 rounded-full bg-accent-primary/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-accent-primary">
+                    {unitCount}
+                  </span>
+                )}
+              </div>
+              {ctx.description && (
+                <p className="text-xs text-text-tertiary line-clamp-2">{ctx.description}</p>
+              )}
+              <div className="flex items-center gap-3 text-[10px] text-text-tertiary mt-auto pt-0.5">
+                <span className="flex items-center gap-1">
+                  <Layers className="h-2.5 w-2.5" />
+                  {unitCount} unit{unitCount !== 1 ? "s" : ""}
+                </span>
+                <span className="flex items-center gap-1 ml-auto">
+                  <Clock className="h-2.5 w-2.5" />
+                  {new Date(ctx.updatedAt).toLocaleDateString()}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
