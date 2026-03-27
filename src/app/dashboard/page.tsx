@@ -13,6 +13,7 @@ import { GraphView } from "~/components/graph/GraphView";
 import { ThreadView } from "~/components/thread/ThreadView";
 import { ContextView } from "~/components/context/context-view";
 import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
+import { NavigateView } from "~/components/navigator/NavigateView";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
@@ -403,6 +404,12 @@ export default function DashboardPage() {
   if (viewMode === "assembly") {
     return (
       <AssemblyViewWithList projectId={projectId} assemblyId={activeAssemblyId} />
+    );
+  }
+
+  if (viewMode === "navigate" && activeContextId) {
+    return (
+      <NavigateView projectId={projectId} contextId={activeContextId} />
     );
   }
 

@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
+import { CATEGORY_COLORS, getRelationCategory } from "~/lib/relation-utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -44,28 +45,6 @@ interface RelationData {
   type: string;
   strength: number;
   direction: string;
-}
-
-// ─── Relation category → dot color ────────────────────────────────────
-
-const CATEGORY_COLORS: Record<string, string> = {
-  argument: "#3B82F6",               // blue-500
-  creative_research: "#8B5CF6",      // violet-500
-  structure_containment: "#6B7280",  // gray-500
-};
-
-function getRelationCategory(type: string): string {
-  const argumentTypes = [
-    "supports", "contradicts", "derives_from", "expands",
-    "references", "exemplifies", "defines", "questions",
-  ];
-  const creativeTypes = [
-    "inspires", "echoes", "transforms_into", "foreshadows",
-    "parallels", "contextualizes", "operationalizes",
-  ];
-  if (argumentTypes.includes(type)) return "argument";
-  if (creativeTypes.includes(type)) return "creative_research";
-  return "structure_containment";
 }
 
 // ─── Branch Point Indicator ───────────────────────────────────────────

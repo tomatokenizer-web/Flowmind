@@ -5,6 +5,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useLayoutStore } from "~/stores/layout-store";
 import { ContextView } from "~/components/context/context-view";
 import { GraphView } from "~/components/graph/GraphView";
+import { NavigateView } from "~/components/navigator/NavigateView";
 import { useProjectId } from "~/contexts/project-context";
 
 // ─── Page ────────────────────────────────────────────────────────────
@@ -35,6 +36,11 @@ export default function ContextPage({
         <GraphView projectId={projectId} />
       </section>
     );
+  }
+
+  // Render NavigateView when in navigate mode
+  if (viewMode === "navigate" && projectId) {
+    return <NavigateView projectId={projectId} contextId={id} />;
   }
 
   return (

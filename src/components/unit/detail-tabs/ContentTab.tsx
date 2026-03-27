@@ -1,0 +1,229 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Paperclip } from "lucide-react";
+import { api } from "~/trpc/react";
+import { RichTextEditor } from "~/components/editor/RichTextEditor";
+import { cn } from "~/lib/utils";
+import { UnitTypeSelector } from "~/components/unit/UnitTypeSelector";
+import { VersionHistory } from "~/components/unit/version-history";
+import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
+import { ResourceAttachmentStrip } from "~/components/unit/resource-attachment";
+import { ResourceUploadZone } from "~/components/unit/resource-upload";
+import { AudioDetailView } from "~/components/unit/audio-detail-view";
+import { EpistemicHumilityBanner } from "~/components/feedback/EpistemicHumilityBanner";
+import { toast } from "~/lib/toast";
+import type { UnitDetailData } from "~/components/panels/UnitDetailPanel";
+
+// Helper: derive resourceType from MIME type
+function mimeToResourceType(
+  mime: string,
+): "image" | "audio" | "video" | "code" | "table" | "link" | "diagram" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  if (mime === "text/csv" || mime === "application/vnd.ms-excel") return "table";
+  if (mime === "application/json" || mime.includes("javascript") || mime.includes("typescript")) return "code";
+  return "diagram";
+}
+
+interface ContentTabProps {
+  unit: UnitDetailData;
+  onContentChange?: (content: string) => void;
+  onLifecycleChange?: (lifecycle: string) => void;
+}
+
+export function ContentTab({ unit, onContentChange, onLifecycleChange }: ContentTabProps) {
+  const [localContent, setLocalContent] = useState(unit.content);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const utils = api.useUtils();
+
+  const uploadResource = api.resource.upload.useMutation({
+    onSuccess: () => {
+      void utils.unit.getById.invalidate({ id: unit.id });
+      void utils.resource.getByUnitId.invalidate({ unitId: unit.id });
+      setShowUpload(false);
+      toast.success("File attached successfully");
+    },
+    onError: (err) => {
+      toast.error("Upload failed", { description: err.message });
+    },
+  });
+
+  const handleFilesSelected = useCallback(
+    (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1] ?? "";
+        uploadResource.mutate({
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          resourceType: mimeToResourceType(file.type),
+          base64,
+          unitId: unit.id,
+        });
+      };
+      reader.readAsDataURL(file);
+    },
+    [unit.id, uploadResource],
+  );
+
+  // Sync local content when unit changes
+  useEffect(() => {
+    setLocalContent(unit.content);
+  }, [unit.id, unit.content]);
+
+  const handleContentChange = useCallback(
+    (html: string) => {
+      setLocalContent(html);
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        onContentChange?.(html);
+      }, 1000);
+    },
+    [onContentChange],
+  );
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  // Filter audio resources for the audio detail view
+  const audioResources = (unit.resources ?? []).filter(
+    (r) => r.resourceType === "audio",
+  );
+
+  // Strip HTML tags for word/char counts
+  const plainText = localContent.replace(/<[^>]*>/g, "");
+  const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+  const charCount = plainText.length;
+
+  return (
+    <div className="space-y-4">
+      {/* Unit type — clickable to change */}
+      <div className="flex items-center gap-2">
+        <UnitTypeSelector unitId={unit.id} currentType={unit.unitType} />
+        <AILifecycleBadge lifecycle={unit.lifecycle as "draft" | "pending" | "confirmed"} size="sm" />
+      </div>
+
+      {/* Audio detail view — shown when unit has audio resources */}
+      {audioResources.length > 0 && (
+        <div className="space-y-3">
+          {audioResources.map((resource) => (
+            <AudioDetailView
+              key={resource.id}
+              src={resource.url}
+              title={resource.fileName ?? "Audio recording"}
+              duration={
+                typeof resource.metadata?.duration === "number"
+                  ? resource.metadata.duration
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Rich text editor (Tiptap) */}
+      <div className="space-y-1">
+        <RichTextEditor
+          content={localContent}
+          onChange={handleContentChange}
+          editable
+          placeholder="Write your thought..."
+        />
+        <div className="flex items-center justify-between text-[11px] text-text-tertiary px-1">
+          <span>{wordCount} words</span>
+          <span>{charCount} characters</span>
+        </div>
+      </div>
+
+      {/* Epistemic humility notice */}
+      <EpistemicHumilityBanner content={localContent} unitId={unit.id} />
+
+      {/* Lifecycle controls */}
+      <div className="space-y-2">
+        <span className="text-xs font-medium text-text-secondary">Lifecycle</span>
+        <div className="flex items-center gap-2">
+          {(["draft", "pending", "confirmed"] as const).map((state) => (
+            <button
+              key={state}
+              type="button"
+              onClick={() => onLifecycleChange?.(state)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium",
+                "border transition-colors duration-fast",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-1",
+                "motion-reduce:transition-none",
+                unit.lifecycle === state
+                  ? "border-accent-primary bg-accent-primary/10 text-accent-primary"
+                  : "border-border bg-bg-primary text-text-secondary hover:bg-bg-hover",
+              )}
+              aria-pressed={unit.lifecycle === state}
+              aria-label={`Set lifecycle to ${state}`}
+            >
+              {state.charAt(0).toUpperCase() + state.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Resources */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+            <Paperclip className="h-3 w-3" aria-hidden="true" />
+            Resources
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowUpload((v) => !v)}
+            className={cn(
+              "flex items-center gap-1 rounded-md px-2 py-1 text-xs",
+              "border border-border text-text-secondary transition-colors",
+              "hover:bg-bg-hover hover:text-text-primary",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+              showUpload && "bg-bg-secondary",
+            )}
+            aria-label={showUpload ? "Hide upload zone" : "Attach file"}
+          >
+            <Paperclip className="h-3 w-3" aria-hidden="true" />
+            {showUpload ? "Cancel" : "Attach file"}
+          </button>
+        </div>
+
+        {showUpload && (
+          <div className="space-y-2">
+            <ResourceUploadZone
+              onFilesSelected={handleFilesSelected}
+              multiple={false}
+              disabled={uploadResource.isPending}
+              className="text-xs"
+            />
+            {uploadResource.isPending && (
+              <p className="text-center text-xs text-text-tertiary">Uploading…</p>
+            )}
+          </div>
+        )}
+
+        {unit.resources && unit.resources.length > 0 && (
+          <ResourceAttachmentStrip resources={unit.resources} />
+        )}
+      </div>
+
+      {/* Version History */}
+      <div className="border-t border-border pt-3">
+        <VersionHistory unitId={unit.id} currentContent={unit.content} />
+      </div>
+    </div>
+  );
+}

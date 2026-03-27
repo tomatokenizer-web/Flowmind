@@ -8,28 +8,7 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useGraphStore } from "~/stores/graphStore";
 import { UnitCard } from "~/components/unit/unit-card";
 import { Button } from "~/components/ui/button";
-
-// ── Relation category -> line color ──────────────────────────────
-
-const CATEGORY_COLORS: Record<string, string> = {
-  argument: "#3B82F6",
-  creative_research: "#8B5CF6",
-  structure_containment: "#6B7280",
-};
-
-function getRelationCategory(type: string): string {
-  const argumentTypes = [
-    "supports", "contradicts", "derives_from", "expands",
-    "references", "exemplifies", "defines", "questions",
-  ];
-  const creativeTypes = [
-    "inspires", "echoes", "transforms_into", "foreshadows",
-    "parallels", "contextualizes", "operationalizes",
-  ];
-  if (argumentTypes.includes(type)) return "argument";
-  if (creativeTypes.includes(type)) return "creative_research";
-  return "structure_containment";
-}
+import { CATEGORY_COLORS, getRelationCategory } from "~/lib/relation-utils";
 
 // ── Framer Motion variants ───────────────────────────────────────
 

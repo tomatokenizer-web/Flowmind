@@ -21,6 +21,7 @@ import { AILifecycleBadge } from "./lifecycle-badge";
 import { AIBadge } from "./ai-badge";
 import { ApproveRejectButtons } from "./approve-reject-buttons";
 import { UnitSplitDialog } from "./UnitSplitDialog";
+import { LinkToDialog } from "./LinkToDialog";
 import type { SplitReattributionProposal } from "~/server/ai";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -144,6 +145,7 @@ export function UnitCard({
 }: UnitCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const openPanel = usePanelStore((s) => s.openPanel);
   const openSpotlight = usePanelStore((s) => s.openSpotlight);
@@ -238,11 +240,15 @@ export function UnitCard({
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}
-      onClick={() => { openSpotlight(unit.id); onClick?.(unit); }}
+      onClick={() => { openPanel(unit.id); onClick?.(unit); }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === "Enter") {
           e.preventDefault();
+          openPanel(unit.id);
           onClick?.(unit);
+        } else if (e.key === " ") {
+          e.preventDefault();
+          openSpotlight(unit.id);
         }
       }}
       onHoverStart={() => setIsHovered(true)}
@@ -280,7 +286,11 @@ export function UnitCard({
               <PerspectiveImportanceBadge value={unit.perspectiveImportance} />
             )}
           </div>
-          <div className="flex items-center gap-2">
+          {/* Hover-only actions — standard variant hides until hover */}
+          <div className={cn(
+            "flex items-center gap-2",
+            variant === "standard" && "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+          )}>
             {variant !== "compact" && (unit.relationCount ?? 0) > 0 && (
               <span
                 className="inline-flex items-center gap-1 text-xs text-text-secondary"
@@ -322,6 +332,27 @@ export function UnitCard({
               </span>
             )}
 
+            {/* Link to... button — opens manual relation dialog */}
+            {variant !== "compact" && (
+              <button
+                type="button"
+                aria-label="Link to another unit"
+                title="Link to..."
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLinkDialogOpen(true);
+                }}
+                className={cn(
+                  "inline-flex items-center justify-center rounded p-0.5",
+                  "text-text-tertiary hover:text-accent-primary hover:bg-bg-hover",
+                  "transition-colors duration-fast",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+                )}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+
             {/* Pin button */}
             <button
               type="button"
@@ -329,7 +360,7 @@ export function UnitCard({
               onClick={(e) => { e.stopPropagation(); updateMutation.mutate({ id: unit.id, pinned: !unit.pinned }); }}
               className={cn(
                 "inline-flex items-center justify-center rounded p-0.5 transition-colors",
-                unit.pinned ? "text-accent-primary" : "text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-accent-primary",
+                unit.pinned ? "text-accent-primary" : "text-text-tertiary hover:text-accent-primary",
               )}
             >
               <Pin className="h-3.5 w-3.5" />
@@ -350,7 +381,6 @@ export function UnitCard({
                   "text-text-tertiary hover:text-accent-danger hover:bg-bg-hover",
                   "transition-colors duration-fast",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-danger",
-                  "opacity-0 group-hover:opacity-100",
                 )}
               >
                 <X className="h-3.5 w-3.5" />
@@ -372,7 +402,6 @@ export function UnitCard({
                   "text-text-tertiary hover:text-accent-danger hover:bg-bg-hover",
                   "transition-colors duration-fast",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-danger",
-                  "opacity-0 group-hover:opacity-100",
                 )}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -396,49 +425,55 @@ export function UnitCard({
         {/* Metadata row — standard + expanded */}
         {variant !== "compact" && (
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            {/* Created date */}
+            {/* Created date — always visible */}
             <span className="inline-flex items-center gap-1 text-xs text-text-tertiary">
               <Clock className="h-3 w-3" aria-hidden="true" />
               {formatDistanceToNow(unit.createdAt, { addSuffix: true })}
             </span>
 
-            {/* Lifecycle badge — new AILifecycleBadge for draft/pending/confirmed */}
+            {/* Lifecycle badge — always visible */}
             <AILifecycleBadge lifecycle={unit.lifecycle} size="sm" />
 
-            {/* Branch potential — clickable popover with live computed score */}
-            <BranchPotentialPopover unitId={unit.id}>
-              {(score, reasons) => (
-                <button
-                  type="button"
-                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded"
-                >
-                  <BranchPotentialDots score={score} reasons={reasons} />
-                </button>
+            {/* Hover-only metadata — standard variant fades in on hover */}
+            <div className={cn(
+              "contents",
+              variant === "standard" && "[&>*]:opacity-0 [&>*]:group-hover:opacity-100 [&>*]:transition-opacity [&>*]:duration-150",
+            )}>
+              {/* Branch potential — clickable popover with live computed score */}
+              <BranchPotentialPopover unitId={unit.id}>
+                {(score, reasons) => (
+                  <button
+                    type="button"
+                    className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded"
+                  >
+                    <BranchPotentialDots score={score} reasons={reasons} />
+                  </button>
+                )}
+              </BranchPotentialPopover>
+
+              {/* Flow alert */}
+              <FlowAlertBadge unitType={unit.unitType} relationCount={unit.relationCount ?? 0} />
+
+              {/* Inline nudge hints (client-side pattern matching, no AI) */}
+              <NudgeBadge
+                unitType={unit.unitType}
+                content={unit.content}
+                lifecycle={unit.lifecycle}
+                relationCount={unit.relationCount ?? 0}
+              />
+
+              {/* Drift indicator */}
+              <DriftIndicator driftScore={unit.driftScore ?? 0} />
+
+              {/* ThoughtRank importance bar */}
+              {(unit.importance ?? 0) > 0.1 && (
+                <div className="h-0.5 w-12 rounded-full bg-bg-secondary overflow-hidden" title={`Importance: ${Math.round((unit.importance ?? 0) * 100)}%`}>
+                  <div className="h-full bg-accent-primary rounded-full" style={{ width: `${(unit.importance ?? 0) * 100}%` }} />
+                </div>
               )}
-            </BranchPotentialPopover>
+            </div>
 
-            {/* Flow alert */}
-            <FlowAlertBadge unitType={unit.unitType} relationCount={unit.relationCount ?? 0} />
-
-            {/* Inline nudge hints (client-side pattern matching, no AI) */}
-            <NudgeBadge
-              unitType={unit.unitType}
-              content={unit.content}
-              lifecycle={unit.lifecycle}
-              relationCount={unit.relationCount ?? 0}
-            />
-
-            {/* Drift indicator */}
-            <DriftIndicator driftScore={unit.driftScore ?? 0} />
-
-            {/* ThoughtRank importance bar */}
-            {(unit.importance ?? 0) > 0.1 && (
-              <div className="h-0.5 w-12 rounded-full bg-bg-secondary overflow-hidden" title={`Importance: ${Math.round((unit.importance ?? 0) * 100)}%`}>
-                <div className="h-full bg-accent-primary rounded-full" style={{ width: `${(unit.importance ?? 0) * 100}%` }} />
-              </div>
-            )}
-
-            {/* Context tags — placeholder */}
+            {/* Context tags — always visible */}
             {unit.contexts?.map((ctx) => (
               <span
                 key={ctx}
@@ -557,6 +592,14 @@ export function UnitCard({
           unitType: unit.unitType,
         }}
         onConfirm={handleSplitConfirm}
+      />
+
+      {/* Link to dialog */}
+      <LinkToDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        sourceUnit={{ id: unit.id, content: unit.content }}
+        projectId={projectId}
       />
     </motion.article>
   );

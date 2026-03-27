@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText } from "lucide-react";
+import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
 import { usePanelStore } from "~/stores/panel-store";
+import { useAIPanelStore } from "~/stores/ai-panel-store";
 import { Button } from "~/components/ui/button";
 import { Breadcrumb, type BreadcrumbSegment } from "~/components/navigation/Breadcrumb";
 // CompletenessCompass removed — percentage is meaningless without project-level objectives
@@ -18,6 +19,7 @@ const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: stri
   { mode: "graph", icon: GitBranch, label: "Graph" },
   { mode: "thread", icon: List, label: "Thread" },
   { mode: "assembly", icon: BookOpen, label: "Assembly" },
+  { mode: "navigate", icon: Compass, label: "Navigate" },
 ];
 
 interface ToolbarProps {
@@ -41,6 +43,8 @@ export function Toolbar({
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const panelIsOpen = usePanelStore((s) => s.isOpen);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
+  const aiPanelOpen = useAIPanelStore((s) => s.aiPanelOpen);
+  const toggleAIPanel = useAIPanelStore((s) => s.toggleAIPanel);
 
   // Fetch context name for breadcrumb when a context is active
   const { data: contextData } = api.context.getById.useQuery(
@@ -180,6 +184,21 @@ export function Toolbar({
             </button>
           ))}
         </div>
+      )}
+
+      {/* AI Command Panel button */}
+      {!focusMode && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleAIPanel}
+          aria-label="AI Commands"
+          aria-pressed={aiPanelOpen}
+          title="AI Commands"
+          className={cn("h-9 w-9 transition-colors", aiPanelOpen && "text-accent-primary bg-accent-primary/10")}
+        >
+          <Sparkles className="h-4 w-4" />
+        </Button>
       )}
 
       {/* Search button */}

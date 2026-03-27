@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Settings,
   Link2,
-  Compass,
   LogOut,
 } from "lucide-react";
 import Link from "next/link";
@@ -14,40 +13,29 @@ import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
-import { useLayoutStore } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 import { Button } from "~/components/ui/button";
 import { ContextTree } from "~/components/context/context-tree";
 import { ProjectSelector } from "~/components/project/ProjectSelector";
-import { NavigatorPanel } from "~/components/navigator/NavigatorPanel";
 import { ExternalImportDialog } from "~/components/import/ExternalImportDialog";
-import { DriftPanel } from "~/components/drift/DriftPanel";
-import { SimilarUnitsPanel } from "~/components/feedback/SimilarUnitsPanel";
-import { OrphanRecoveryPanel } from "~/components/feedback/OrphanRecoveryPanel";
-import { IncubationQueue } from "~/components/incubation/IncubationQueue";
-
-const SIDEBAR_WIDTH = 260;
-const SIDEBAR_COLLAPSED_WIDTH = 60;
+import { AttentionPanel } from "~/components/sidebar/AttentionPanel";
 
 interface SidebarProps {
   className?: string;
 }
 
 export function Sidebar({ className }: SidebarProps) {
-  const sidebarOpen = useLayoutStore((s) => s.sidebarOpen);
-  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar);
   const sidebarWidth = useSidebarStore((s) => s.sidebarWidth);
+  const toggleSidebar = useSidebarStore((s) => s.toggleSidebar);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
   const pathname = usePathname();
   const [importOpen, setImportOpen] = React.useState(false);
 
-  const isExpanded = sidebarOpen && sidebarWidth !== 0;
-  const isCollapsed = !sidebarOpen || sidebarWidth === 60;
+  const isExpanded = sidebarWidth === 260;
+  const isCollapsed = sidebarWidth === 60;
   const isHidden = sidebarWidth === 0;
-
-  const width = isHidden ? 0 : isExpanded ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
 
   return (
     <motion.nav
@@ -58,7 +46,7 @@ export function Sidebar({ className }: SidebarProps) {
         isHidden && "overflow-hidden",
         className,
       )}
-      animate={{ width }}
+      animate={{ width: sidebarWidth }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
     >
       {/* Sidebar header */}
@@ -101,34 +89,13 @@ export function Sidebar({ className }: SidebarProps) {
         {/* Context tree */}
         <ContextTree projectId={projectId} collapsed={isCollapsed} />
 
-        {/* Navigator panel — separate section from contexts */}
-        {isExpanded && activeContextId && projectId && (
-          <div className="border-t border-border">
-            <NavigatorPanel contextId={activeContextId} projectId={projectId} />
-          </div>
-        )}
-        {isCollapsed && activeContextId && (
-          <div className="border-t border-border flex items-center justify-center py-2">
-            <Compass className="h-5 w-5 text-text-tertiary" aria-label="Navigators" />
-          </div>
-        )}
-
-        {/* Incubation queue — shows units awaiting triage */}
-        <IncubationQueue collapsed={isCollapsed} />
-
-        {/* Orphan recovery panel (8.3) — renders null internally when count === 0 */}
-        {projectId && activeContextId && (
-          <OrphanRecoveryPanel projectId={projectId} collapsed={isCollapsed} />
-        )}
-
-        {/* Similar units panel (8.2) — renders null internally when count === 0 */}
-        {projectId && activeContextId && (
-          <SimilarUnitsPanel projectId={projectId} collapsed={isCollapsed} />
-        )}
-
-        {/* Drift detection panel (8.7) — renders null internally when driftCount === 0 */}
-        {projectId && activeContextId && (
-          <DriftPanel projectId={projectId} collapsed={isCollapsed} />
+        {/* Attention panel — consolidates Incubating, Orphans, Similar, Drift */}
+        {projectId && (
+          <AttentionPanel
+            projectId={projectId}
+            activeContextId={activeContextId}
+            collapsed={isCollapsed}
+          />
         )}
       </div>
 

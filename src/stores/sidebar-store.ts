@@ -5,7 +5,15 @@ export type SidebarWidth = 260 | 60 | 0;
 interface SidebarState {
   /** Sidebar width: 260 expanded, 60 collapsed (icon-only), 0 hidden */
   sidebarWidth: SidebarWidth;
-  /** Currently active context ID, null = "All Units" (no filter) */
+  /**
+   * Currently active context ID, null = "All Units" (no filter).
+   *
+   * NOTE: This is app-level routing state (which context the user has selected),
+   * not sidebar UI state. Ideally this belongs in a dedicated navigation/routing
+   * store (e.g. projectStore). It lives here for historical reasons and because
+   * it is co-located with the sidebar's expandedNodes tree state. Consider
+   * extracting to projectStore or a new navigationStore in a future refactor.
+   */
   activeContextId: string | null;
   /** Set of expanded tree node IDs */
   expandedNodes: Set<string>;

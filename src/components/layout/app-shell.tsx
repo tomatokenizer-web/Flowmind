@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { useLayoutStore } from "~/stores/layout-store";
 import { useFocusModeStore } from "~/stores/focusModeStore";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
@@ -11,12 +10,13 @@ import { CaptureBar } from "~/components/unit/capture-bar";
 import { CaptureOverlay } from "~/components/unit/capture-mode";
 import { CommandPalette } from "~/components/search";
 import { UnitSpotlight } from "~/components/unit/UnitSpotlight";
+import { AICommandPanel } from "~/components/ai/AICommandPanel";
 import { useProjectId } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
-  const setSidebarOpen = useLayoutStore((s) => s.setSidebarOpen);
+  const setSidebarWidth = useSidebarStore((s) => s.setSidebarWidth);
   const focusMode = useFocusModeStore((s) => s.focusMode);
   const projectId = useProjectId();
   const activeContextId = useSidebarStore((s) => s.activeContextId);
@@ -25,15 +25,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const xl = window.matchMedia("(min-width: 1280px)");
     const lg = window.matchMedia("(min-width: 1024px)");
     function handleResize() {
-      if (xl.matches) { setSidebarOpen(true); setMobileMenuOpen(false); }
-      else if (lg.matches) { setSidebarOpen(false); setMobileMenuOpen(false); }
-      else { setSidebarOpen(false); setMobileMenuOpen(false); }
+      if (xl.matches) { setSidebarWidth(260); setMobileMenuOpen(false); }
+      else if (lg.matches) { setSidebarWidth(60); setMobileMenuOpen(false); }
+      else { setSidebarWidth(60); setMobileMenuOpen(false); }
     }
     handleResize();
     xl.addEventListener("change", handleResize);
     lg.addEventListener("change", handleResize);
     return () => { xl.removeEventListener("change", handleResize); lg.removeEventListener("change", handleResize); };
-  }, [setSidebarOpen]);
+  }, [setSidebarWidth]);
 
   React.useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -116,6 +116,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
       <CommandPalette />
       <UnitSpotlight />
+      <AICommandPanel />
     </div>
   );
 }

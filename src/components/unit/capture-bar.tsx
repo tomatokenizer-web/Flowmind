@@ -32,17 +32,17 @@ export function CaptureBar() {
             open();
             announceToScreenReader("Capture mode activated");
           }}
-          className="group flex items-center gap-2.5 rounded-full border border-[#D2D2D7] bg-white/90 px-5 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-md transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+          className="group flex items-center gap-2.5 rounded-full border border-border bg-bg-surface/90 px-5 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-md transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           aria-label="Open capture mode (Cmd+N)"
         >
           <Feather
-            className="h-4 w-4 text-[#0071E3] transition-transform duration-150 group-hover:scale-110 motion-reduce:group-hover:scale-100"
+            className="h-4 w-4 text-accent-primary transition-transform duration-150 group-hover:scale-110 motion-reduce:group-hover:scale-100"
             aria-hidden="true"
           />
-          <span className="text-sm font-medium text-[#1D1D1F]">
+          <span className="text-sm font-medium text-text-primary">
             Capture a thought
           </span>
-          <kbd className="ml-1 rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs text-[#AEAEB2]">
+          <kbd className="ml-1 rounded bg-bg-secondary px-1.5 py-0.5 text-xs text-text-tertiary">
             ⌘N
           </kbd>
         </button>
@@ -53,10 +53,10 @@ export function CaptureBar() {
             openWithAudio();
             announceToScreenReader("Audio capture mode activated");
           }}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-[#D2D2D7] bg-white/90 shadow-[0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-md transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-bg-surface/90 shadow-[0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-md transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           aria-label="Start audio capture"
         >
-          <Mic className="h-4 w-4 text-[#0071E3]" aria-hidden="true" />
+          <Mic className="h-4 w-4 text-accent-primary" aria-hidden="true" />
         </button>
       </div>
     </motion.div>
