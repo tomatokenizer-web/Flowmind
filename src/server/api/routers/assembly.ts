@@ -68,6 +68,29 @@ export const assemblyRouter = createTRPCRouter({
     }),
 
   /**
+   * List all assemblies that contain a given unit.
+   */
+  listByUnit: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.assembly.findMany({
+        where: {
+          project: { userId: ctx.session.user.id! },
+          items: { some: { unitId: input.unitId } },
+        },
+        select: {
+          id: true,
+          name: true,
+          templateType: true,
+          items: {
+            where: { unitId: input.unitId },
+            select: { position: true },
+          },
+        },
+      });
+    }),
+
+  /**
    * Get assembly by ID with ordered items and unit data
    */
   getById: protectedProcedure

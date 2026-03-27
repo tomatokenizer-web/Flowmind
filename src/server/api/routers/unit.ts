@@ -291,4 +291,40 @@ export const unitRouter = createTRPCRouter({
       const service = createUnitService(ctx.db);
       return service.delete(input.id, ctx.session.user.id!);
     }),
+
+  /**
+   * Get all contexts a unit belongs to, with unit count per context.
+   */
+  getContextsForUnit: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify the unit belongs to the authenticated user
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+
+      const unitContexts = await ctx.db.unitContext.findMany({
+        where: { unitId: input.unitId },
+        include: {
+          context: {
+            select: {
+              id: true,
+              name: true,
+              _count: { select: { unitContexts: true } },
+            },
+          },
+        },
+      });
+
+      return unitContexts.map((uc) => ({
+        id: uc.context.id,
+        name: uc.context.name,
+        unitCount: uc.context._count.unitContexts,
+        assignedAt: uc.assignedAt,
+      }));
+    }),
 });

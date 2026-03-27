@@ -80,6 +80,27 @@ export const navigatorRouter = createTRPCRouter({
       return ctx.db.navigator.delete({ where: { id: input.id } });
     }),
 
+  /**
+   * List all navigators whose path contains a given unit.
+   */
+  listByUnit: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.navigator.findMany({
+        where: {
+          context: { project: { userId: ctx.session.user.id! } },
+          path: { has: input.unitId },
+        },
+        select: {
+          id: true,
+          name: true,
+          purpose: true,
+          contextId: true,
+          path: true,
+        },
+      });
+    }),
+
   addUnit: protectedProcedure
     .input(z.object({ navigatorId: z.string().uuid(), unitId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

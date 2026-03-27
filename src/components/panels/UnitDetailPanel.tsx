@@ -11,6 +11,7 @@ import {
   Compass,
   ChevronDown,
   GitCommitHorizontal,
+  Network,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -28,6 +29,7 @@ import { ContentTab } from "~/components/unit/detail-tabs/ContentTab";
 import { RelationsTab } from "~/components/unit/detail-tabs/RelationsTab";
 import { MetadataTab } from "~/components/unit/detail-tabs/MetadataTab";
 import { AITab } from "~/components/unit/detail-tabs/AITab";
+import { ConnectionsTab } from "~/components/unit/detail-tabs/ConnectionsTab";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -83,6 +85,7 @@ function PanelSkeleton() {
 // ─── Tab config ───────────────────────────────────────────────────────
 
 const TAB_CONFIG: { value: DetailTab; label: string; Icon: React.ElementType }[] = [
+  { value: "connections", label: "Connections", Icon: Network },
   { value: "content", label: "Content", Icon: FileText },
   { value: "relations", label: "Relations", Icon: Link2 },
   { value: "metadata", label: "Metadata", Icon: Settings2 },
@@ -216,6 +219,13 @@ export function UnitDetailPanel({
 
           <ScrollArea className="flex-1">
             <div className="p-space-4">
+              <TabsContent value="connections" className="mt-0">
+                <ConnectionsTab
+                  unitId={unit.id}
+                  projectId={unit.projectId ?? ""}
+                />
+              </TabsContent>
+
               <TabsContent value="content" className="mt-0">
                 <ContentTab
                   unit={unit}
