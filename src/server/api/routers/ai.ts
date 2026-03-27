@@ -1080,20 +1080,12 @@ Focus on academic, scientific, or well-established knowledge sources. Do not inv
         .join("\n");
 
       const { getAIProvider } = await import("@/server/ai/provider");
-      const { z: zod } = await import("zod");
       const provider = getAIProvider();
 
-      const BulkRelationsSchema = zod.object({
-        relations: zod.array(zod.object({
-          sourceIndex: zod.number(),
-          targetIndex: zod.number(),
-          type: zod.enum([
-            "supports", "contradicts", "derives_from", "expands",
-            "references", "exemplifies", "defines", "questions",
-          ]),
-          strength: zod.number().min(0).max(1),
-        })),
-      });
+      const VALID_TYPES = new Set([
+        "supports", "contradicts", "derives_from", "expands",
+        "references", "exemplifies", "defines", "questions",
+      ]);
 
       const prompt = `Analyze ALL the following thought units and identify meaningful relations between them.
 Find as many genuine relations as possible — aim for comprehensive coverage.
@@ -1101,65 +1093,38 @@ Find as many genuine relations as possible — aim for comprehensive coverage.
 Units:
 ${unitDescriptions}
 
-Available relation types:
-- supports: Logically backs the other unit's claim
-- contradicts: Logically conflicts with the other
-- derives_from: Is logically derived from the other
-- expands: Develops the other more concretely
-- references: References the other as background
-- exemplifies: Is a concrete instance of the other's principle
-- defines: Defines a key concept used in the other
-- questions: Raises doubt about the other
+Available relation types: supports, contradicts, derives_from, expands, references, exemplifies, defines, questions
 
-For each relation, provide:
-- sourceIndex: index of source unit
-- targetIndex: index of target unit
-- type: one of the relation types above
-- strength: 0.0-1.0 (how strong the relation is)
+Return ONLY a JSON object with this exact format (no other text):
+{"relations":[{"sourceIndex":0,"targetIndex":1,"type":"supports","strength":0.8}]}
 
-Return ALL meaningful relations you can find. Be thorough — even weak relations (0.3+) are valuable for navigation.`;
+Each relation: sourceIndex (int), targetIndex (int), type (one of the types above), strength (0.0-1.0).
+Be thorough — even weak relations (0.3+) are valuable for navigation.`;
 
       try {
-        const result = await provider.generateStructured<{
-          relations: Array<{ sourceIndex: number; targetIndex: number; type: string; strength: number }>;
-        }>(prompt, {
+        const raw = await provider.generateText(prompt, {
           temperature: 0.3,
           maxTokens: 2048,
-          zodSchema: BulkRelationsSchema,
-          schema: {
-            name: "BulkRelations",
-            description: "Bulk relation analysis between all units",
-            properties: {
-              relations: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    sourceIndex: { type: "number" },
-                    targetIndex: { type: "number" },
-                    type: {
-                      type: "string",
-                      enum: [
-                        "supports", "contradicts", "derives_from", "expands",
-                        "references", "exemplifies", "defines", "questions",
-                      ],
-                    },
-                    strength: { type: "number", minimum: 0, maximum: 1 },
-                  },
-                  required: ["sourceIndex", "targetIndex", "type", "strength"],
-                },
-              },
-            },
-            required: ["relations"],
-          },
         });
 
+        // Extract JSON from response (may have markdown fences)
+        const jsonMatch = raw.match(/\{[\s\S]*"relations"[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error("AI response did not contain valid JSON");
+        }
+        const result = JSON.parse(jsonMatch[0]) as {
+          relations: Array<{ sourceIndex: number; targetIndex: number; type: string; strength: number }>;
+        };
+
         // Filter valid relations and deduplicate against existing
-        const toCreate = result.relations
+        const relations = Array.isArray(result.relations) ? result.relations : [];
+        const toCreate = relations
           .filter((r) => {
+            if (typeof r.sourceIndex !== "number" || typeof r.targetIndex !== "number") return false;
             if (r.sourceIndex < 0 || r.sourceIndex >= units.length) return false;
             if (r.targetIndex < 0 || r.targetIndex >= units.length) return false;
             if (r.sourceIndex === r.targetIndex) return false;
+            if (!VALID_TYPES.has(r.type)) return false;
             const srcId = units[r.sourceIndex]!.id;
             const tgtId = units[r.targetIndex]!.id;
             return !existingPairs.has(`${srcId}|${tgtId}`);
@@ -1181,7 +1146,7 @@ Return ALL meaningful relations you can find. Be thorough — even weak relation
         return {
           created: createdCount,
           analyzed: units.length,
-          skippedDuplicates: result.relations.length - toCreate.length,
+          skippedDuplicates: relations.length - toCreate.length,
         };
       } catch (error: unknown) {
         handleAIError(error, "Auto-relate units");
