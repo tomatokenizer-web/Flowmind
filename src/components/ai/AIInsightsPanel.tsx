@@ -50,7 +50,7 @@ export function AIInsightsPanel({
   // Summary query (auto-fetches)
   const summaryQuery = api.ai.summarizeContext.useQuery(
     { contextId },
-    { enabled: activeTab === "summary" }
+    { enabled: activeTab === "summary", retry: false }
   );
 
   // Mutations for other insights (on-demand)
