@@ -6,6 +6,7 @@ import { useLayoutStore } from "~/stores/layout-store";
 import { ContextView } from "~/components/context/context-view";
 import { GraphView } from "~/components/graph/GraphView";
 import { NavigateView } from "~/components/navigator/NavigateView";
+import { AttentionView } from "~/components/attention/AttentionView";
 import { useProjectId } from "~/contexts/project-context";
 
 // ─── Page ────────────────────────────────────────────────────────────
@@ -41,6 +42,11 @@ export default function ContextPage({
   // Render NavigateView when in navigate mode
   if (viewMode === "navigate" && projectId) {
     return <NavigateView projectId={projectId} contextId={id} />;
+  }
+
+  // Render AttentionView when in attention mode
+  if (viewMode === "attention" && projectId) {
+    return <AttentionView projectId={projectId} />;
   }
 
   return (

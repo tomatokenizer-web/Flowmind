@@ -145,8 +145,19 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
   });
 
   const deleteMutation = api.context.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // Clear active context if it was the deleted one
+      if (useSidebarStore.getState().activeContextId === variables.id) {
+        useSidebarStore.getState().setActiveContext(null);
+      }
+      // Invalidate all queries that reference contexts
       void utils.context.list.invalidate();
+      void utils.context.getById.invalidate({ id: variables.id });
+      void utils.navigator.list.invalidate();
+      void utils.unit.list.invalidate();
+      if (projectId) {
+        void utils.project.getProjectStats.invalidate({ projectId });
+      }
     },
   });
 
@@ -171,9 +182,12 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
 
   const deleteContext = useCallback(
     async (id: string) => {
+      // Clear active context BEFORE deletion to prevent stale queries
       if (activeContextId === id) {
         setActiveContext(null);
       }
+      // Small delay to let React re-render and stop dependent queries
+      await new Promise((r) => setTimeout(r, 50));
       return deleteMutation.mutateAsync({ id });
     },
     [deleteMutation, activeContextId, setActiveContext],

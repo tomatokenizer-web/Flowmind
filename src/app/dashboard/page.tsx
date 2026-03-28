@@ -19,6 +19,7 @@ import { CompletenessCompass } from "~/components/project/CompletenessCompass";
 import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
 import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
 import { FormalizeWizard } from "~/components/formalize/FormalizeWizard";
+import { AttentionView } from "~/components/attention/AttentionView";
 
 // ─── Project stats + quick actions bar ────────────────────────────────
 
@@ -415,6 +416,10 @@ export default function DashboardPage() {
     return (
       <NavigateView projectId={projectId} contextId={activeContextId} />
     );
+  }
+
+  if (viewMode === "attention") {
+    return <AttentionView projectId={projectId} />;
   }
 
   return (

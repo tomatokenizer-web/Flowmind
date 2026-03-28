@@ -343,6 +343,23 @@ export function createUnitService(db: PrismaClient) {
     },
 
     async delete(id: string, userId: string) {
+      // Clean up navigator paths that reference this unit
+      const navigatorsWithUnit = await db.navigator.findMany({
+        where: { path: { has: id } },
+        select: { id: true, path: true },
+      });
+      for (const nav of navigatorsWithUnit) {
+        await db.navigator.update({
+          where: { id: nav.id },
+          data: { path: nav.path.filter((uid) => uid !== id) },
+        });
+      }
+
+      // Clean up orphaned assembly items
+      await db.assemblyItem.deleteMany({
+        where: { unitId: id },
+      });
+
       const unit = await repo.delete(id);
 
       await eventBus.emit({

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ViewMode = "canvas" | "graph" | "thread" | "assembly" | "navigate";
+export type ViewMode = "canvas" | "graph" | "thread" | "assembly" | "navigate" | "attention";
 
 interface LayoutState {
   /** Currently active view mode */

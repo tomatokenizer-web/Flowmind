@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles, Bell } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -20,6 +20,7 @@ const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: stri
   { mode: "thread", icon: List, label: "Thread" },
   { mode: "assembly", icon: BookOpen, label: "Assembly" },
   { mode: "navigate", icon: Compass, label: "Navigate" },
+  { mode: "attention", icon: Bell, label: "Attention" },
 ];
 
 interface ToolbarProps {

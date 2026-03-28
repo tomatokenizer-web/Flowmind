@@ -146,9 +146,21 @@ export function ContextView({ projectId, className }: ContextViewProps) {
   });
 
   const deleteUnitMutation = api.unit.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // Close panel if the deleted unit was open
+      const panelState = usePanelStore.getState();
+      if (panelState.isOpen && panelState.selectedUnitId === variables.id) {
+        panelState.closePanel();
+      }
       void utils.unit.list.invalidate({ projectId });
       void utils.unit.hasAny.invalidate();
+      void utils.relation.listByUnit.invalidate();
+      void utils.relation.listByUnits.invalidate();
+      if (activeContextId) {
+        void utils.context.getById.invalidate({ id: activeContextId });
+        void utils.navigator.list.invalidate({ contextId: activeContextId });
+        void utils.context.getContextStats.invalidate({ contextId: activeContextId });
+      }
     },
     onError: (err) => toast.error("Failed to delete unit", { description: err.message }),
   });
