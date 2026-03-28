@@ -18,6 +18,18 @@ async function verifyContextOwnership(db: PrismaClient, contextId: string, userI
   return ctx;
 }
 
+/** Verify a project belongs to the authenticated user. */
+async function verifyProjectOwnership(db: PrismaClient, projectId: string, userId: string) {
+  const project = await db.project.findFirst({
+    where: { id: projectId, userId },
+    select: { id: true },
+  });
+  if (!project) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+  }
+  return project;
+}
+
 /** Verify a navigator belongs to a context owned by the authenticated user. */
 async function verifyNavigatorOwnership(db: PrismaClient, navigatorId: string, userId: string) {
   const nav = await db.navigator.findFirst({
@@ -33,28 +45,62 @@ async function verifyNavigatorOwnership(db: PrismaClient, navigatorId: string, u
 
 export const navigatorRouter = createTRPCRouter({
   list: protectedProcedure
-    .input(z.object({ contextId: z.string().uuid() }))
+    .input(z.object({
+      contextId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional(),
+    }))
     .query(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
-      return ctx.db.navigator.findMany({
-        where: { contextId: input.contextId },
-        orderBy: { name: "asc" },
-      });
+      if (input.projectId) {
+        await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+        return ctx.db.navigator.findMany({
+          where: { context: { projectId: input.projectId } },
+          orderBy: { name: "asc" },
+        });
+      }
+      if (input.contextId) {
+        await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+        return ctx.db.navigator.findMany({
+          where: { contextId: input.contextId },
+          orderBy: { name: "asc" },
+        });
+      }
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Either projectId or contextId is required" });
     }),
 
   create: protectedProcedure
     .input(z.object({
       name: z.string().min(1).max(100),
-      contextId: z.string().uuid(),
+      contextId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional(),
       purpose: z.string().max(30).optional(),
       path: z.array(z.string().uuid()).default([]),
     }))
     .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      let contextId = input.contextId;
+
+      if (!contextId && input.projectId) {
+        // Auto-pick the first context in the project
+        await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+        const firstContext = await ctx.db.context.findFirst({
+          where: { projectId: input.projectId },
+          select: { id: true },
+          orderBy: { createdAt: "asc" },
+        });
+        if (!firstContext) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Project has no contexts. Create a context first." });
+        }
+        contextId = firstContext.id;
+      }
+
+      if (!contextId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Either projectId or contextId is required" });
+      }
+
+      await verifyContextOwnership(ctx.db, contextId, ctx.session.user.id!);
       return ctx.db.navigator.create({
         data: {
           name: input.name,
-          contextId: input.contextId,
+          contextId,
           purpose: input.purpose,
           path: input.path,
         },
@@ -167,16 +213,46 @@ export const navigatorRouter = createTRPCRouter({
    * - Debate (contradicts/questions)
    */
   analyzeAndGenerate: protectedProcedure
-    .input(z.object({ contextId: z.string().uuid() }))
+    .input(z.object({
+      contextId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      let resolvedContextId = input.contextId;
 
-      // Get all units in this context
-      const contextUnits = await ctx.db.unitContext.findMany({
-        where: { contextId: input.contextId },
-        select: { unitId: true },
-      });
-      const unitIds = contextUnits.map((u) => u.unitId);
+      // When project-scoped, gather units from ALL contexts in the project
+      let unitIds: string[];
+      if (input.projectId) {
+        await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+        // Get all units in the project
+        const projectUnits = await ctx.db.unit.findMany({
+          where: { projectId: input.projectId },
+          select: { id: true },
+        });
+        unitIds = projectUnits.map((u) => u.id);
+
+        // Pick a context for storing generated navigators
+        if (!resolvedContextId) {
+          const firstContext = await ctx.db.context.findFirst({
+            where: { projectId: input.projectId },
+            select: { id: true },
+            orderBy: { createdAt: "asc" },
+          });
+          if (!firstContext) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Project has no contexts." });
+          }
+          resolvedContextId = firstContext.id;
+        }
+      } else if (input.contextId) {
+        await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+        const contextUnits = await ctx.db.unitContext.findMany({
+          where: { contextId: input.contextId },
+          select: { unitId: true },
+        });
+        unitIds = contextUnits.map((u) => u.unitId);
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Either projectId or contextId is required" });
+      }
 
       if (unitIds.length < 2) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to generate paths." });
@@ -288,7 +364,7 @@ export const navigatorRouter = createTRPCRouter({
 
       // Delete existing ai-generated navigators for this context to avoid duplicates
       await ctx.db.navigator.deleteMany({
-        where: { contextId: input.contextId, purpose: { in: strategies.map((s) => s.purpose) } },
+        where: { contextId: resolvedContextId, purpose: { in: strategies.map((s) => s.purpose) } },
       });
 
       for (const strategy of strategies) {
@@ -318,7 +394,7 @@ export const navigatorRouter = createTRPCRouter({
         const nav = await ctx.db.navigator.create({
           data: {
             name: `${strategy.name}: ${shortContent}`,
-            contextId: input.contextId,
+            contextId: resolvedContextId!,
             purpose: strategy.purpose,
             path,
           },

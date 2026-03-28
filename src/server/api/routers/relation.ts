@@ -71,19 +71,6 @@ export const relationRouter = createTRPCRouter({
       if (!targetUnit) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Target unit not found" });
       }
-      if (sourceUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Source unit is in draft lifecycle and cannot have relations",
-        });
-      }
-      if (targetUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Target unit is in draft lifecycle and cannot have relations",
-        });
-      }
-
       const service = createRelationService(ctx.db);
       const relation = await service.create(input, ctx.session.user.id!);
 

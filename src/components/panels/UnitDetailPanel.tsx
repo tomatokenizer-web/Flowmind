@@ -258,7 +258,7 @@ export function UnitDetailPanel({
               </TabsContent>
 
               <TabsContent value="relations" className="mt-0">
-                <RelationsTab unitId={unit.id} projectId={unit.projectId} />
+                <RelationsTab unitId={unit.id} unitContent={unit.content} projectId={unit.projectId} />
               </TabsContent>
 
               <TabsContent value="metadata" className="mt-0">
@@ -273,8 +273,10 @@ export function UnitDetailPanel({
                 <AITab
                   unitId={unit.id}
                   content={unit.content}
+                  unitType={unit.unitType}
                   branchPotential={unit.branchPotential}
                   onContentChange={onContentChange}
+                  onMetadataChange={onMetadataChange ? (field, value) => onMetadataChange(field as keyof MetadataValues, value) : undefined}
                   onAddAsUnit={onAddAsUnit}
                 />
               </TabsContent>

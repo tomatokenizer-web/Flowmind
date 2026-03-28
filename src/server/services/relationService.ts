@@ -48,20 +48,6 @@ export function createRelationService(db: PrismaClient) {
         });
       }
 
-      if (sourceUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Source unit is in draft lifecycle and cannot have relations",
-        });
-      }
-
-      if (targetUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Target unit is in draft lifecycle and cannot have relations",
-        });
-      }
-
       const isLoopback = input.sourceUnitId === input.targetUnitId;
 
       const relation = await db.relation.create({

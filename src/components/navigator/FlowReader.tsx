@@ -32,8 +32,8 @@ interface FlowReaderProps {
   initialStep?: number;
   /** Navigator ID (for creating derived units into same navigator) */
   navigatorId?: string;
-  /** Context ID for relation-aware actions */
-  contextId: string;
+  /** Context ID for relation-aware actions (optional in project-scoped mode) */
+  contextId?: string;
   /** Project ID for creating new units */
   projectId: string;
   /** Called when the reader is closed */

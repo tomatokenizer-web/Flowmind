@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Link2 } from "lucide-react";
+import { Link2, Sparkles, Loader2, Check, X as XIcon } from "lucide-react";
 import { api } from "~/trpc/react";
 import { Button } from "~/components/ui/button";
 import { EmptyState } from "~/components/shared/empty-state";
 import { toast } from "~/lib/toast";
+import { cn } from "~/lib/utils";
+import { useSidebarStore } from "~/stores/sidebar-store";
 
 const RELATION_TYPES = [
   "supports","contradicts","derives_from","expands","references",
@@ -17,13 +19,16 @@ const RELATION_TYPES = [
 
 interface RelationsTabProps {
   unitId: string;
+  unitContent?: string;
   projectId?: string;
 }
 
-export function RelationsTab({ unitId, projectId }: RelationsTabProps) {
+export function RelationsTab({ unitId, unitContent, projectId }: RelationsTabProps) {
   const [creating, setCreating] = React.useState(false);
   const [targetContent, setTargetContent] = React.useState("");
   const [relType, setRelType] = React.useState("supports");
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set());
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
   const utils = api.useUtils();
 
   const { data: relations = [], isLoading } = api.relation.listByUnit.useQuery(
@@ -56,6 +61,29 @@ export function RelationsTab({ unitId, projectId }: RelationsTabProps) {
   const deleteRelation = api.relation.delete.useMutation({
     onSuccess: () => void utils.relation.listByUnit.invalidate({ unitId }),
   });
+
+  // AI relation suggestions
+  const suggestRelationsMutation = api.ai.suggestRelations.useMutation({
+    onError: (err) => {
+      toast.error("AI suggestion failed", { description: err.message });
+    },
+  });
+
+  const acceptSuggestion = (suggestion: { targetUnitId: string; relationType: string; strength: number }) => {
+    createRelation.mutate({
+      sourceUnitId: unitId,
+      targetUnitId: suggestion.targetUnitId,
+      type: suggestion.relationType,
+      strength: suggestion.strength,
+      direction: "one_way",
+      purpose: ["ai_suggested"],
+    });
+    setDismissed((prev) => new Set(prev).add(suggestion.targetUnitId));
+  };
+
+  const suggestions = (suggestRelationsMutation.data?.suggestions ?? []).filter(
+    (s) => !dismissed.has(s.targetUnitId),
+  );
 
   const filteredUnits = searchResults?.items?.filter(
     (u) => u.id !== unitId && u.content.toLowerCase().includes(targetContent.toLowerCase()),
@@ -149,6 +177,84 @@ export function RelationsTab({ unitId, projectId }: RelationsTabProps) {
           );
         })
       )}
+
+      {/* AI Relation Suggestions */}
+      <div className="mt-3 border-t border-border pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3 text-accent-primary" />
+            AI Suggestions
+          </p>
+          <button
+            onClick={() => {
+              if (unitContent?.trim()) {
+                setDismissed(new Set());
+                suggestRelationsMutation.mutate({
+                  content: unitContent,
+                  contextId: activeContextId ?? undefined,
+                  projectId: projectId ?? undefined,
+                });
+              }
+            }}
+            disabled={suggestRelationsMutation.isPending || !unitContent?.trim()}
+            className="text-xs text-accent-primary hover:underline disabled:opacity-50"
+          >
+            {suggestRelationsMutation.isPending ? "Analyzing..." : suggestions.length > 0 ? "Refresh" : "Find relations"}
+          </button>
+        </div>
+
+        {suggestRelationsMutation.isPending && (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" />
+          </div>
+        )}
+
+        {suggestions.length > 0 && (
+          <div className="space-y-2">
+            {suggestions.map((s) => (
+              <div
+                key={s.targetUnitId}
+                className="rounded-lg border border-accent-primary/20 bg-accent-primary/5 p-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-accent-primary">
+                    {s.relationType.replace(/_/g, " ")}
+                  </span>
+                  <span className={cn(
+                    "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                    s.strength >= 0.8 ? "bg-green-500/10 text-green-400" :
+                    s.strength >= 0.5 ? "bg-yellow-500/10 text-yellow-400" :
+                    "bg-text-tertiary/10 text-text-tertiary",
+                  )}>
+                    {Math.round(s.strength * 100)}%
+                  </span>
+                </div>
+                {s.reasoning && (
+                  <p className="text-xs text-text-secondary mb-2">{s.reasoning}</p>
+                )}
+                <div className="flex items-center gap-1.5 justify-end">
+                  <button
+                    onClick={() => setDismissed((prev) => new Set(prev).add(s.targetUnitId))}
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-tertiary hover:bg-bg-hover"
+                  >
+                    <XIcon className="h-3 w-3" /> Dismiss
+                  </button>
+                  <button
+                    onClick={() => acceptSuggestion(s)}
+                    className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-xs text-accent-primary hover:bg-accent-primary/20"
+                  >
+                    <Check className="h-3 w-3" /> Accept
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!suggestRelationsMutation.isPending && suggestRelationsMutation.data && suggestions.length === 0 && (
+          <p className="text-xs text-text-tertiary text-center py-2">No more suggestions</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,7 +16,6 @@ export async function getContextUnits(
   const units = await db.unit.findMany({
     where: {
       perspectives: { some: { contextId } },
-      lifecycle: { not: "draft" },
     },
     select: { id: true, content: true, unitType: true },
     take: limit,

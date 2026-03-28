@@ -38,6 +38,7 @@ const suggestTypeSchema = z.object({
 const suggestRelationsSchema = z.object({
   content: z.string().min(1).max(5000),
   contextId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
   sessionId: z.string().uuid().optional(),
 });
 
@@ -205,8 +206,21 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      // Get existing units in the context
-      const existingUnits = await getContextUnits(ctx.db, input.contextId, 20);
+      // Get existing units: try context first, fall back to project-wide
+      let existingUnits = await getContextUnits(ctx.db, input.contextId, 20);
+
+      if (existingUnits.length === 0 && input.projectId) {
+        // Fallback: get recent units from the entire project (include drafts)
+        existingUnits = await ctx.db.unit.findMany({
+          where: {
+            projectId: input.projectId,
+            userId: ctx.session.user.id!,
+          },
+          select: { id: true, content: true, unitType: true },
+          take: 20,
+          orderBy: { createdAt: "desc" },
+        });
+      }
 
       const suggestions = await aiService.suggestRelations(
         input.content,
@@ -508,6 +522,73 @@ export const aiRouter = createTRPCRouter({
       );
     }),
 
+  // ─── Full metadata classification ──────────────────────────────────
+
+  classifyFullMetadata: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      content: z.string().min(1).max(5000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const { z: zod } = await import("zod");
+      const provider = getAIProvider();
+
+      const MetadataClassificationSchema = zod.object({
+        unitType: zod.enum(["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"]),
+        certainty: zod.enum(["certain", "probable", "hypothesis", "uncertain"]).nullable(),
+        completeness: zod.enum(["complete", "needs_evidence", "unaddressed_counterarg", "exploring", "fragment"]).nullable(),
+        evidenceDomain: zod.enum(["external_public", "external_private", "personal_event", "personal_belief", "personal_intuition", "reasoned_inference"]).nullable(),
+        scope: zod.enum(["universal", "domain_general", "domain_specific", "situational", "interpersonal", "personal"]).nullable(),
+        stance: zod.enum(["support", "oppose", "neutral", "exploring"]).nullable(),
+      });
+
+      try {
+        const result = await provider.generateStructured<{
+          unitType: string;
+          certainty: string | null;
+          completeness: string | null;
+          evidenceDomain: string | null;
+          scope: string | null;
+          stance: string | null;
+        }>(
+          `Analyze this thought unit and classify ALL its metadata fields.
+
+Text: "${input.content.slice(0, 500)}"
+
+Classify each field:
+- unitType: The cognitive function (claim, question, evidence, counterargument, observation, idea, definition, assumption, action)
+- certainty: How certain the author is (certain, probable, hypothesis, uncertain) — null if unclear
+- completeness: How complete the thought is (complete, needs_evidence, unaddressed_counterarg, exploring, fragment)
+- evidenceDomain: Source of knowledge (external_public, external_private, personal_event, personal_belief, personal_intuition, reasoned_inference) — null if unclear
+- scope: How broadly it applies (universal, domain_general, domain_specific, situational, interpersonal, personal)
+- stance: Author's position (support, oppose, neutral, exploring) — null if standalone thought`,
+          {
+            temperature: 0.3,
+            maxTokens: 512,
+            zodSchema: MetadataClassificationSchema,
+            schema: {
+              name: "MetadataClassification",
+              description: "Full metadata classification for a thought unit",
+              properties: {
+                unitType: { type: "string", enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"] },
+                certainty: { type: "string", enum: ["certain", "probable", "hypothesis", "uncertain"], nullable: true },
+                completeness: { type: "string", enum: ["complete", "needs_evidence", "unaddressed_counterarg", "exploring", "fragment"], nullable: true },
+                evidenceDomain: { type: "string", enum: ["external_public", "external_private", "personal_event", "personal_belief", "personal_intuition", "reasoned_inference"], nullable: true },
+                scope: { type: "string", enum: ["universal", "domain_general", "domain_specific", "situational", "interpersonal", "personal"], nullable: true },
+                stance: { type: "string", enum: ["support", "oppose", "neutral", "exploring"], nullable: true },
+              },
+              required: ["unitType", "certainty", "completeness", "evidenceDomain", "scope", "stance"],
+            },
+          },
+        );
+
+        return result;
+      } catch (error: unknown) {
+        handleAIError(error, "Full metadata classification");
+      }
+    }),
+
   // ─── Missing procedures ──────────────────────────────────────────
 
   suggestExplorationDirections: rateLimitedProcedure
@@ -706,7 +787,6 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       const existingUnits = await ctx.db.unit.findMany({
         where: {
           perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
         },
         select: { content: true, unitType: true },
         take: 15,
@@ -781,7 +861,6 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       const units = await ctx.db.unit.findMany({
         where: {
           perspectives: { some: { contextId: input.contextId } },
-          lifecycle: { not: "draft" },
         },
         select: { unitType: true },
         take: 100,
@@ -1027,32 +1106,53 @@ Focus on academic, scientific, or well-established knowledge sources. Do not inv
    * Processes units in batches to stay within token limits.
    */
   autoRelate: rateLimitedProcedure
-    .input(z.object({ contextId: z.string().uuid() }))
+    .input(z.object({
+      contextId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id!;
 
-      // Verify context ownership
-      const context = await ctx.db.context.findFirst({
-        where: { id: input.contextId, project: { userId } },
-        select: { id: true },
-      });
-      if (!context) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
-      }
+      let units: Array<{ id: string; content: string; unitType: string }>;
 
-      // Get all units in this context via unitContext (not perspectives)
-      const contextLinks = await ctx.db.unitContext.findMany({
-        where: { contextId: input.contextId },
-        select: { unitId: true },
-      });
-      const linkedIds = contextLinks.map((u) => u.unitId);
-      const units = linkedIds.length > 0
-        ? await ctx.db.unit.findMany({
-            where: { id: { in: linkedIds } },
-            select: { id: true, content: true, unitType: true },
-            take: 50,
-          })
-        : [];
+      if (input.projectId) {
+        // Project-scoped: get all units in the project
+        const project = await ctx.db.project.findFirst({
+          where: { id: input.projectId, userId },
+          select: { id: true },
+        });
+        if (!project) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+        }
+        units = await ctx.db.unit.findMany({
+          where: { projectId: input.projectId },
+          select: { id: true, content: true, unitType: true },
+          take: 50,
+        });
+      } else if (input.contextId) {
+        // Context-scoped: original behavior
+        const context = await ctx.db.context.findFirst({
+          where: { id: input.contextId, project: { userId } },
+          select: { id: true },
+        });
+        if (!context) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+        }
+        const contextLinks = await ctx.db.unitContext.findMany({
+          where: { contextId: input.contextId },
+          select: { unitId: true },
+        });
+        const linkedIds = contextLinks.map((u) => u.unitId);
+        units = linkedIds.length > 0
+          ? await ctx.db.unit.findMany({
+              where: { id: { in: linkedIds } },
+              select: { id: true, content: true, unitType: true },
+              take: 50,
+            })
+          : [];
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Either projectId or contextId is required" });
+      }
       if (units.length < 2) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to analyze relations." });
       }
@@ -1151,5 +1251,220 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`;
       } catch (error: unknown) {
         handleAIError(error, "Auto-relate units");
       }
+    }),
+
+  // ─── Context Suggestion: suggest existing contexts for a unit ───────────
+
+  suggestContextForUnit: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      projectId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Get the unit
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId },
+        select: { id: true, content: true, unitType: true },
+      });
+      if (!unit) return { suggestions: [], newContextName: null };
+
+      // Get all contexts in this project with sample units
+      const contexts = await ctx.db.context.findMany({
+        where: { projectId: input.projectId, project: { userId } },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          unitContexts: {
+            select: { unit: { select: { content: true, unitType: true } } },
+            take: 5,
+          },
+        },
+        take: 20,
+      });
+
+      if (contexts.length === 0) {
+        // No contexts exist — suggest creating one
+        return {
+          suggestions: [],
+          newContextName: unit.content.slice(0, 60).replace(/[?!.,;:]+$/, "").trim(),
+        };
+      }
+
+      // Check which contexts this unit is already in
+      const existingLinks = await ctx.db.unitContext.findMany({
+        where: { unitId: input.unitId },
+        select: { contextId: true },
+      });
+      const linkedContextIds = new Set(existingLinks.map((l) => l.contextId));
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const contextDescriptions = contexts.map((c, i) => {
+          const sampleContent = c.unitContexts
+            .map((uc) => `[${uc.unit.unitType}] ${uc.unit.content.slice(0, 80)}`)
+            .join("\n  ");
+          return `[${i}] "${c.name}"${c.description ? ` — ${c.description}` : ""}\n  Sample units:\n  ${sampleContent || "(empty)"}`;
+        }).join("\n\n");
+
+        const ContextSuggestionSchema = (await import("zod")).z.object({
+          matches: (await import("zod")).z.array(
+            (await import("zod")).z.object({
+              contextIndex: (await import("zod")).z.number(),
+              confidence: (await import("zod")).z.number(),
+              reason: (await import("zod")).z.string(),
+            })
+          ),
+          newContextName: (await import("zod")).z.string().nullable(),
+        });
+
+        const result = await provider.generateStructured<{
+          matches: Array<{ contextIndex: number; confidence: number; reason: string }>;
+          newContextName: string | null;
+        }>(
+          `Given this unit (${unit.unitType}): "${unit.content.slice(0, 300)}"
+
+Which of these contexts should it belong to? Rate each relevant context.
+If none fit well (all < 0.5 confidence), suggest a new context name.
+
+Contexts:
+${contextDescriptions}`,
+          {
+            temperature: 0.3,
+            maxTokens: 512,
+            zodSchema: ContextSuggestionSchema,
+            schema: {
+              name: "ContextSuggestion",
+              description: "Suggest which contexts a unit belongs to",
+              properties: {
+                matches: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      contextIndex: { type: "number" },
+                      confidence: { type: "number", minimum: 0, maximum: 1 },
+                      reason: { type: "string", maxLength: 100 },
+                    },
+                    required: ["contextIndex", "confidence", "reason"],
+                  },
+                },
+                newContextName: { type: "string", nullable: true, description: "Suggested new context name if no existing context fits" },
+              },
+              required: ["matches", "newContextName"],
+            },
+          },
+        );
+
+        const suggestions = result.matches
+          .filter((m) => m.contextIndex >= 0 && m.contextIndex < contexts.length && m.confidence >= 0.4)
+          .sort((a, b) => b.confidence - a.confidence)
+          .map((m) => ({
+            contextId: contexts[m.contextIndex]!.id,
+            contextName: contexts[m.contextIndex]!.name,
+            confidence: m.confidence,
+            reason: m.reason,
+            alreadyLinked: linkedContextIds.has(contexts[m.contextIndex]!.id),
+          }));
+
+        return { suggestions, newContextName: result.newContextName };
+      } catch {
+        // Fallback: no AI — return empty
+        return { suggestions: [], newContextName: null };
+      }
+    }),
+
+  // ─── Auto-create context from orphan units ────────────────────────────
+
+  autoCreateContext: rateLimitedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      unitIds: z.array(z.string().uuid()).min(1).max(20),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+        select: { id: true },
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+
+      // Get the units
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: input.unitIds }, userId },
+        select: { id: true, content: true, unitType: true },
+      });
+      if (units.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No units found" });
+
+      // Use AI to generate a context name and description
+      let contextName: string;
+      let contextDescription: string | undefined;
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const unitList = units.map((u) => `[${u.unitType}] ${u.content.slice(0, 100)}`).join("\n");
+
+        const ContextNameSchema = (await import("zod")).z.object({
+          name: (await import("zod")).z.string(),
+          description: (await import("zod")).z.string(),
+        });
+
+        const result = await provider.generateStructured<{ name: string; description: string }>(
+          `These thought units seem related. Suggest a concise context name (max 60 chars) and brief description (max 200 chars) that captures their shared theme.
+
+Units:
+${unitList}`,
+          {
+            temperature: 0.5,
+            maxTokens: 256,
+            zodSchema: ContextNameSchema,
+            schema: {
+              name: "ContextName",
+              description: "Generate context name from units",
+              properties: {
+                name: { type: "string", maxLength: 60 },
+                description: { type: "string", maxLength: 200 },
+              },
+              required: ["name", "description"],
+            },
+          },
+        );
+        contextName = result.name;
+        contextDescription = result.description;
+      } catch {
+        // Fallback: use first unit content as name
+        contextName = units[0]!.content.slice(0, 50).replace(/[?!.,;:]+$/, "").trim();
+        contextDescription = `Auto-created from ${units.length} unit(s)`;
+      }
+
+      // Create the context
+      const newContext = await ctx.db.context.create({
+        data: {
+          name: contextName,
+          description: contextDescription,
+          projectId: input.projectId,
+        },
+      });
+
+      // Add all units to the context
+      await ctx.db.unitContext.createMany({
+        data: units.map((u) => ({ unitId: u.id, contextId: newContext.id })),
+        skipDuplicates: true,
+      });
+
+      return {
+        contextId: newContext.id,
+        contextName: newContext.name,
+        description: contextDescription,
+        unitsAdded: units.length,
+      };
     }),
 });

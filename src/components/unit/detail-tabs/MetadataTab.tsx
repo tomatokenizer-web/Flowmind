@@ -1,11 +1,14 @@
 "use client";
 
-import { Calendar, Clock, ExternalLink, History } from "lucide-react";
+import * as React from "react";
+import { Calendar, Clock, ExternalLink, History, Sparkles, Loader2 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
 import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
 import type { UnitDetailData } from "~/components/panels/UnitDetailPanel";
 import type { DetailTab } from "~/stores/panel-store";
+import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 
 interface MetadataTabProps {
   unit: UnitDetailData;
@@ -126,9 +129,12 @@ export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTa
 
       {/* Editable metadata fields */}
       <section className="space-y-2">
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-          Classification
-        </h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+            Classification
+          </h4>
+          <AIAutoFillButton unit={unit} onMetadataChange={onMetadataChange} />
+        </div>
         <MetadataEditor
           values={{
             unitType: unit.unitType,
@@ -142,5 +148,59 @@ export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTa
         />
       </section>
     </div>
+  );
+}
+
+// ─── AI Auto-fill button ────────────────────────────────────────────
+
+function AIAutoFillButton({
+  unit,
+  onMetadataChange,
+}: {
+  unit: UnitDetailData;
+  onMetadataChange?: (field: keyof MetadataValues, value: string | null) => void;
+}) {
+  const utils = api.useUtils();
+
+  const classifyMutation = api.ai.classifyFullMetadata.useMutation({
+    onSuccess: (result) => {
+      if (!onMetadataChange) return;
+      // Apply all fields
+      const fields: (keyof MetadataValues)[] = [
+        "unitType", "certainty", "completeness", "evidenceDomain", "scope", "stance",
+      ];
+      let changed = 0;
+      for (const field of fields) {
+        const newVal = result[field];
+        if (newVal !== undefined) {
+          onMetadataChange(field, newVal);
+          changed++;
+        }
+      }
+      void utils.unit.getById.invalidate({ id: unit.id });
+      toast.success(`AI classified ${changed} fields`);
+    },
+    onError: (err) => {
+      toast.error("AI classification failed", { description: err.message });
+    },
+  });
+
+  return (
+    <button
+      onClick={() => {
+        if (unit.content?.trim()) {
+          classifyMutation.mutate({ unitId: unit.id, content: unit.content });
+        }
+      }}
+      disabled={classifyMutation.isPending || !unit.content?.trim()}
+      className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-[10px] font-medium text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
+    >
+      {classifyMutation.isPending ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Sparkles className="h-3 w-3" />
+      )}
+      {classifyMutation.isPending ? "Classifying..." : "AI Auto-fill"}
+    </button>
   );
 }

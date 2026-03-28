@@ -41,7 +41,7 @@ export default function ContextPage({
 
   // Render NavigateView when in navigate mode
   if (viewMode === "navigate" && projectId) {
-    return <NavigateView projectId={projectId} contextId={id} />;
+    return <NavigateView projectId={projectId} />;
   }
 
   // Render AttentionView when in attention mode

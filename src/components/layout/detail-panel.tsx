@@ -9,15 +9,11 @@ import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDe
 import type { MetadataValues } from "~/components/unit/metadata-editor";
 import { toast } from "~/lib/toast";
 
-const PANEL_WIDTH = 360;
-
 interface DetailPanelProps {
   className?: string;
-  /** Whether this panel renders as full-screen overlay (tablet) */
-  fullScreenOverlay?: boolean;
 }
 
-export function DetailPanel({ className, fullScreenOverlay = false }: DetailPanelProps) {
+export function DetailPanel({ className }: DetailPanelProps) {
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
@@ -144,9 +140,9 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [detailPanelOpen, handleClose]);
 
-  // Focus trap for overlay mode
+  // Focus trap
   React.useEffect(() => {
-    if (!detailPanelOpen || !fullScreenOverlay) return;
+    if (!detailPanelOpen) return;
 
     function handleTab(e: KeyboardEvent) {
       if (e.key !== "Tab" || !panelRef.current) return;
@@ -171,7 +167,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
 
     document.addEventListener("keydown", handleTab);
     return () => document.removeEventListener("keydown", handleTab);
-  }, [detailPanelOpen, fullScreenOverlay]);
+  }, [detailPanelOpen]);
 
   const panelContent = (
     <UnitDetailPanel
@@ -185,72 +181,44 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     />
   );
 
-  // Overlay mode (tablet / mobile)
-  if (fullScreenOverlay) {
-    return (
-      <AnimatePresence>
-        {detailPanelOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              key="detail-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-40 bg-black/20"
-              onClick={handleClose}
-              aria-hidden="true"
-            />
-            <motion.aside
-              key="detail-overlay"
-              ref={panelRef}
-              role="complementary"
-              aria-label="Detail panel"
-              tabIndex={-1}
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className={cn(
-                "fixed inset-y-0 right-0 z-50 w-full bg-bg-primary shadow-modal",
-                "focus-visible:outline-none",
-                "md:w-[360px]",
-                className,
-              )}
-            >
-              {panelContent}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-    );
-  }
-
-  // Inline slide-in (desktop) with Framer Motion
   return (
-    <AnimatePresence initial={false}>
+    <AnimatePresence>
       {detailPanelOpen && (
-        <motion.aside
-          key="detail-inline"
-          ref={panelRef}
-          role="complementary"
-          aria-label="Detail panel"
-          tabIndex={-1}
-          initial={{ width: 0, opacity: 0 }}
-          animate={{ width: PANEL_WIDTH, opacity: 1 }}
-          exit={{ width: 0, opacity: 0 }}
-          transition={{ type: "spring", damping: 28, stiffness: 280 }}
-          className={cn(
-            "h-full shrink-0 overflow-hidden border-l border-border bg-bg-primary",
-            "focus-visible:outline-none",
-            className,
-          )}
-        >
-          <div className="h-full" style={{ width: PANEL_WIDTH }}>
+        <>
+          {/* Backdrop */}
+          <motion.div
+            key="detail-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+            onClick={handleClose}
+            aria-hidden="true"
+          />
+          {/* Centered card */}
+          <motion.aside
+            key="detail-card"
+            ref={panelRef}
+            role="dialog"
+            aria-label="Unit detail"
+            aria-modal="true"
+            tabIndex={-1}
+            initial={{ opacity: 0, scale: 0.95, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+            transition={{ type: "spring", damping: 28, stiffness: 340, mass: 0.8 }}
+            className={cn(
+              "fixed inset-0 z-50 m-auto",
+              "h-[min(85vh,720px)] w-[min(90vw,480px)]",
+              "rounded-2xl border border-border bg-bg-primary shadow-modal",
+              "overflow-hidden focus-visible:outline-none",
+              className,
+            )}
+          >
             {panelContent}
-          </div>
-        </motion.aside>
+          </motion.aside>
+        </>
       )}
     </AnimatePresence>
   );

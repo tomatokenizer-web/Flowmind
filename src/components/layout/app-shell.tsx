@@ -101,12 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {!focusMode && (
-              <>
-                <div className="hidden xl:block"><DetailPanel /></div>
-                <div className="xl:hidden"><DetailPanel fullScreenOverlay /></div>
-              </>
-            )}
+            {!focusMode && <DetailPanel />}
           </div>
         </div>
       </div>

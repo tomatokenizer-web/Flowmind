@@ -115,8 +115,9 @@ export function BranchPotentialPopover({ unitId, children }: BranchPotentialPopo
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="z-50 w-72 rounded-xl border border-border bg-bg-surface p-4 shadow-lg"
+          className="z-50 w-72 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-bg-surface p-4 shadow-lg"
           sideOffset={6}
+          collisionPadding={16}
         >
           {/* Score summary */}
           <div className="mb-3 flex items-center justify-between">

@@ -381,11 +381,16 @@ export default function DashboardPage() {
   const isLoading = useProjectLoading();
   const [createContextOpen, setCreateContextOpen] = React.useState(false);
 
-  // Clear active context when landing on the dashboard so breadcrumb shows
-  // the overview grid instead of a stale context from a previous navigation.
+  // Auto-select first context if none is active (so views aren't empty)
+  const { data: contextList } = api.context.list.useQuery(
+    { projectId: projectId! },
+    { enabled: !!projectId, staleTime: 30_000 },
+  );
   React.useEffect(() => {
-    useSidebarStore.getState().setActiveContext(null);
-  }, []);
+    if (!activeContextId && contextList && contextList.length > 0) {
+      useSidebarStore.getState().setActiveContext(contextList[0]!.id);
+    }
+  }, [activeContextId, contextList]);
 
   // Clear active assembly when switching away from assembly view mode
   React.useEffect(() => {
@@ -434,10 +439,8 @@ export default function DashboardPage() {
     );
   }
 
-  if (viewMode === "navigate" && activeContextId) {
-    return (
-      <NavigateView projectId={projectId} contextId={activeContextId} />
-    );
+  if (viewMode === "navigate") {
+    return <NavigateView projectId={projectId} />;
   }
 
   if (viewMode === "attention") {

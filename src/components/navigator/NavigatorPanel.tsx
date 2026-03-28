@@ -17,11 +17,10 @@ import {
 } from "~/components/ui/tooltip";
 
 interface NavigatorPanelProps {
-  contextId: string;
   projectId: string;
 }
 
-export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
+export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
   const [creating, setCreating] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [activeNavId, setActiveNavId] = React.useState<string | null>(null);
@@ -29,7 +28,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
   const [flowReaderNav, setFlowReaderNav] = React.useState<{ id: string; path: string[]; step: number } | null>(null);
   const utils = api.useUtils();
 
-  const { data: navigators = [] } = api.navigator.list.useQuery({ contextId });
+  const { data: navigators = [] } = api.navigator.list.useQuery({ projectId });
 
   const activeNav = navigators.find((n) => n.id === activeNavId);
   const totalSteps = activeNav?.path?.length ?? 0;
@@ -51,7 +50,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
   // ── Mutations ────────────────────────────────────────────────────
   const createNav = api.navigator.create.useMutation({
     onSuccess: () => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       setCreating(false);
       setNewName("");
     },
@@ -59,14 +58,14 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
 
   const deleteNav = api.navigator.delete.useMutation({
     onSuccess: () => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       setActiveNavId(null);
     },
   });
 
   const addUnit = api.navigator.addUnit.useMutation({
     onSuccess: (nav) => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       void utils.unit.listByIds.invalidate();
       toast.success("Unit added to navigator", { description: `Added to "${nav.name}"` });
     },
@@ -77,7 +76,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
 
   const removeStep = api.navigator.removeStep.useMutation({
     onSuccess: () => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       void utils.unit.listByIds.invalidate();
     },
     onError: () => {
@@ -87,7 +86,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
 
   const autoRelate = api.ai.autoRelate.useMutation({
     onSuccess: (result) => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       void utils.relation.listByUnits.invalidate();
       void utils.relation.listByUnit.invalidate();
       toast.success(`${result.created} relations created`, {
@@ -101,7 +100,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
 
   const analyzeAndGenerate = api.navigator.analyzeAndGenerate.useMutation({
     onSuccess: (result) => {
-      void utils.navigator.list.invalidate({ contextId });
+      void utils.navigator.list.invalidate({ projectId });
       const autoMsg = result.autoCreatedRelations > 0
         ? ` (auto-created ${result.autoCreatedRelations} relations)`
         : "";
@@ -168,7 +167,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim()) createNav.mutate({ name: newName.trim(), contextId });
+                if (e.key === "Enter" && newName.trim()) createNav.mutate({ name: newName.trim(), projectId });
                 if (e.key === "Escape") setCreating(false);
               }}
               placeholder="Navigator name..."
@@ -200,7 +199,6 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
               </button>
               {/* ── Add unit popover (fix #1) ──────────────────────── */}
               <AddUnitPopover
-                contextId={contextId}
                 projectId={projectId}
                 navigatorId={nav.id}
                 addUnit={addUnit}
@@ -305,7 +303,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
         <button
           type="button"
           disabled={autoRelate.isPending}
-          onClick={() => autoRelate.mutate({ contextId })}
+          onClick={() => autoRelate.mutate({ projectId })}
           className={cn(
             "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors",
             autoRelate.isPending
@@ -335,7 +333,7 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
         <button
           type="button"
           disabled={analyzeAndGenerate.isPending}
-          onClick={() => analyzeAndGenerate.mutate({ contextId })}
+          onClick={() => analyzeAndGenerate.mutate({ projectId })}
           className={cn(
             "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors",
             analyzeAndGenerate.isPending
@@ -372,7 +370,6 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
             path={flowReaderNav.path}
             initialStep={flowReaderNav.step}
             navigatorId={flowReaderNav.id}
-            contextId={contextId}
             projectId={projectId}
             onClose={() => setFlowReaderNav(null)}
             onUnitSelect={(unitId) => openPanel(unitId)}
@@ -386,13 +383,12 @@ export function NavigatorPanel({ contextId, projectId }: NavigatorPanelProps) {
 // ─── AddUnitPopover: search-and-pick units in current context (fix #1) ───
 
 interface AddUnitPopoverProps {
-  contextId: string;
   projectId: string;
   navigatorId: string;
   addUnit: ReturnType<typeof api.navigator.addUnit.useMutation>;
 }
 
-function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitPopoverProps) {
+function AddUnitPopover({ projectId, navigatorId, addUnit }: AddUnitPopoverProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
 
@@ -405,7 +401,6 @@ function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitP
   const { data: units, isLoading } = api.unit.list.useQuery(
     {
       projectId,
-      contextId,
       limit: 30,
       ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     },
@@ -447,7 +442,7 @@ function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitP
             <input
               autoFocus
               type="text"
-              placeholder="Search units in context..."
+              placeholder="Search units in project..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={cn(
@@ -465,7 +460,7 @@ function AddUnitPopover({ contextId, projectId, navigatorId, addUnit }: AddUnitP
               </div>
             ) : candidates.length === 0 ? (
               <p className="py-6 text-center text-sm text-text-tertiary">
-                {search ? "No matching units" : "No units in this context"}
+                {search ? "No matching units" : "No units in this project"}
               </p>
             ) : (
               <ul className="space-y-1">
