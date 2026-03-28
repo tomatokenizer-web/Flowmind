@@ -98,13 +98,14 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
   }, [selectedUnitId, lifecycleMutation]);
 
   const deleteMutation = api.unit.delete.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       closePanel();
-      void utils.unit.list.invalidate();
+      const projectId = unit?.projectId;
+      void utils.unit.list.invalidate(projectId ? { projectId } : undefined);
       void utils.context.getById.invalidate();
-      void utils.relation.listByUnit.invalidate();
+      void utils.relation.listByUnit.invalidate({ unitId: variables.id });
       void utils.navigator.list.invalidate();
-      void utils.project.getProjectStats.invalidate();
+      void utils.project.getProjectStats.invalidate(projectId ? { projectId } : undefined);
       toast.success("Unit deleted");
     },
     onError: (err) => {

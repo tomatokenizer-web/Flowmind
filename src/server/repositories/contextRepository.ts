@@ -32,11 +32,12 @@ export function createContextRepository(db: PrismaClient) {
       });
     },
 
-    async findMany(projectId: string, parentId?: string | null) {
+    async findMany(projectId: string, parentId?: string | null, userId?: string) {
       return db.context.findMany({
         where: {
           projectId,
           ...(parentId !== undefined ? { parentId } : {}),
+          ...(userId ? { project: { userId } } : {}),
         },
         include: {
           children: true,

@@ -51,6 +51,7 @@ export interface UpdateUnitInput {
 
 export interface ListUnitsInput {
   projectId: string;
+  userId?: string;
   lifecycle?: string;
   unitType?: string;
   contextId?: string;
@@ -166,6 +167,7 @@ export function createUnitService(db: PrismaClient) {
     async list(input: ListUnitsInput) {
       const where: Prisma.UnitWhereInput = {
         projectId: input.projectId,
+        ...(input.userId ? { userId: input.userId } : {}),
       };
 
       if (input.lifecycle) {

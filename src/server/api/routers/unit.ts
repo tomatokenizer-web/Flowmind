@@ -150,19 +150,20 @@ export const unitRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // IDOR fix: verify the unit belongs to a project owned by the authenticated user
-      const owned = await ctx.db.unit.findFirst({
-        where: { id: input.id, project: { userId: ctx.session.user.id! } },
-        select: { id: true },
+      // Single query: ownership check + full data fetch in one round-trip
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id! },
+        include: {
+          perspectives: { include: { relations: true } },
+          versions: { orderBy: { version: "desc" }, take: 5 },
+          resources: { include: { resource: true }, orderBy: { sortOrder: "asc" } },
+        },
       });
-      if (!owned) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-      }
-      const service = createUnitService(ctx.db);
-      const unit = await service.getById(input.id);
       if (!unit) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
       }
+      // Fire-and-forget lastAccessed — don't block the read
+      void ctx.db.unit.update({ where: { id: input.id }, data: { lastAccessed: new Date() } }).catch(() => {});
       return unit;
     }),
 
@@ -172,16 +173,9 @@ export const unitRouter = createTRPCRouter({
       if (!input.projectId) {
         return { items: [], nextCursor: null };
       }
-      // IDOR fix: verify the project belongs to the authenticated user
-      const project = await ctx.db.project.findFirst({
-        where: { id: input.projectId, userId: ctx.session.user.id! },
-        select: { id: true },
-      });
-      if (!project) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
-      }
+      // Single query: ownership enforced via userId filter in the service where clause
       const service = createUnitService(ctx.db);
-      return service.list({ ...input, projectId: input.projectId });
+      return service.list({ ...input, projectId: input.projectId, userId: ctx.session.user.id! });
     }),
 
   listByIds: protectedProcedure

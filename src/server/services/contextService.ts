@@ -53,8 +53,8 @@ export function createContextService(db: PrismaClient) {
       return context;
     },
 
-    async listContexts(projectId: string, parentId?: string | null) {
-      return repo.findMany(projectId, parentId);
+    async listContexts(projectId: string, parentId?: string | null, userId?: string) {
+      return repo.findMany(projectId, parentId, userId);
     },
 
     async updateContext(id: string, input: UpdateContextInput) {

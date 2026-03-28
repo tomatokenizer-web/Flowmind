@@ -206,7 +206,7 @@ function IncubatingList({
   const promoteMutation = api.incubation.promote.useMutation({
     onSuccess: () => {
       void utils.incubation.list.invalidate();
-      void utils.context.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
       toast.success("Unit promoted to context");
     },
   });

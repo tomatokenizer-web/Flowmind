@@ -134,13 +134,13 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
 
   const createMutation = api.context.create.useMutation({
     onSuccess: () => {
-      void utils.context.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
     },
   });
 
   const updateMutation = api.context.update.useMutation({
     onSuccess: () => {
-      void utils.context.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
     },
   });
 
@@ -151,10 +151,10 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
         useSidebarStore.getState().setActiveContext(null);
       }
       // Invalidate all queries that reference contexts
-      void utils.context.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
       void utils.context.getById.invalidate({ id: variables.id });
       void utils.navigator.list.invalidate();
-      void utils.unit.list.invalidate();
+      void utils.unit.list.invalidate(projectId ? { projectId } : undefined);
       if (projectId) {
         void utils.project.getProjectStats.invalidate({ projectId });
       }
@@ -238,7 +238,7 @@ export function useContextTree({ projectId }: UseContextTreeOptions) {
 
   const moveMutation = api.context.move.useMutation({
     onSuccess: () => {
-      void utils.context.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
     },
   });
 

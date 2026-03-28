@@ -31,7 +31,7 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
         },
         description: `Created: "${unit.content.slice(0, 40)}"`,
       });
-      void utils.unit.list.invalidate();
+      void utils.unit.list.invalidate({ projectId });
       void utils.unit.hasAny.invalidate();
       broadcastChange("unit.created", { entityId: unit.id, projectId });
     },
@@ -51,7 +51,7 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
   // ── Update ──────────────────────────────────────────────────────────
   const updateMutation = api.unit.update.useMutation({
     onSuccess: (_data, variables) => {
-      void utils.unit.list.invalidate();
+      void utils.unit.list.invalidate({ projectId });
       broadcastChange("unit.updated", { entityId: variables.id, projectId });
     },
   });
@@ -80,7 +80,7 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
   // ── Delete ──────────────────────────────────────────────────────────
   const deleteMutation = api.unit.delete.useMutation({
     onSuccess: (_data, variables) => {
-      void utils.unit.list.invalidate();
+      void utils.unit.list.invalidate({ projectId });
       void utils.unit.hasAny.invalidate();
       broadcastChange("unit.deleted", { entityId: variables.id, projectId });
     },
@@ -102,7 +102,7 @@ export function useUnitMutations({ projectId }: { projectId: string }) {
   // ── Reorder ─────────────────────────────────────────────────────────
   const reorderMutation = api.unit.reorder.useMutation({
     onSuccess: (_data, variables) => {
-      void utils.unit.list.invalidate();
+      void utils.unit.list.invalidate({ projectId });
       broadcastChange("unit.reordered", { entityId: variables.unitId, projectId });
     },
   });

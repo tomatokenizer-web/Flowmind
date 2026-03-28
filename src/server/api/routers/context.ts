@@ -76,11 +76,17 @@ const moveContextSchema = z.object({
 
 // ─── IDOR Helpers ─────────────────────────────────────────────────
 
-/** Verify a context belongs to the authenticated user (via project.userId). */
+/** Verify a context belongs to the authenticated user (via project.userId).
+ *  Returns the full context with relations so callers can use the data directly
+ *  without a second round-trip to the database. */
 async function verifyContextOwnership(db: PrismaClient, contextId: string, userId: string) {
   const ctx = await db.context.findFirst({
     where: { id: contextId, project: { userId } },
-    select: { id: true },
+    include: {
+      children: true,
+      parent: true,
+      _count: { select: { unitContexts: true, perspectives: true } },
+    },
   });
   if (!ctx) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
@@ -129,18 +135,17 @@ export const contextRouter = createTRPCRouter({
   getById: protectedProcedure
     .input(contextIdSchema)
     .query(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.getContextById(input.id);
+      // Single query: ownership check + full data fetch in one round-trip
+      return verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
     }),
 
   list: protectedProcedure
     .input(listContextsSchema)
     .query(async ({ ctx, input }) => {
       if (!input.projectId) return [];
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+      // Single query: ownership enforced via userId filter inside listContexts
       const service = createContextService(ctx.db);
-      return service.listContexts(input.projectId, input.parentId);
+      return service.listContexts(input.projectId, input.parentId, ctx.session.user.id!);
     }),
 
   update: protectedProcedure

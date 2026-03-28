@@ -154,7 +154,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       }
       void utils.unit.list.invalidate({ projectId });
       void utils.unit.hasAny.invalidate();
-      void utils.relation.listByUnit.invalidate();
+      void utils.relation.listByUnit.invalidate({ unitId: variables.id });
       void utils.relation.listByUnits.invalidate();
       if (activeContextId) {
         void utils.context.getById.invalidate({ id: activeContextId });
