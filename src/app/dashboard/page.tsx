@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen, Clock } from "lucide-react";
+import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen, Clock, Trash2 } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
@@ -152,10 +152,17 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
   const [compareDialogOpen, setCompareDialogOpen] = React.useState(false);
   const [compareIds, setCompareIds] = React.useState<[string, string] | null>(null);
   const [formalizeOpen, setFormalizeOpen] = React.useState(false);
+  const utils = api.useUtils();
   const { data: assemblies = [], isLoading } = api.assembly.list.useQuery(
     { projectId: projectId },
     { enabled: !!projectId },
   );
+  const deleteAssembly = api.assembly.delete.useMutation({
+    onSuccess: () => {
+      void utils.assembly.list.invalidate();
+      void utils.project.getProjectStats.invalidate();
+    },
+  });
 
   if (assemblyId && projectId) {
     return (
@@ -206,23 +213,38 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
               </button>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-text-tertiary">{a._count?.items ?? 0} units</span>
-                {assemblies.length >= 2 && (
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  {assemblies.length >= 2 && (
+                    <button
+                      type="button"
+                      title="Compare with another assembly"
+                      onClick={() => {
+                        const other = assemblies.find((b: { id: string }) => b.id !== a.id);
+                        if (other) {
+                          setCompareIds([a.id, other.id]);
+                          setCompareDialogOpen(true);
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-bg-hover hover:text-accent-primary"
+                    >
+                      <GitCompare className="h-3 w-3" />
+                      Compare
+                    </button>
+                  )}
                   <button
                     type="button"
-                    title="Compare with another assembly"
+                    title="Delete assembly"
                     onClick={() => {
-                      const other = assemblies.find((b: { id: string }) => b.id !== a.id);
-                      if (other) {
-                        setCompareIds([a.id, other.id]);
-                        setCompareDialogOpen(true);
+                      if (window.confirm(`Delete "${a.name}"? This cannot be undone.`)) {
+                        deleteAssembly.mutate({ id: a.id });
                       }
                     }}
-                    className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-text-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-hover hover:text-accent-primary"
+                    className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-accent-danger/10 hover:text-accent-danger"
                   >
-                    <GitCompare className="h-3 w-3" />
-                    Compare
+                    <Trash2 className="h-3 w-3" />
+                    Delete
                   </button>
-                )}
+                </div>
               </div>
             </div>
           ))}

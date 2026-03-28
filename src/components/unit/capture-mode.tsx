@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Loader2, AlertCircle, AlertTriangle } from "lucide-react";
+import { X, Loader2, AlertCircle, AlertTriangle, Feather, Sparkles } from "lucide-react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { useCaptureMode } from "~/hooks/use-capture-mode";
 import { announceToScreenReader } from "~/lib/accessibility";
@@ -10,6 +10,7 @@ import { useAIIntensity, isAtLeastBalanced } from "~/hooks/useAIIntensity";
 import { DecompositionReview } from "~/components/ai/decomposition-review";
 import { AudioRecorder } from "./audio-recorder";
 import { api } from "~/trpc/react";
+import { cn } from "~/lib/utils";
 import type { AudioRecorderResult } from "~/hooks/use-audio-recorder";
 
 interface CaptureOverlayProps {
@@ -63,8 +64,8 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
       if (result.isJump && result.confidence >= 0.7) {
         setScopeJumpMsg(
           result.suggestedScope
-            ? `This seems like a different topic ("${result.suggestedScope}"). Consider creating a new context or switching.`
-            : "This seems like a different topic. Consider creating a new context or switching to a different one."
+            ? `This seems like a different topic ("${result.suggestedScope}"). Consider creating a new context.`
+            : "This seems like a different topic. Consider switching contexts."
         );
         setScopeJumpVisible(true);
       } else {
@@ -73,8 +74,6 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     },
   });
 
-  // Trigger scope-jump check 2 s after user stops typing.
-  // Only fires when AI intensity is at least "balanced".
   const handleScopeJumpCheck = React.useCallback(
     (text: string) => {
       if (!aiAutoSuggestEnabled || !isValidContextId || text.length < 20) return;
@@ -87,15 +86,13 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     [aiAutoSuggestEnabled, isValidContextId, contextId]
   );
 
-  // Clean up debounce timer on unmount
   React.useEffect(() => {
     return () => {
       if (scopeJumpDebounceRef.current) clearTimeout(scopeJumpDebounceRef.current);
     };
   }, []);
-  // ─────────────────────────────────────────────────────────────────────────
 
-  // Audio recording state from store
+  // ── Audio recording ──────────────────────────────────────────────────────
   const showAudioRecorder = useCaptureStore((s) => s.showAudioRecorder);
   const hideAudioRecorder = useCaptureStore((s) => s.hideAudioRecorder);
   const [isTranscribing, setIsTranscribing] = React.useState(false);
@@ -107,12 +104,10 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     onSuccess: () => void utils.unit.list.invalidate(),
   });
 
-  // Handle audio recording completion
   const handleAudioRecordingComplete = React.useCallback(
     async (result: AudioRecorderResult) => {
       setIsTranscribing(true);
       try {
-        // Convert blob to base64
         const arrayBuffer = await result.blob.arrayBuffer();
         const base64 = btoa(
           new Uint8Array(arrayBuffer).reduce(
@@ -121,21 +116,18 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
           )
         );
 
-        // Upload audio
         const uploadResult = await uploadAudio.mutateAsync({
           base64,
           mimeType: result.mimeType,
           duration: result.duration,
         });
 
-        // Transcribe audio
         const transcribeResult = await transcribeAudio.mutateAsync({
           resourceId: uploadResult.id,
           projectId,
           decompose: false,
         });
 
-        // Submit transcription as capture (if Whisper API is configured)
         const transcription = transcribeResult as unknown as { transcription?: { text?: string } };
         if (transcription.transcription?.text) {
           await submitCapture.mutateAsync({
@@ -161,7 +153,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     hideAudioRecorder();
   }, [hideAudioRecorder]);
 
-  // Auto-focus on mount
+  // ── Auto-focus ───────────────────────────────────────────────────────────
   React.useEffect(() => {
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
@@ -169,7 +161,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     announceToScreenReader("Capture mode opened. Type your thought.");
   }, []);
 
-  // Auto-resize textarea
+  // ── Auto-resize textarea ─────────────────────────────────────────────────
   const handleInput = React.useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
@@ -177,14 +169,13 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
       const el = e.target;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
-      // Reset scope-jump banner when user edits; re-check after debounce
       setScopeJumpVisible(false);
       handleScopeJumpCheck(value);
     },
     [setText, handleScopeJumpCheck],
   );
 
-  // Keyboard handling: Escape to close, Cmd+Enter to submit
+  // ── Keyboard ─────────────────────────────────────────────────────────────
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Escape") {
@@ -196,14 +187,12 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
 
       const isMod = e.metaKey || e.ctrlKey;
 
-      // Cmd/Ctrl+Enter: always submit
       if (e.key === "Enter" && isMod) {
         e.preventDefault();
         void submit();
         return;
       }
 
-      // Enter without Shift: submit if single-line, newline if multiline
       if (e.key === "Enter" && !e.shiftKey && !isMod) {
         const hasMultipleLines = pendingText.includes("\n");
         if (!hasMultipleLines && pendingText.trim().length > 0) {
@@ -211,53 +200,42 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
           void submit();
           return;
         }
-        // Otherwise allow natural newline
       }
 
-      // Cmd+Shift+N: toggle mode
       if (e.key === "n" && isMod && e.shiftKey) {
         e.preventDefault();
         toggleMode();
         return;
       }
     },
-    [close, submit, toggleMode],
+    [close, submit, toggleMode, pendingText],
   );
+
+  const wordCount = pendingText.trim() ? pendingText.trim().split(/\s+/).length : 0;
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/97 backdrop-blur-xl"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
       role="dialog"
       aria-modal="true"
       aria-label="Capture mode"
     >
-      {/* Close button */}
-      <button
-        onClick={() => {
-          close();
-          announceToScreenReader("Capture mode closed");
-        }}
-        className="absolute right-6 top-6 rounded-lg p-2 text-[#6E6E73] transition-colors duration-150 hover:bg-[#F0F0F2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2"
-        aria-label="Close capture mode"
-      >
-        <X className="h-5 w-5" aria-hidden="true" />
-      </button>
-
-      {/* Mode toggle - only show in input phase */}
-      {phase === "input" && (
-        <div className="absolute left-1/2 top-6 -translate-x-1/2">
+      {/* ── Top bar ── */}
+      <div className="absolute inset-x-0 top-0 flex items-center justify-between px-6 py-5">
+        {/* Mode toggle */}
+        {phase === "input" && (
           <ModeToggle mode={mode} onToggle={toggleMode} />
-        </div>
-      )}
-
-      {/* Phase title - show for decomposing/reviewing */}
-      {phase !== "input" && (
-        <div className="absolute left-1/2 top-6 -translate-x-1/2">
-          <span className="flex items-center gap-2 rounded-full border border-[#0071E3]/20 bg-[#0071E3]/5 px-3 py-1.5 text-sm font-medium text-[#0071E3]">
+        )}
+        {phase !== "input" && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center gap-2 rounded-full border border-accent-primary/20 bg-accent-primary/5 px-3.5 py-1.5 text-sm font-medium text-accent-primary"
+          >
             {phase === "decomposing" && (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -265,100 +243,179 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
               </>
             )}
             {phase === "reviewing" && "Review Decomposition"}
-          </span>
-        </div>
-      )}
+          </motion.span>
+        )}
 
-      {/* Content area */}
-      <div className="w-full max-w-3xl px-6">
+        {/* Close */}
+        <button
+          onClick={() => {
+            close();
+            announceToScreenReader("Capture mode closed");
+          }}
+          className="rounded-xl p-2.5 text-text-tertiary transition-colors hover:bg-bg-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+          aria-label="Close capture mode"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* ── Content ── */}
+      <div className="w-full max-w-2xl px-8">
         <AnimatePresence mode="wait">
           {/* Input phase */}
           {phase === "input" && (
             <motion.div
               key="input"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+              className="flex flex-col"
             >
-              <textarea
-                ref={textareaRef}
-                value={pendingText}
-                onChange={handleInput}
-                onKeyDown={handleKeyDown}
-                placeholder="What are you thinking about?"
-                className="w-full resize-none bg-transparent text-sm leading-relaxed text-[#1D1D1F] placeholder-[#AEAEB2] caret-[#0071E3] outline-none motion-reduce:transition-none max-h-[60vh] overflow-y-auto"
-                style={{ fontFamily: "var(--font-primary, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif)" }}
-                rows={3}
-                disabled={isSubmitting}
-                aria-label="Thought input"
-              />
+              {/* Writing area */}
+              <div className="rounded-2xl border border-border/60 bg-bg-surface p-6 shadow-sm transition-shadow focus-within:border-accent-primary/30 focus-within:shadow-[0_0_0_3px_rgba(var(--accent-primary-rgb,0,113,227),0.08)]">
+                <textarea
+                  ref={textareaRef}
+                  value={pendingText}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder="What are you thinking about?"
+                  className="w-full resize-none bg-transparent text-base leading-relaxed text-text-primary placeholder-text-tertiary caret-accent-primary outline-none max-h-[50vh] overflow-y-auto"
+                  rows={4}
+                  disabled={isSubmitting}
+                  aria-label="Thought input"
+                />
 
-              {/* Error message */}
-              {errorMessage && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
+                {/* Bottom bar inside card */}
+                <div className="mt-4 flex items-center justify-between border-t border-border/40 pt-3">
+                  {/* Word count */}
+                  <span className={cn(
+                    "text-xs tabular-nums transition-colors",
+                    wordCount > 0 ? "text-text-tertiary" : "text-transparent",
+                  )}>
+                    {wordCount} word{wordCount !== 1 ? "s" : ""}
+                  </span>
 
-              {/* Scope jump warning */}
-              {scopeJumpVisible && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-                  <span className="flex-1">{scopeJumpMsg}</span>
+                  {/* Submit button */}
                   <button
                     type="button"
-                    onClick={() => setScopeJumpVisible(false)}
-                    className="ml-2 text-amber-400 hover:text-amber-600 focus-visible:outline-none"
-                    aria-label="Dismiss scope jump warning"
+                    onClick={() => void submit()}
+                    disabled={isSubmitting || !pendingText.trim()}
+                    className={cn(
+                      "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all",
+                      "disabled:opacity-40 disabled:cursor-not-allowed",
+                      mode === "organize"
+                        ? "bg-accent-primary text-white hover:bg-accent-primary/90"
+                        : "bg-text-primary text-bg-primary hover:opacity-90",
+                    )}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : mode === "organize" ? (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    ) : (
+                      <Feather className="h-3.5 w-3.5" />
+                    )}
+                    {mode === "organize" ? "Decompose" : "Capture"}
                   </button>
                 </div>
-              )}
+              </div>
 
-              {/* Hint text */}
-              <p className="mt-4 text-sm text-[#AEAEB2]">
-                <span className="inline-flex items-center gap-1.5">
-                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
-                    ⌘+Enter
+              {/* Error message */}
+              <AnimatePresence>
+                {errorMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: -4, height: 0 }}
+                    className="mt-3 flex items-start gap-2 rounded-xl border border-accent-danger/20 bg-accent-danger/5 px-4 py-3 text-sm text-accent-danger"
+                  >
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{errorMessage}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Scope jump warning */}
+              <AnimatePresence>
+                {scopeJumpVisible && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: -4, height: 0 }}
+                    className="mt-3 flex items-start gap-2 rounded-xl border border-accent-warning/20 bg-accent-warning/5 px-4 py-3 text-sm text-accent-warning"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{scopeJumpMsg}</span>
+                    <button
+                      type="button"
+                      onClick={() => setScopeJumpVisible(false)}
+                      className="ml-2 text-accent-warning/60 hover:text-accent-warning focus-visible:outline-none"
+                      aria-label="Dismiss scope jump warning"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Keyboard hints */}
+              <div className="mt-4 flex items-center justify-center gap-4 text-xs text-text-tertiary">
+                <span className="flex items-center gap-1.5">
+                  <kbd className="rounded-md border border-border bg-bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-secondary">
+                    Enter
                   </kbd>
-                  <span>to {mode === "organize" ? "decompose" : "capture"}</span>
+                  submit
                 </span>
-                <span className="mx-2">·</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <kbd className="rounded bg-[#F5F5F7] px-1.5 py-0.5 text-xs font-medium text-[#6E6E73]">
+                <span className="text-border">|</span>
+                <span className="flex items-center gap-1.5">
+                  <kbd className="rounded-md border border-border bg-bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-secondary">
+                    Shift+Enter
+                  </kbd>
+                  new line
+                </span>
+                <span className="text-border">|</span>
+                <span className="flex items-center gap-1.5">
+                  <kbd className="rounded-md border border-border bg-bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-secondary">
                     Esc
                   </kbd>
-                  <span>close</span>
+                  close
                 </span>
-              </p>
+              </div>
             </motion.div>
           )}
 
-          {/* Decomposing phase - loading state */}
+          {/* Decomposing phase */}
           {phase === "decomposing" && (
             <motion.div
               key="decomposing"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col items-center gap-4 py-12"
+              exit={{ opacity: 0, y: -12 }}
+              className="flex flex-col items-center gap-5 py-16"
             >
-              <Loader2 className="h-8 w-8 animate-spin text-[#0071E3]" />
-              <p className="text-center text-text-secondary">
-                AI is analyzing your text and proposing thought units...
-              </p>
+              <div className="relative">
+                <div className="absolute inset-0 animate-ping rounded-full bg-accent-primary/20" />
+                <div className="relative rounded-full bg-accent-primary/10 p-4">
+                  <Sparkles className="h-6 w-6 text-accent-primary" />
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-text-primary">Analyzing your thoughts</p>
+                <p className="mt-1 text-sm text-text-tertiary">
+                  AI is breaking this down into atomic thought units...
+                </p>
+              </div>
             </motion.div>
           )}
 
-          {/* Reviewing phase - decomposition review */}
+          {/* Reviewing phase */}
           {phase === "reviewing" && decompositionData && (
             <motion.div
               key="reviewing"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              exit={{ opacity: 0, y: -12 }}
             >
               <DecompositionReview
                 originalText={decompositionData.originalText}
@@ -382,25 +439,30 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
             </motion.div>
           )}
 
-          {/* Transcribing phase - loading state */}
+          {/* Transcribing phase */}
           {isTranscribing && (
             <motion.div
               key="transcribing"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col items-center gap-4 py-12"
+              exit={{ opacity: 0, y: -12 }}
+              className="flex flex-col items-center gap-5 py-16"
             >
-              <Loader2 className="h-8 w-8 animate-spin text-[#0071E3]" />
-              <p className="text-center text-text-secondary">
-                Transcribing audio...
-              </p>
+              <div className="rounded-full bg-accent-primary/10 p-4">
+                <Loader2 className="h-6 w-6 animate-spin text-accent-primary" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-text-primary">Transcribing audio</p>
+                <p className="mt-1 text-sm text-text-tertiary">
+                  Converting your recording to text...
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Audio recorder panel at bottom */}
+      {/* ── Audio recorder ── */}
       <AnimatePresence>
         {showAudioRecorder && !isTranscribing && (
           <motion.div
@@ -432,20 +494,30 @@ function ModeToggle({
   return (
     <button
       onClick={onToggle}
-      className="group flex items-center gap-2 rounded-full border border-[#D2D2D7] bg-white px-3 py-1.5 text-sm transition-colors duration-150 hover:bg-[#F0F0F2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3] focus-visible:ring-offset-2"
+      className="group flex items-center gap-0.5 rounded-full border border-border bg-bg-secondary p-0.5 transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
       aria-label={`Current mode: ${mode === "capture" ? "Capture (No AI)" : "Organize (AI-Assisted)"}. Click to toggle.`}
     >
       <span
-        className={`h-2 w-2 rounded-full transition-colors duration-150 ${
-          mode === "capture" ? "bg-[#34C759]" : "bg-[#0071E3]"
-        }`}
-        aria-hidden="true"
-      />
-      <span className="font-medium text-[#1D1D1F]">
-        {mode === "capture" ? "Capture" : "Organize"}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all",
+          mode === "capture"
+            ? "bg-bg-primary text-text-primary shadow-sm"
+            : "text-text-tertiary hover:text-text-secondary",
+        )}
+      >
+        <Feather className="h-3.5 w-3.5" />
+        Capture
       </span>
-      <span className="text-[#AEAEB2]">
-        {mode === "capture" ? "No AI" : "AI-Assisted"}
+      <span
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all",
+          mode === "organize"
+            ? "bg-accent-primary/10 text-accent-primary shadow-sm"
+            : "text-text-tertiary hover:text-text-secondary",
+        )}
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        Organize
       </span>
     </button>
   );
