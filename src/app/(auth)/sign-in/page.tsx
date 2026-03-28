@@ -46,7 +46,7 @@ export default function SignInPage() {
             type="button"
             onClick={() => handleOAuth("google")}
             disabled={isLoading !== null}
-            className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-[15px] font-medium text-[var(--text-primary)] transition-all duration-[var(--duration-fast)] hover:bg-[var(--bg-hover)] hover:shadow-[var(--shadow-resting)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
+            className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-[15px] font-medium text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:shadow-[var(--shadow-resting)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
           >
             {isLoading === "google" ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -60,7 +60,7 @@ export default function SignInPage() {
             type="button"
             onClick={() => handleOAuth("github")}
             disabled={isLoading !== null}
-            className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-[15px] font-medium text-[var(--text-primary)] transition-all duration-[var(--duration-fast)] hover:bg-[var(--bg-hover)] hover:shadow-[var(--shadow-resting)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
+            className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] text-[15px] font-medium text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--bg-hover)] hover:shadow-[var(--shadow-resting)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
           >
             {isLoading === "github" ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -113,13 +113,13 @@ export default function SignInPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="h-12 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] pl-11 pr-4 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-all duration-[var(--duration-fast)] focus:border-[var(--border-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20"
+                className="h-12 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-primary)] pl-11 pr-4 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-all duration-150 focus:border-[var(--border-focus)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20"
               />
             </div>
             <button
               type="submit"
               disabled={isLoading !== null || !email.trim()}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] text-[15px] font-medium text-white transition-all duration-[var(--duration-fast)] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] text-[15px] font-medium text-white transition-all duration-150 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)] disabled:opacity-50"
             >
               {isLoading === "email" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

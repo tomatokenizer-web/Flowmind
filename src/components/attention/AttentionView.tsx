@@ -19,10 +19,10 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+import type { UnitType } from "@prisma/client";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { toast } from "~/lib/toast";
-import { Button } from "~/components/ui/button";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { usePanelStore } from "~/stores/panel-store";
 import { BranchProjectDialog } from "~/components/project/BranchProjectDialog";
@@ -243,7 +243,7 @@ function IncubatingList({
           )}
         >
           <div className="flex items-center justify-between mb-2">
-            <UnitTypeBadge unitType={unit.unitType as any} />
+            <UnitTypeBadge unitType={unit.unitType as UnitType} />
             <span className="text-xs text-text-tertiary">
               {formatDistanceToNow(new Date(unit.createdAt), { addSuffix: true })}
             </span>
@@ -379,7 +379,7 @@ function OrphanList({
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <UnitTypeBadge unitType={unit.unitType as any} />
+                <UnitTypeBadge unitType={unit.unitType as UnitType} />
                 {unit.isolationScore >= 1 && (
                   <span className="rounded-full bg-accent-warning/10 px-2 py-0.5 text-[10px] font-medium text-accent-warning">
                     fully isolated
@@ -556,7 +556,7 @@ function DriftList({
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <UnitTypeBadge unitType={unit.unitType as any} />
+              <UnitTypeBadge unitType={unit.unitType as UnitType} />
               <span className={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-medium",
                 (unit.driftScore ?? 0) >= 0.85

@@ -7,6 +7,7 @@
 
 /* ── Live Region Announcer ── */
 
+// eslint-disable-next-line prefer-const
 let liveRegion: HTMLElement | null = null;
 
 function getOrCreateLiveRegion(

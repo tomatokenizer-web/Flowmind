@@ -97,6 +97,25 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
     lifecycleMutation.mutate({ id: selectedUnitId, targetState: lifecycle as "draft" | "pending" | "confirmed" | "archived" });
   }, [selectedUnitId, lifecycleMutation]);
 
+  const deleteMutation = api.unit.delete.useMutation({
+    onSuccess: () => {
+      closePanel();
+      void utils.unit.list.invalidate();
+      void utils.context.getById.invalidate();
+      void utils.relation.listByUnit.invalidate();
+      void utils.navigator.list.invalidate();
+      void utils.project.getProjectStats.invalidate();
+      toast.success("Unit deleted");
+    },
+    onError: (err) => {
+      toast.error("Failed to delete unit", { description: err.message });
+    },
+  });
+
+  const handleDelete = React.useCallback((unitId: string) => {
+    deleteMutation.mutate({ id: unitId });
+  }, [deleteMutation]);
+
   // Track element that opened the panel for focus return
   React.useEffect(() => {
     if (detailPanelOpen) {
@@ -161,6 +180,7 @@ export function DetailPanel({ className, fullScreenOverlay = false }: DetailPane
       onContentChange={handleContentChange}
       onMetadataChange={handleMetadataChange}
       onLifecycleChange={handleLifecycleChange}
+      onDelete={handleDelete}
     />
   );
 

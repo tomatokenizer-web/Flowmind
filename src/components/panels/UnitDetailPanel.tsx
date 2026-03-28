@@ -12,6 +12,7 @@ import {
   ChevronDown,
   GitCommitHorizontal,
   Network,
+  Trash2,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -65,6 +66,7 @@ interface UnitDetailPanelProps {
   onRemoveResource?: (resourceId: string) => void;
   /** Called when user clicks "Add as Unit" from the external knowledge panel */
   onAddAsUnit?: (content: string) => void;
+  onDelete?: (unitId: string) => void;
   className?: string;
 }
 
@@ -156,11 +158,13 @@ export function UnitDetailPanel({
   onLifecycleChange,
   onRemoveResource: _onRemoveResource,
   onAddAsUnit,
+  onDelete,
   className,
 }: UnitDetailPanelProps) {
   const activeTab = usePanelStore((s) => s.activeTab);
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   return (
     <ComponentErrorBoundary>
@@ -170,15 +174,34 @@ export function UnitDetailPanel({
         <h2 className="text-sm font-medium text-text-primary truncate">
           {unit ? "Unit Detail" : "Details"}
         </h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Close detail panel"
-          className="h-8 w-8 shrink-0"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          {unit && onDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={isDeleting}
+              onClick={() => {
+                if (window.confirm("Permanently delete this unit? This cannot be undone.")) {
+                  setIsDeleting(true);
+                  onDelete(unit.id);
+                }
+              }}
+              aria-label="Delete unit"
+              className="h-8 w-8 text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close detail panel"
+            className="h-8 w-8"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Add to Navigator action — shown when a unit is open */}
