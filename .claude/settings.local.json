@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npx playwright:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(start \"\" \"c:\\\\Users\\\\USER\\\\clawd\\\\projects\\\\barbershop-website\\\\style-a-classic-heritage.html\")",
+      "Bash(start \"\" \"c:\\\\Users\\\\USER\\\\clawd\\\\projects\\\\barbershop-website\\\\style-b-modern-minimal.html\")",
+      "Bash(start \"\" \"c:\\\\Users\\\\USER\\\\clawd\\\\projects\\\\barbershop-website\\\\style-c-bold-street.html\")",
+      "Bash(npx next:*)"
     ]
   }
 }
