@@ -1,180 +1,322 @@
-// ─── AI Service Types ────────────────────────────────────────────────────────
-// All type interfaces exported from the AI service module.
+/**
+ * AI Pipeline Types
+ *
+ * All interfaces and type definitions for the 7-pass processing pipeline.
+ * Aligned with Prisma schema enums and the Processing-Pipeline spec.
+ */
 
-export interface TypeSuggestion {
-  unitType: string;
-  confidence: number;
-  reasoning: string;
-}
+// ─── Unit Type Taxonomy ──────────────────────────────────────────────────
 
-export interface RelationSuggestion {
-  targetUnitId: string;
-  relationType: string;
-  strength: number;
-  reasoning: string;
-}
+export const UNIT_TYPES = [
+  "claim",
+  "evidence",
+  "warrant",
+  "backing",
+  "qualifier",
+  "rebuttal",
+  "observation",
+  "context",
+  "definition",
+  "question",
+  "analogy",
+  "decision",
+  "idea",
+  "assumption",
+  "action",
+  "counterargument",
+] as const;
 
-// ─── Story 5.4-5.15 Types ─────────────────────────────────────────────────────
+export type UnitType = (typeof UNIT_TYPES)[number];
 
-export interface SplitReattributionProposal {
-  relationId: string;
-  assignTo: "A" | "B";
-  rationale: string;
-}
+// ─── Relation Types ──────────────────────────────────────────────────────
 
-export interface SplitReattributionResult {
-  proposals: SplitReattributionProposal[];
-}
+export const RELATION_TYPES = [
+  "supports",
+  "contradicts",
+  "elaborates",
+  "qualifies",
+  "exemplifies",
+  "generalizes",
+  "causes",
+  "enables",
+  "temporal_sequence",
+  "part_of",
+  "contrasts",
+  "reframes",
+  "depends_on",
+  "responds_to",
+  "analogous_to",
+  "derived_from",
+  "refines",
+  "subsumes",
+] as const;
 
-export interface AlternativeFraming {
-  reframedContent: string;
-  newType: string;
-  rationale: string;
-  confidence: number;
-}
+export type RelationType = (typeof RELATION_TYPES)[number];
 
-export interface CounterArgument {
-  content: string;
-  strength: number;
-  targetsClaim: string;
-  rationale: string;
-}
+// ─── Source Types ────────────────────────────────────────────────────────
 
-export interface IdentifiedAssumption {
-  content: string;
-  isExplicit: boolean;
-  importance: "critical" | "moderate" | "minor";
-  rationale: string;
-}
+export type SourceType = "text" | "url" | "pdf" | "image" | "audio";
 
-export interface ContradictionPair {
-  unitAId: string;
-  unitBId: string;
-  description: string;
-  severity: "direct" | "tension" | "potential";
-  suggestedResolution: string;
-}
+// ─── Genre / Domain ──────────────────────────────────────────────────────
 
-export interface MergeSuggestion {
-  unitIds: string[];
-  mergedContent: string;
-  mergedType: string;
-  rationale: string;
-  confidence: number;
-}
+export type GenreDensity = "high" | "medium" | "low";
 
-export interface CompletenessAnalysis {
-  score: number; // 0-1
-  missingElements: Array<{
-    type: "evidence" | "counterargument" | "definition" | "example" | "assumption";
-    description: string;
-    priority: "high" | "medium" | "low";
-  }>;
-  suggestions: string[];
-}
+export const GENRE_MAP: Record<string, GenreDensity> = {
+  science: "high",
+  law: "high",
+  philosophy: "medium",
+  business: "medium",
+  academic: "high",
+  technical: "high",
+  narrative: "low",
+  journal: "low",
+  casual: "low",
+  general: "medium",
+} as const;
 
-export interface ContextSummary {
-  mainThesis: string;
-  keyPoints: string[];
-  openQuestions: string[];
-  conflictingViews: string[];
-}
+// ─── Pipeline Input ──────────────────────────────────────────────────────
 
-export interface GeneratedQuestion {
-  content: string;
-  type: "clarifying" | "challenging" | "exploratory" | "connecting";
-  targetUnitId?: string;
-  rationale: string;
-}
-
-export interface NextStepSuggestion {
-  action: string;
-  type: "research" | "define" | "challenge" | "connect" | "expand" | "resolve";
-  priority: "high" | "medium" | "low";
-  relatedUnitIds: string[];
-  rationale: string;
-}
-
-export interface ExtractedTerm {
-  term: string;
-  definition?: string;
-  occurrences: number;
-  importance: "key" | "supporting" | "peripheral";
-  suggestDefine: boolean;
-}
-
-export interface StanceClassification {
-  stance: "support" | "oppose" | "neutral" | "exploring";
-  confidence: number;
-  rationale: string;
-  keyIndicators: string[];
-}
-
-export interface ReflectionPrompt {
-  question: string;
-  category: "assumption" | "opposite" | "connection" | "consequence" | "evidence" | "reframe";
-  targetUnitId?: string;
-  rationale: string;
-}
-
-export interface AIServiceContext {
-  userId: string;
-  sessionId: string;
+export interface PipelineInput {
+  text: string;
+  sourceType: SourceType;
+  sourceUrl?: string;
+  projectId: string;
   contextId?: string;
+  domainTemplate?: string;
 }
 
-// ─── Decomposition Types ─────────────────────────────────────────────────────
+export interface PipelineOptions {
+  /** Skip sensemaking loop (passes 5-7) */
+  foragingOnly?: boolean;
+  /** Override genre detection */
+  genre?: string;
+  /** Override density for unit extraction */
+  density?: GenreDensity;
+  /** Existing units in the graph for cross-relation detection */
+  existingUnits?: ExistingUnit[];
+  /** Existing contexts for context assignment */
+  existingContexts?: ExistingContext[];
+  /** Use mock/heuristic mode even if API key is available */
+  forceMock?: boolean;
+}
 
-export type UserPurpose = "arguing" | "brainstorming" | "researching" | "defining" | "other";
+// ─── Pass 1: Capture & Normalization ─────────────────────────────────────
 
-export interface DecompositionBoundary {
-  startChar: number;
-  endChar: number;
+export interface NormalizedInput {
+  rawText: string;
+  normalizedText: string;
+  sourceType: SourceType;
+  sourceUrl?: string;
+  language: string;
+  metadata: InputMetadata;
+}
+
+export interface InputMetadata {
+  charCount: number;
+  wordCount: number;
+  sentenceCount: number;
+  paragraphCount: number;
+  detectedLanguage: string;
+  hasUrls: boolean;
+  hasCitations: boolean;
+  hasCodeBlocks: boolean;
+  processingTimeMs: number;
+}
+
+// ─── Pass 2: Unit Extraction ─────────────────────────────────────────────
+
+export interface ExtractedUnit {
   content: string;
-  proposedType: string;
-  confidence: number;
-}
-
-export interface DecompositionRelationProposal {
-  /** Index of source unit in proposals array (0-based) */
-  sourceIdx: number;
-  /** ID of existing unit to link to */
-  targetUnitId: string;
-  relationType: string;
-  strength: number;
-  rationale: string;
-}
-
-export interface UnitProposal {
-  id: string; // temporary client-side ID
-  content: string;
-  proposedType: string;
-  confidence: number;
-  startChar: number;
-  endChar: number;
+  rawContent: string;
+  type: UnitType;
+  typeConfidence: number;
+  secondaryType?: UnitType;
+  extractionConfidence: number;
+  suggestedContextId?: string;
+  contextRelevance: number;
   lifecycle: "draft";
-  originType: "ai_generated";
+  position: number;
+  sourceSpan: { start: number; end: number };
 }
 
-export interface DecompositionResult {
-  purpose: UserPurpose;
-  proposals: UnitProposal[];
-  relationProposals: DecompositionRelationProposal[];
+export interface ExtractionResult {
+  units: ExtractedUnit[];
+  genre: string;
+  density: GenreDensity;
+  processingTimeMs: number;
 }
 
-// ─── Story 5.11: Scope Jump Detection ────────────────────────────────────────
+// ─── Pass 3: Classification ──────────────────────────────────────────────
 
-export interface ScopeJumpResult {
-  isJump: boolean;
-  currentScope: string;
-  suggestedScope: string;
+export interface ClassificationResult {
+  unitIndex: number;
+  type: UnitType;
   confidence: number;
+  secondaryType?: UnitType;
+  secondaryConfidence?: number;
+  reasoning?: string;
+  needsReview: boolean;
 }
 
-// ─── Story 6.7: Natural Language Query ───────────────────────────────────────
+// ─── Pass 4: Context Assignment ──────────────────────────────────────────
 
-export interface NLQIntent {
-  keywords: string[];
-  unitTypes?: string[];
-  summary: string;
+export interface ContextAssignment {
+  unitIndex: number;
+  contextId: string;
+  contextName?: string;
+  relevance: number;
+  action: "auto-assign" | "suggest" | "inbox" | "new-context";
+  suggestedContextName?: string;
+}
+
+export interface ExistingContext {
+  id: string;
+  name: string;
+  description?: string;
+  snapshot?: string;
+}
+
+// ─── Pass 5: Within-Input Relations ──────────────────────────────────────
+
+export interface DetectedRelation {
+  sourceIndex: number;
+  targetIndex: number;
+  type: RelationType;
+  confidence: number;
+  action: "auto-accept" | "suggest" | "hidden" | "discard";
+  reasoning?: string;
+  /** For cross-graph relations: ID of the existing unit */
+  existingUnitId?: string;
+}
+
+// ─── Pass 6: Cross-Graph Relations ───────────────────────────────────────
+
+export interface ExistingUnit {
+  id: string;
+  content: string;
+  type: string;
+  contextId?: string;
+  keywords?: string[];
+  importance?: number;
+}
+
+export interface CrossRelation extends DetectedRelation {
+  existingUnitId: string;
+  salienceBoost: number;
+}
+
+// ─── Pass 7: Salience ───────────────────────────────────────────────────
+
+export interface SalienceUpdate {
+  unitIndex: number;
+  salience: number;
+  convergenceBonus: number;
+  crossGraphBoost: number;
+  finalSalience: number;
+}
+
+export interface SalienceResult {
+  updates: SalienceUpdate[];
+  processingTimeMs: number;
+}
+
+// ─── Review Items ────────────────────────────────────────────────────────
+
+export type ReviewReason =
+  | "low-extraction-confidence"
+  | "low-type-confidence"
+  | "ambiguous-context"
+  | "suggested-relation"
+  | "suggested-context"
+  | "new-context-proposal";
+
+export interface ReviewItem {
+  type: ReviewReason;
+  unitIndex?: number;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+// ─── Pipeline Result ─────────────────────────────────────────────────────
+
+export interface PipelineMetadata {
+  totalProcessingTimeMs: number;
+  foragingTimeMs: number;
+  sensemakingTimeMs: number;
+  genre: string;
+  density: GenreDensity;
+  language: string;
+  unitCount: number;
+  relationCount: number;
+  reviewItemCount: number;
+  usedMockMode: boolean;
+  passTimings: Record<string, number>;
+}
+
+export interface PipelineResult {
+  units: ExtractedUnit[];
+  relations: DetectedRelation[];
+  crossRelations: CrossRelation[];
+  contextAssignments: ContextAssignment[];
+  salienceUpdates: SalienceUpdate[];
+  reviewItems: ReviewItem[];
+  metadata: PipelineMetadata;
+}
+
+// ─── AI Response Schemas (for structured output) ─────────────────────────
+
+export interface AIExtractionResponse {
+  units: Array<{
+    content: string;
+    type: UnitType;
+    confidence: number;
+    secondaryType?: UnitType;
+    reasoning?: string;
+  }>;
+  genre: string;
+}
+
+export interface AIClassificationResponse {
+  classifications: Array<{
+    unitIndex: number;
+    type: UnitType;
+    confidence: number;
+    secondaryType?: UnitType;
+    secondaryConfidence?: number;
+    reasoning: string;
+  }>;
+}
+
+export interface AIContextAssignmentResponse {
+  assignments: Array<{
+    unitIndex: number;
+    contextId: string;
+    relevance: number;
+    reasoning: string;
+  }>;
+  newContextSuggestions?: Array<{
+    name: string;
+    description: string;
+    unitIndices: number[];
+  }>;
+}
+
+export interface AIRelationResponse {
+  relations: Array<{
+    sourceIndex: number;
+    targetIndex: number;
+    type: RelationType;
+    confidence: number;
+    reasoning: string;
+  }>;
+}
+
+export interface AICrossRelationResponse {
+  relations: Array<{
+    unitIndex: number;
+    existingUnitId: string;
+    type: RelationType;
+    confidence: number;
+    reasoning: string;
+  }>;
 }

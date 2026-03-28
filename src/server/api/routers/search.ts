@@ -1,107 +1,257 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createSearchService, type SearchLayer } from "@/server/services/searchService";
-import { generateEmbedding } from "@/server/ai/embedding";
-
-// ─── Zod Schemas ────────────────────────────────────────────────────
-
-const unitTypeEnum = z.enum([
-  "claim", "question", "evidence", "counterargument",
-  "observation", "idea", "definition", "assumption", "action",
-]);
-
-const lifecycleEnum = z.enum([
-  "draft", "pending", "confirmed", "deferred",
-  "complete", "archived", "discarded",
-]);
-
-const searchLayerEnum = z.enum(["text", "structural", "temporal", "semantic"]);
-
-const searchQuerySchema = z.object({
-  query: z.string().max(500),
-  contextId: z.string().uuid().optional(),
-  projectId: z.string().uuid(),
-  layers: z.array(searchLayerEnum).default(["text"]),
-  limit: z.number().int().min(1).max(100).default(50),
-  // Structural filters
-  unitTypes: z.array(unitTypeEnum).optional(),
-  lifecycles: z.array(lifecycleEnum).optional(),
-  minRelationCount: z.number().int().min(0).optional(),
-  maxRelationCount: z.number().int().min(0).optional(),
-  // Temporal filters
-  createdAfter: z.date().optional(),
-  createdBefore: z.date().optional(),
-  sortOrder: z.enum(["asc", "desc"]).optional(),
-});
-
-// ─── Router ─────────────────────────────────────────────────────────
+import type { Prisma } from "@prisma/client";
 
 export const searchRouter = createTRPCRouter({
-  query: protectedProcedure
-    .input(searchQuerySchema)
-    .query(async ({ ctx, input }) => {
-      const service = createSearchService(ctx.db);
-
-      const results = await service.search(
-        input.query,
-        {
-          contextId: input.contextId,
-          projectId: input.projectId,
-          layers: input.layers as SearchLayer[],
-          limit: input.limit,
-        },
-        // Structural filters
-        {
-          unitTypes: input.unitTypes,
-          lifecycles: input.lifecycles,
-          minRelationCount: input.minRelationCount,
-          maxRelationCount: input.maxRelationCount,
-        },
-        // Temporal filters
-        {
-          createdAfter: input.createdAfter,
-          createdBefore: input.createdBefore,
-          sortOrder: input.sortOrder,
-        },
-      );
-
-      return results;
-    }),
-
   /**
-   * Dedicated semantic search endpoint.
-   * Generates an embedding for the query and returns the most similar units.
+   * Full-text search across units within a project.
+   * Supports filtering by contextId, types, lifecycle, and tags.
    */
-  semantic: protectedProcedure
+  global: protectedProcedure
     .input(
       z.object({
         query: z.string().min(1).max(500),
         projectId: z.string().uuid(),
-        limit: z.number().int().min(1).max(100).default(20),
+        contextId: z.string().uuid().optional(),
+        types: z.array(z.string()).optional(),
+        lifecycle: z
+          .enum([
+            "draft",
+            "pending",
+            "confirmed",
+            "deferred",
+            "complete",
+            "archived",
+            "discarded",
+          ])
+          .optional(),
+        tagIds: z.array(z.string()).optional(),
+        limit: z.number().int().min(1).max(100).default(25),
+        offset: z.number().int().min(0).default(0),
       }),
     )
     .query(async ({ ctx, input }) => {
-      // Check if embedding provider is configured
-      const testEmbedding = await generateEmbedding("test");
-      if (!testEmbedding) {
-        return {
-          results: [],
-          embeddingConfigured: false,
-          message: "Semantic search requires an embedding provider. Configure AI_EMBEDDING_MODEL and an API key in your environment to enable this feature.",
-        };
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
 
-      const service = createSearchService(ctx.db);
+      const where: Prisma.UnitWhereInput = {
+        projectId: input.projectId,
+        content: { contains: input.query, mode: "insensitive" },
+        ...(input.types && input.types.length > 0 && {
+          primaryType: { in: input.types },
+        }),
+        ...(input.lifecycle && { lifecycle: input.lifecycle }),
+        ...(input.tagIds && input.tagIds.length > 0 && {
+          unitTags: { some: { tagId: { in: input.tagIds } } },
+        }),
+        ...(input.contextId && {
+          unitContexts: { some: { contextId: input.contextId } },
+        }),
+      };
 
-      const results = await service.search(
-        input.query,
-        {
-          projectId: input.projectId,
-          layers: ["semantic"],
-          limit: input.limit,
-        },
-      );
+      const [units, total] = await ctx.db.$transaction([
+        ctx.db.unit.findMany({
+          where,
+          select: {
+            id: true,
+            content: true,
+            primaryType: true,
+            typeTier: true,
+            lifecycle: true,
+            certainty: true,
+            completeness: true,
+            createdAt: true,
+            modifiedAt: true,
+          },
+          orderBy: { modifiedAt: "desc" },
+          take: input.limit,
+          skip: input.offset,
+        }),
+        ctx.db.unit.count({ where }),
+      ]);
 
-      return { results, embeddingConfigured: true, message: null };
+      return { units, total, limit: input.limit, offset: input.offset };
     }),
+
+  /**
+   * Search units by tag within a project.
+   */
+  byTag: protectedProcedure
+    .input(
+      z.object({
+        tagId: z.string(),
+        projectId: z.string().uuid(),
+        limit: z.number().int().min(1).max(100).default(25),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      const where: Prisma.UnitWhereInput = {
+        projectId: input.projectId,
+        unitTags: { some: { tagId: input.tagId } },
+      };
+
+      const [units, total] = await ctx.db.$transaction([
+        ctx.db.unit.findMany({
+          where,
+          select: {
+            id: true,
+            content: true,
+            primaryType: true,
+            typeTier: true,
+            lifecycle: true,
+            createdAt: true,
+            modifiedAt: true,
+          },
+          orderBy: { modifiedAt: "desc" },
+          take: input.limit,
+          skip: input.offset,
+        }),
+        ctx.db.unit.count({ where }),
+      ]);
+
+      return { units, total, limit: input.limit, offset: input.offset };
+    }),
+
+  /**
+   * Get recently modified units in a project.
+   */
+  recentUnits: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        limit: z.number().int().min(1).max(50).default(20),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      return ctx.db.unit.findMany({
+        where: {
+          projectId: input.projectId,
+          lifecycle: { notIn: ["discarded", "archived"] },
+        },
+        select: {
+          id: true,
+          content: true,
+          primaryType: true,
+          typeTier: true,
+          lifecycle: true,
+          modifiedAt: true,
+        },
+        orderBy: { modifiedAt: "desc" },
+        take: input.limit,
+      });
+    }),
+
+  /**
+   * Find orphan units -- units with no relations (neither source nor target).
+   */
+  orphanUnits: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      const where: Prisma.UnitWhereInput = {
+        projectId: input.projectId,
+        lifecycle: { notIn: ["discarded", "archived"] },
+        relationsAsSource: { none: {} },
+        relationsAsTarget: { none: {} },
+      };
+
+      const [units, total] = await ctx.db.$transaction([
+        ctx.db.unit.findMany({
+          where,
+          select: {
+            id: true,
+            content: true,
+            primaryType: true,
+            typeTier: true,
+            lifecycle: true,
+            createdAt: true,
+            modifiedAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: input.limit,
+          skip: input.offset,
+        }),
+        ctx.db.unit.count({ where }),
+      ]);
+
+      return { units, total, limit: input.limit, offset: input.offset };
+    }),
+
+  /**
+   * Get all system relation types (for UI dropdowns).
+   */
+  systemRelationTypes: protectedProcedure.query(async ({ ctx }) => {
+    return ctx.db.systemRelationType.findMany({
+      orderBy: [{ layer: "asc" }, { sortOrder: "asc" }],
+    });
+  }),
+
+  /**
+   * Get all unit types, optionally filtered by tier and/or domain.
+   */
+  unitTypes: protectedProcedure
+    .input(
+      z
+        .object({
+          tier: z.enum(["base", "seed", "formal"]).optional(),
+          domain: z.string().max(50).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      return ctx.db.unitType.findMany({
+        where: {
+          ...(input?.tier && { tier: input.tier }),
+          ...(input?.domain && { domain: input.domain }),
+        },
+        orderBy: [{ tier: "asc" }, { sortOrder: "asc" }],
+      });
+    }),
+
+  /**
+   * List available domain templates.
+   */
+  domainTemplates: protectedProcedure.query(async ({ ctx }) => {
+    return ctx.db.domainTemplate.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+      },
+      orderBy: { name: "asc" },
+    });
+  }),
 });

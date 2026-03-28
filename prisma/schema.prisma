@@ -10,9 +10,12 @@ datasource db {
   extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
 }
 
-// ─── Enums (PRD Appendix A) ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// ENUMS — Derived from Obsidian Spec v2.1
+// ═══════════════════════════════════════════════════════════════════
 
-enum UnitType {
+// --- Unit Type (Base types only; Seed/Formal stored as strings via DomainTemplate) ---
+enum BaseUnitType {
   claim
   question
   evidence
@@ -22,8 +25,26 @@ enum UnitType {
   definition
   assumption
   action
+  warrant
+  backing
+  decision
 }
 
+// --- Type Tier (3-Tier Type System from Capture-Type-System.md) ---
+enum TypeTier {
+  base
+  seed
+  formal
+}
+
+// --- Context Dependency (from Thought-Unit.md v1.5) ---
+enum ContextDependency {
+  free
+  anchored
+  passage
+}
+
+// --- Origin Type (from Input-Decomposition.md) ---
 enum OriginType {
   direct_write
   external_excerpt
@@ -33,6 +54,7 @@ enum OriginType {
   ai_refined
 }
 
+// --- Lifecycle (from AI-Interaction-Safety.md — 3-stage + extended) ---
 enum Lifecycle {
   draft
   pending
@@ -43,6 +65,7 @@ enum Lifecycle {
   discarded
 }
 
+// --- Quality ---
 enum Quality {
   raw
   refined
@@ -50,6 +73,7 @@ enum Quality {
   published
 }
 
+// --- Evidence Domain (from Thought-Unit metadata) ---
 enum EvidenceDomain {
   external_public
   external_private
@@ -59,6 +83,7 @@ enum EvidenceDomain {
   reasoned_inference
 }
 
+// --- Scope ---
 enum Scope {
   universal
   domain_general
@@ -68,6 +93,7 @@ enum Scope {
   personal
 }
 
+// --- AI Trust Level ---
 enum AiTrustLevel {
   user_authored
   verified
@@ -75,12 +101,14 @@ enum AiTrustLevel {
   uncertain
 }
 
+// --- Energy Level ---
 enum EnergyLevel {
   high
   neutral
   low
 }
 
+// --- Certainty ---
 enum Certainty {
   certain
   probable
@@ -88,6 +116,7 @@ enum Certainty {
   uncertain
 }
 
+// --- Completeness ---
 enum Completeness {
   complete
   needs_evidence
@@ -96,6 +125,7 @@ enum Completeness {
   fragment
 }
 
+// --- Abstraction Level ---
 enum AbstractionLevel {
   principle
   concept
@@ -103,6 +133,7 @@ enum AbstractionLevel {
   detail
 }
 
+// --- Stance (from Context-and-Perspective.md) ---
 enum Stance {
   support
   oppose
@@ -110,6 +141,7 @@ enum Stance {
   exploring
 }
 
+// --- Resource Type ---
 enum ResourceType {
   image
   table
@@ -120,6 +152,7 @@ enum ResourceType {
   code
 }
 
+// --- Version Origin ---
 enum VersionOriginType {
   manual
   ai_suggestion
@@ -128,30 +161,137 @@ enum VersionOriginType {
   import
 }
 
-// ─── Models ────────────────────────────────────────────────────────
+// --- Relation Direction ---
+enum RelationDirection {
+  one_way
+  bidirectional
+}
+
+// --- Nucleus-Satellite Direction (from Relations-and-Graph.md AMEND-03) ---
+enum NsDirection {
+  nucleus_to_satellite
+  satellite_to_nucleus
+  multinuclear
+}
+
+// --- Relation Created By ---
+enum RelationCreatedBy {
+  user
+  ai_suggested_confirmed
+  ai_auto
+}
+
+// --- Inquiry Status (from Inquiry.md) ---
+enum InquiryStatus {
+  exploring
+  active
+  paused
+  completed
+  abandoned
+}
+
+// --- Inquiry Formation (from Inquiry.md) ---
+enum InquiryFormation {
+  top_down
+  organic
+}
+
+// --- Context Status ---
+enum ContextStatus {
+  active
+  paused
+  resolved
+  archived
+}
+
+// --- Work Type (from Work-Architecture.md) ---
+enum WorkType {
+  assembly
+  document
+}
+
+// --- Rhetorical Shape (from Work-Architecture.md AMEND-02) ---
+enum RhetoricalShape {
+  argument
+  narrative
+  analysis
+  comparison
+  synthesis
+}
+
+// --- Navigator Mode (from Navigator.md) ---
+enum NavigatorMode {
+  query
+  path
+  selection
+}
+
+// --- Path Type (from Navigator.md — 6 types) ---
+enum PathType {
+  argument
+  discovery
+  question_anchored
+  trace_back
+  branch_explorer
+  cross_context
+}
+
+// --- Traversal Mode (from Navigator.md v1.4) ---
+enum TraversalMode {
+  relation
+  hierarchy
+  work
+}
+
+// --- Expertise Level (from AI-Interaction-Safety.md AMEND-06) ---
+enum ExpertiseLevel {
+  novice
+  intermediate
+  expert
+}
+
+// --- AI Intervention Intensity ---
+enum AiIntensity {
+  minimal
+  moderate
+  exploratory
+  generative
+}
+
+// --- Maturation Pathway (from DQ-C1) ---
+enum MaturationPathway {
+  confirmed
+  disproved
+  transformed
+  absorbed
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTH MODELS — Preserved from NextAuth v5
+// ═══════════════════════════════════════════════════════════════════
 
 model User {
-  id                   String    @id @default(cuid())
-  name                 String?
-  email                String?   @unique
-  emailVerified        DateTime? @map("email_verified")
-  image                String?
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
-  /// Whether the user has completed the onboarding flow
-  onboardingCompleted  Boolean   @default(false) @map("onboarding_completed")
-  /// The last onboarding step index the user reached (0-based)
-  onboardingStep       Int       @default(0) @map("onboarding_step")
-  accounts             Account[]
-  projects             Project[]
-  sessions             Session[]
-  units                Unit[]
-  resources            ResourceUnit[]
-  contextVisits          ContextVisit[]
-  contextReferences      ContextReference[]
-  customRelationTypes    CustomRelationType[]
-  webhooks               Webhook[]
-  exportHistory          ExportHistory[]
+  id                  String    @id @default(cuid())
+  name                String?
+  email               String?   @unique
+  emailVerified       DateTime? @map("email_verified")
+  image               String?
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  onboardingCompleted Boolean   @default(false) @map("onboarding_completed")
+  onboardingStep      Int       @default(0) @map("onboarding_step")
+  expertiseLevel      ExpertiseLevel @default(novice) @map("expertise_level")
+  aiIntensity         AiIntensity    @default(moderate) @map("ai_intensity")
+
+  accounts            Account[]
+  sessions            Session[]
+  projects            Project[]
+  units               Unit[]
+  resources           ResourceUnit[]
+  contextVisits       ContextVisit[]
+  customRelationTypes CustomRelationType[]
+  webhooks            Webhook[]
+  exportHistory       ExportHistory[]
 
   @@map("users")
 }
@@ -194,161 +334,318 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 0: SCOPE — Project > Inquiry > Context
+// ═══════════════════════════════════════════════════════════════════
+
 model Project {
-  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String
-  type                String?              @db.VarChar(50)
-  templateId          String?              @map("template_id") @db.Uuid
-  constraintLevel     String               @default("guided") @map("constraint_level") @db.VarChar(10)
-  branchedFrom        String?              @map("branched_from") @db.Uuid
-  branchReason        String?              @map("branch_reason")
-  userId              String               @map("user_id")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  assemblies          Assembly[]
-  contexts            Context[]
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  userId          String          @map("user_id")
+  branchedFrom    String?         @map("branched_from") @db.Uuid
+  branchReason    String?         @map("branch_reason")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent          Project?        @relation("ProjectBranch", fields: [branchedFrom], references: [id])
+  branches        Project[]       @relation("ProjectBranch")
+  inquiries       Inquiry[]
+  contexts        Context[]
+  units           Unit[]
+  assemblies      Assembly[]
+  documents       Document[]
+  tags            Tag[]
   customRelationTypes CustomRelationType[]
-  parent              Project?             @relation("ProjectBranch", fields: [branchedFrom], references: [id])
-  branches            Project[]            @relation("ProjectBranch")
-  template            DomainTemplate?      @relation(fields: [templateId], references: [id])
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  units               Unit[]
-  tags                Tag[]
-  webhooks            Webhook[]
+  webhooks        Webhook[]
 
   @@index([userId])
   @@map("projects")
 }
 
-model DomainTemplate {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  slug      String    @unique @db.VarChar(100)
-  type      String    @db.VarChar(30)
-  config    Json
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  projects  Project[]
+/// Inquiry — domain-purpose cluster of Contexts (Inquiry.md v2.1)
+/// Activates a DomainTemplate, owns a Completeness Compass.
+model Inquiry {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title               String
+  projectId           String           @map("project_id") @db.Uuid
+  domainTemplateId    String?          @map("domain_template_id") @db.Uuid
+  formation           InquiryFormation @default(top_down)
+  status              InquiryStatus    @default(exploring)
+  startingQuestions   Json             @default("[]") @map("starting_questions")
+  formedFrom          String[]         @default([]) @map("formed_from") @db.Uuid
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  completedAt         DateTime?        @map("completed_at")
 
-  @@map("domain_templates")
+  project             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domainTemplate      DomainTemplate?  @relation(fields: [domainTemplateId], references: [id])
+  secondaryTemplates  InquiryTemplate[]
+  contexts            Context[]
+  targetAssemblies    InquiryAssembly[]
+  compass             InquiryCompass?
+  pivotHistory        PivotEvent[]
+
+  @@index([projectId])
+  @@index([domainTemplateId])
+  @@map("inquiries")
 }
 
+/// InquiryTemplate — for hybrid domain Inquiries (multiple templates)
+model InquiryTemplate {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiryId       String         @map("inquiry_id") @db.Uuid
+  templateId      String         @map("template_id") @db.Uuid
+  role            String         @default("secondary") @db.VarChar(20)
+  inquiry         Inquiry        @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  template        DomainTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([inquiryId, templateId])
+  @@map("inquiry_templates")
+}
+
+/// InquiryAssembly — links Inquiries to their target output Assemblies
+model InquiryAssembly {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiryId  String   @map("inquiry_id") @db.Uuid
+  assemblyId String   @map("assembly_id") @db.Uuid
+  inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+
+  @@unique([inquiryId, assemblyId])
+  @@map("inquiry_assemblies")
+}
+
+/// InquiryCompass — completeness tracking per Inquiry (Completeness-Compass.md)
+model InquiryCompass {
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiryId            String  @unique @map("inquiry_id") @db.Uuid
+  requiredFormalTypes  Json    @default("[]") @map("required_formal_types")
+  currentState         Json    @default("{}") @map("current_state")
+  completeness         Float   @default(0)
+  openQuestions        Json    @default("[]") @map("open_questions")
+  blockers             Json    @default("[]")
+
+  inquiry              Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@map("inquiry_compasses")
+}
+
+/// PivotEvent — goal change record within Inquiry (DQ-C2)
+model PivotEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiryId       String   @map("inquiry_id") @db.Uuid
+  fromGoal        String   @map("from_goal")
+  toGoal          String   @map("to_goal")
+  reason          String
+  carriedForward  String[] @default([]) @map("carried_forward") @db.Uuid
+  deprecated      String[] @default([]) @map("deprecated") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  inquiry         Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([inquiryId])
+  @@map("pivot_events")
+}
+
+/// Context — exploration workspace (Context-and-Perspective.md)
+model Context {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  projectId       String            @map("project_id") @db.Uuid
+  inquiryId       String?           @map("inquiry_id") @db.Uuid
+  parentId        String?           @map("parent_id") @db.Uuid
+  status          ContextStatus     @default(active)
+  snapshot        String            @default("")
+  openQuestions   Json              @default("[]") @map("open_questions")
+  contradictions  Json              @default("[]")
+  sortOrder       Int               @default(0) @map("sort_order")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inquiry         Inquiry?          @relation(fields: [inquiryId], references: [id])
+  parent          Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
+  children        Context[]         @relation("ContextHierarchy")
+  perspectives    UnitPerspective[]
+  unitContexts    UnitContext[]
+  contextVisits   ContextVisit[]
+  navigators      Navigator[]
+  reasoningChains ReasoningChain[]
+  sourceRefs      ContextReference[] @relation("SourceRef")
+  targetRefs      ContextReference[] @relation("TargetRef")
+
+  @@unique([name, parentId, projectId])
+  @@index([projectId])
+  @@index([inquiryId])
+  @@index([parentId])
+  @@map("contexts")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 1: UNITS — Thought Unit with Multi-type & 3-Tier
+// ═══════════════════════════════════════════════════════════════════
+
+/// Unit — minimum meaningful thought fragment (Thought-Unit.md v2.1)
+/// Supports multi-type (primary + secondary), 3-tier types, context dependency.
+/// NO DELETION — use lifecycle: archived/discarded instead (Salience-Storage.md).
 model Unit {
-  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  content           String
-  userId            String                 @map("user_id")
-  projectId         String                 @map("project_id") @db.Uuid
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content             String
+  userId              String                @map("user_id")
+  projectId           String                @map("project_id") @db.Uuid
 
-  // A-1: Cognitive Classification
-  unitType          UnitType               @default(claim) @map("unit_type")
-  certainty         Certainty?
-  completeness      Completeness?
-  abstractionLevel  AbstractionLevel?      @map("abstraction_level")
-  stance            Stance?
+  // --- Multi-type system (Thought-Unit.md v1.4) ---
+  primaryType         String                @default("claim") @map("primary_type") @db.VarChar(50)
+  secondaryTypes      String[]              @default([]) @map("secondary_types") @db.VarChar(50)
+  typeTier            TypeTier              @default(base) @map("type_tier")
 
-  // A-3: Status
-  lifecycle         Lifecycle              @default(draft)
-  quality           Quality                @default(raw)
-  actionRequired    Boolean                @default(false) @map("action_required")
-  flagged           Boolean                @default(false)
-  pinned            Boolean                @default(false)
-  incubating        Boolean                @default(false)
-  locked            Boolean                @default(false)
+  // --- Context Dependency (v1.5) ---
+  contextDependency   ContextDependency     @default(free) @map("context_dependency")
+  anchorUnitId        String?               @map("anchor_unit_id") @db.Uuid
 
-  // A-4: Temporal
-  createdAt         DateTime               @default(now()) @map("created_at")
-  modifiedAt        DateTime               @updatedAt @map("modified_at")
-  lastAccessed      DateTime               @default(now()) @map("last_accessed")
-  capturedAt        DateTime?              @map("captured_at")
-  validUntil        DateTime?              @map("valid_until")
-  temporalContext   String?                @map("temporal_context")
-  recurrence        String?
+  // --- Cognitive metadata ---
+  certainty           Certainty?
+  completeness        Completeness?
+  abstractionLevel    AbstractionLevel?     @map("abstraction_level")
 
-  // A-5: Provenance
-  originType        OriginType             @default(direct_write) @map("origin_type")
-  sourceUrl         String?                @map("source_url")
-  sourceTitle       String?                @map("source_title")
-  author            String?
-  isQuote           Boolean                @default(false) @map("is_quote")
-  aiTrustLevel      AiTrustLevel?          @map("ai_trust_level")
-  conversationId    String?                @map("conversation_id")
-  parentInputId     String?                @map("parent_input_id")
-  sourceSpan        Json?                  @map("source_span")
+  // --- Lifecycle (AI-Interaction-Safety.md: draft→pending→confirmed) ---
+  lifecycle           Lifecycle             @default(draft)
+  quality             Quality               @default(raw)
+  actionRequired      Boolean               @default(false) @map("action_required")
+  flagged             Boolean               @default(false)
+  pinned              Boolean               @default(false)
+  incubating          Boolean               @default(false)
+  locked              Boolean               @default(false)
 
-  // A-6: Evidence Character
-  evidenceDomain    EvidenceDomain?        @map("evidence_domain")
-  scope             Scope?
+  // --- Temporal ---
+  createdAt           DateTime              @default(now()) @map("created_at")
+  modifiedAt          DateTime              @updatedAt @map("modified_at")
+  lastAccessed        DateTime              @default(now()) @map("last_accessed")
+  capturedAt          DateTime?             @map("captured_at")
+  validUntil          DateTime?             @map("valid_until")
 
-  // A-9: AI Analysis
-  embedding         Unsupported("vector")?
-  importance        Float                  @default(0)
-  branchPotential   Float                  @default(0) @map("branch_potential")
-  driftScore        Float                  @default(0) @map("drift_score")
+  // --- Provenance (Input-Decomposition.md) ---
+  originType          OriginType            @default(direct_write) @map("origin_type")
+  sourceUrl           String?               @map("source_url")
+  sourceTitle         String?               @map("source_title")
+  author              String?
+  isQuote             Boolean               @default(false) @map("is_quote")
+  aiTrustLevel        AiTrustLevel?         @map("ai_trust_level")
+  parentInputId       String?               @map("parent_input_id")
+  sourceSpan          Json?                 @map("source_span")
 
-  // A-10: Ordering
-  sortOrder         Int?                   @map("sort_order")
+  // --- Evidence Character ---
+  evidenceDomain      EvidenceDomain?       @map("evidence_domain")
+  scope               Scope?
 
-  // A-11: User-defined
-  energyLevel       EnergyLevel?           @map("energy_level")
-  meta              Json?
+  // --- Domain (D-04: type + type_tier + domain) ---
+  domain              String?               @db.VarChar(50)
 
-  // Relations
-  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project           Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assemblyItems     AssemblyItem[]
-  relationsAsSource Relation[]             @relation("SourceUnit")
-  relationsAsTarget Relation[]             @relation("TargetUnit")
-  perspectives      UnitPerspective[]
-  versions          UnitVersion[]
-  resources         UnitResource[]
-  unitContexts      UnitContext[]
-  contextVisits     ContextVisit[]
-  unitTags          UnitTag[]
+  // --- Salience flags (Salience-Storage.md) ---
+  isEvergreen         Boolean               @default(false) @map("is_evergreen")
+  isArchived          Boolean               @default(false) @map("is_archived")
+  sourceValid         Boolean               @default(true) @map("source_valid")
+
+  // --- AI Analysis ---
+  embedding           Unsupported("vector")?
+  embeddingModel      String?               @map("embedding_model") @db.VarChar(50)
+  importance          Float                 @default(0)
+  branchPotential     Float                 @default(0) @map("branch_potential")
+  driftScore          Float                 @default(0) @map("drift_score")
+
+  // --- Maturation (DQ-C1 Fossil Record) ---
+  maturationPathway   MaturationPathway?    @map("maturation_pathway")
+  maturedFromId       String?               @map("matured_from_id") @db.Uuid
+  maturationReason    String?               @map("maturation_reason")
+
+  // --- Privacy (Privacy-Architecture.md: per-Unit local-only override) ---
+  isLocalOnly         Boolean               @default(false) @map("is_local_only")
+
+  // --- User ---
+  energyLevel         EnergyLevel?          @map("energy_level")
+  sortOrder           Int?                  @map("sort_order")
+  meta                Json?
+
+  // --- Relations ---
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project             Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  anchorUnit          Unit?                 @relation("UnitAnchor", fields: [anchorUnitId], references: [id])
+  anchoredUnits       Unit[]                @relation("UnitAnchor")
+  maturedFrom         Unit?                 @relation("UnitMaturation", fields: [maturedFromId], references: [id])
+  maturedInto         Unit[]                @relation("UnitMaturation")
+  relationsAsSource   Relation[]            @relation("SourceUnit")
+  relationsAsTarget   Relation[]            @relation("TargetUnit")
+  perspectives        UnitPerspective[]
+  versions            UnitVersion[]
+  resources           UnitResource[]
+  unitContexts        UnitContext[]
+  contextVisits       ContextVisit[]
+  unitTags            UnitTag[]
+  assemblyItems       AssemblyItem[]
+  unitActions         UnitAction[]
+  shadowForDocument   Document?             @relation("DocumentShadow")
+  shadowForAssembly   Assembly?             @relation("AssemblyShadow")
 
   @@index([userId])
   @@index([projectId])
   @@index([lifecycle])
-  @@index([unitType])
+  @@index([primaryType])
+  @@index([typeTier])
   @@index([createdAt])
   @@map("units")
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 2: STRUCTURE — Perspectives, Relations, Contexts
+// ═══════════════════════════════════════════════════════════════════
+
+/// UnitPerspective — per-context interpretation of a Unit (Context-and-Perspective.md)
 model UnitPerspective {
   id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   unitId     String     @map("unit_id") @db.Uuid
   contextId  String     @map("context_id") @db.Uuid
-  type       UnitType?
+  type       String?    @db.VarChar(50)
   stance     Stance     @default(neutral)
   importance Float      @default(0.5)
   note       String?
   canvasX    Float?     @map("canvas_x")
   canvasY    Float?     @map("canvas_y")
-  canvasZoom Float?     @map("canvas_zoom")
-  relations  Relation[]
-  context    Context    @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
   unit       Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  context    Context    @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  relations  Relation[]
 
   @@unique([unitId, contextId])
   @@index([contextId])
   @@map("unit_perspectives")
 }
 
+/// Relation — typed directed edge (Relations-and-Graph.md v2.0)
+/// 8-layer taxonomy, 60+ system types. Supports from_type, ns_direction, purpose[].
 model Relation {
-  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sourceUnitId  String           @map("source_unit_id") @db.Uuid
-  targetUnitId  String           @map("target_unit_id") @db.Uuid
-  perspectiveId String?          @map("perspective_id") @db.Uuid
-  type          String           @db.VarChar(50)
-  strength      Float            @default(0.5)
-  direction     String           @default("one_way") @db.VarChar(15)
-  purpose       String[]         @default([])
-  isCustom      Boolean          @default(false) @map("is_custom")
-  customName    String?          @map("custom_name")
-  isLoopback    Boolean          @default(false) @map("is_loopback")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  perspective   UnitPerspective? @relation(fields: [perspectiveId], references: [id])
-  sourceUnit    Unit             @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
-  targetUnit    Unit             @relation("TargetUnit", fields: [targetUnitId], references: [id], onDelete: Cascade)
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceUnitId  String            @map("source_unit_id") @db.Uuid
+  targetUnitId  String            @map("target_unit_id") @db.Uuid
+  perspectiveId String?           @map("perspective_id") @db.Uuid
+  type          String            @db.VarChar(50)
+  fromType      String?           @map("from_type") @db.VarChar(50)
+  strength      Float             @default(0.5)
+  direction     RelationDirection @default(one_way)
+  nsDirection   NsDirection?      @map("ns_direction")
+  purpose       String[]          @default([])
+  createdBy     RelationCreatedBy @default(user) @map("created_by")
+  isCustom      Boolean           @default(false) @map("is_custom")
+  customName    String?           @map("custom_name")
+  maturity      String            @default("exploratory") @db.VarChar(20)
+  isLoopback    Boolean           @default(false) @map("is_loopback")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  sourceUnit    Unit              @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
+  targetUnit    Unit              @relation("TargetUnit", fields: [targetUnitId], references: [id], onDelete: Cascade)
+  perspective   UnitPerspective?  @relation(fields: [perspectiveId], references: [id])
 
   @@index([sourceUnitId])
   @@index([targetUnitId])
@@ -357,16 +654,21 @@ model Relation {
   @@map("relations")
 }
 
+/// SystemRelationType — 60+ pre-defined relation types across 8 layers
 model SystemRelationType {
   id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String @unique @db.VarChar(50)
+  layer       Int
   category    String @db.VarChar(50)
   description String
+  defaultNs   NsDirection? @map("default_ns")
+  uiTier      Int    @default(3) @map("ui_tier")
   sortOrder   Int    @map("sort_order")
 
   @@map("system_relation_types")
 }
 
+/// CustomRelationType — user/project-scoped relation types
 model CustomRelationType {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String
@@ -375,43 +677,13 @@ model CustomRelationType {
   createdById String?  @map("created_by_id")
   scope       String   @default("private") @db.VarChar(10)
   reusable    Boolean  @default(false)
-  purposeTag  String?  @map("purpose_tag")
   createdAt   DateTime @default(now()) @map("created_at")
+
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy   User?    @relation(fields: [createdById], references: [id])
 
   @@index([projectId])
-  @@index([createdById])
   @@map("custom_relation_types")
-}
-
-model Context {
-  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name           String
-  description    String?
-  projectId      String            @map("project_id") @db.Uuid
-  parentId       String?           @map("parent_id") @db.Uuid
-  snapshot       String            @default("")
-  openQuestions  Json              @default("[]") @map("open_questions")
-  contradictions Json              @default("[]")
-  sortOrder      Int               @default(0) @map("sort_order")
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-  parent         Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
-  children       Context[]         @relation("ContextHierarchy")
-  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  navigators       Navigator[]
-  perspectives     UnitPerspective[]
-  unitContexts     UnitContext[]
-  contextVisits    ContextVisit[]
-  sourceReferences ContextReference[] @relation("SourceReferences")
-  targetReferences ContextReference[] @relation("TargetReferences")
-  reasoningChains  ReasoningChain[]
-
-  @@unique([name, parentId, projectId])
-  @@index([projectId])
-  @@index([parentId])
-  @@map("contexts")
 }
 
 model UnitContext {
@@ -419,6 +691,7 @@ model UnitContext {
   unitId     String   @map("unit_id") @db.Uuid
   contextId  String   @map("context_id") @db.Uuid
   assignedAt DateTime @default(now()) @map("assigned_at")
+
   unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
   context    Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
 
@@ -435,6 +708,7 @@ model ContextVisit {
   lastVisitedAt    DateTime @default(now()) @map("last_visited_at")
   lastViewedUnitId String?  @map("last_viewed_unit_id") @db.Uuid
   updatedAt        DateTime @updatedAt @map("updated_at")
+
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   context          Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
   lastViewedUnit   Unit?    @relation(fields: [lastViewedUnitId], references: [id], onDelete: SetNull)
@@ -445,66 +719,165 @@ model ContextVisit {
   @@map("context_visits")
 }
 
-model UnitVersion {
-  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId          String             @map("unit_id") @db.Uuid
-  version         Int
-  content         String
-  meta            Json?
-  changeReason    String?            @map("change_reason")
-  diffSummary     String?            @map("diff_summary")
-  /// How this version was produced (manual edit, AI suggestion, merge, split, or import)
-  versionOrigin   VersionOriginType? @default(manual) @map("version_origin")
-  /// Optional reference to the source range this version was derived from
-  /// (e.g. character offsets within a source document, or a split-source unit ID)
-  sourceSpan      String?            @map("source_span")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  unit            Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
+model ContextReference {
+  id              String   @id @default(cuid())
+  sourceContextId String   @map("source_context_id") @db.Uuid
+  targetContextId String   @map("target_context_id") @db.Uuid
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  @@unique([unitId, version])
-  @@index([unitId])
-  @@map("unit_versions")
+  sourceContext   Context  @relation("SourceRef", fields: [sourceContextId], references: [id], onDelete: Cascade)
+  targetContext   Context  @relation("TargetRef", fields: [targetContextId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceContextId, targetContextId])
+  @@index([sourceContextId])
+  @@index([targetContextId])
+  @@map("context_references")
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 3: STRUCTURE — Domain Templates
+// ═══════════════════════════════════════════════════════════════════
+
+/// DomainTemplate — per-domain customization package (Domain-Template.md)
+/// Contains: seed types, formal types, relation extensions, frames, compass rules.
+model DomainTemplate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  slug            String    @unique @db.VarChar(100)
+  description     String?
+  /// JSON: { seedTypes: [...], formalTypes: [...], relationExtensions: [...],
+  ///         frames: [...], compassRules: [...], communityStandards: {...} }
+  config          Json
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  inquiries       Inquiry[]
+  secondaryIn     InquiryTemplate[]
+
+  @@map("domain_templates")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 4: WORK — Assembly + Document (Work-Architecture.md)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Assembly — ordered composition of Units for output (Work-Architecture.md)
 model Assembly {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name           String
-  projectId      String          @map("project_id") @db.Uuid
-  templateType   String?         @map("template_type") @db.VarChar(50)
-  sourceMap      Json?           @map("source_map")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  items          AssemblyItem[]
-  exportHistory  ExportHistory[]
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  projectId        String           @map("project_id") @db.Uuid
+  shadowUnitId     String?          @unique @map("shadow_unit_id") @db.Uuid
+  rhetoricalShape  RhetoricalShape? @map("rhetorical_shape")
+  /// JSON: { exigence, audience, constraints, rhetorPosition } (AMEND-13)
+  situationMeta    Json?            @map("situation_meta")
+  sourceMap        Json?            @map("source_map")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shadowUnit       Unit?            @relation("AssemblyShadow", fields: [shadowUnitId], references: [id])
+  items            AssemblyItem[]
+  exportHistory    ExportHistory[]
+  inquiryLinks     InquiryAssembly[]
 
   @@index([projectId])
   @@map("assemblies")
 }
 
+/// AssemblyItem — slot within an Assembly
 model AssemblyItem {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  assemblyId String   @map("assembly_id") @db.Uuid
-  unitId     String?  @map("unit_id") @db.Uuid
-  position   Int
-  bridgeText String?  @map("bridge_text")
-  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  unit       Unit?    @relation(fields: [unitId], references: [id])
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assemblyId   String    @map("assembly_id") @db.Uuid
+  unitId       String?   @map("unit_id") @db.Uuid
+  position     Int
+  assemblyRole String?   @map("assembly_role") @db.VarChar(50)
+  bridgeText   String?   @map("bridge_text")
+
+  assembly     Assembly  @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  unit         Unit?     @relation(fields: [unitId], references: [id])
 
   @@index([assemblyId])
   @@map("assembly_items")
 }
 
+/// Document — free-text with Unit extraction (Work-Architecture.md)
+/// Source-oriented: original text preserved, Units extracted from it.
+model Document {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title         String
+  content       String
+  projectId     String   @map("project_id") @db.Uuid
+  shadowUnitId  String?  @unique @map("shadow_unit_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shadowUnit    Unit?    @relation("DocumentShadow", fields: [shadowUnitId], references: [id])
+
+  @@index([projectId])
+  @@map("documents")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LAYER 5: NAVIGATION — Navigator + Paths (Navigator.md)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Navigator — reading path definition (Navigator.md v1.5)
 model Navigator {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  purpose   String?  @db.VarChar(30)
-  contextId String   @map("context_id") @db.Uuid
-  path      String[] @default([]) @db.Uuid
-  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  contextId     String        @map("context_id") @db.Uuid
+  mode          NavigatorMode @default(path)
+  pathType      PathType?     @map("path_type")
+  traversalMode TraversalMode @default(relation) @map("traversal_mode")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  context       Context       @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  items         NavigatorItem[]
 
   @@index([contextId])
   @@map("navigators")
+}
+
+/// NavigatorItem — ordered node in a Navigator path
+model NavigatorItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  navigatorId String    @map("navigator_id") @db.Uuid
+  unitId      String?   @map("unit_id") @db.Uuid
+  documentId  String?   @map("document_id") @db.Uuid
+  position    Int
+  isPassage   Boolean   @default(false) @map("is_passage")
+
+  navigator   Navigator @relation(fields: [navigatorId], references: [id], onDelete: Cascade)
+
+  @@index([navigatorId])
+  @@map("navigator_items")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SUPPORTING: Versions, Resources, Tags, Search
+// ═══════════════════════════════════════════════════════════════════
+
+model UnitVersion {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId        String             @map("unit_id") @db.Uuid
+  version       Int
+  content       String
+  primaryType   String?            @map("primary_type") @db.VarChar(50)
+  meta          Json?
+  changeReason  String?            @map("change_reason")
+  diffSummary   String?            @map("diff_summary")
+  versionOrigin VersionOriginType? @default(manual) @map("version_origin")
+  sourceSpan    String?            @map("source_span")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  unit          Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, version])
+  @@index([unitId])
+  @@map("unit_versions")
 }
 
 model ResourceUnit {
@@ -519,12 +892,11 @@ model ResourceUnit {
   userId       String       @map("user_id")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
+
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   units        UnitResource[]
 
   @@index([userId])
-  @@index([resourceType])
-  @@index([lifecycle])
   @@map("resource_units")
 }
 
@@ -535,6 +907,7 @@ model UnitResource {
   role       String?      @db.VarChar(50)
   sortOrder  Int          @default(0) @map("sort_order")
   createdAt  DateTime     @default(now()) @map("created_at")
+
   unit       Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   resource   ResourceUnit @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
@@ -544,36 +917,15 @@ model UnitResource {
   @@map("unit_resources")
 }
 
-// ─── Context Cross-References (Story 3.5) ─────────────────────────────
-
-model ContextReference {
-  id              String   @id @default(cuid())
-  sourceContextId String   @map("source_context_id") @db.Uuid
-  targetContextId String   @map("target_context_id") @db.Uuid
-  description     String?
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  createdById     String   @map("created_by_id")
-
-  sourceContext   Context  @relation("SourceReferences", fields: [sourceContextId], references: [id], onDelete: Cascade)
-  targetContext   Context  @relation("TargetReferences", fields: [targetContextId], references: [id], onDelete: Cascade)
-  createdBy       User     @relation(fields: [createdById], references: [id])
-
-  @@unique([sourceContextId, targetContextId])
-  @@index([sourceContextId])
-  @@index([targetContextId])
-  @@map("context_references")
-}
-
-// ─── Tags (Story 6.5) ─────────────────────────────────────────────────
-
 model Tag {
   id        String    @id @default(cuid())
   name      String
+  tagType   String    @default("semantic") @map("tag_type") @db.VarChar(20)
   color     String?
   projectId String    @map("project_id") @db.Uuid
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
+
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   units     UnitTag[]
 
@@ -586,6 +938,7 @@ model UnitTag {
   unitId    String   @map("unit_id") @db.Uuid
   tagId     String   @map("tag_id")
   createdAt DateTime @default(now()) @map("created_at")
+
   unit      Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
   tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
@@ -595,7 +948,86 @@ model UnitTag {
   @@map("unit_tags")
 }
 
-// ─── API Rate Limiting ────────────────────────────────────────────────
+model ReasoningChain {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  goal      String?
+  contextId String   @map("context_id") @db.Uuid
+  steps     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+
+  @@index([contextId])
+  @@map("reasoning_chains")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SUPPORTING: Type Palette, Execution Links, Audit Logs
+// ═══════════════════════════════════════════════════════════════════
+
+/// UnitType — 3-tier type palette lookup (Database-Schema-Decisions D-04)
+/// Provides the selectable type names for Base, Seed, and Formal tiers.
+model UnitType {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String   @db.VarChar(50)
+  tier            TypeTier
+  domain          String?  @db.VarChar(50)
+  icon            String?  @db.VarChar(30)
+  description     String?
+  naturalNextTypes String[] @default([]) @map("natural_next_types") @db.VarChar(50)
+  maturationTarget String?  @map("maturation_target") @db.VarChar(50)
+  sortOrder       Int      @default(0) @map("sort_order")
+
+  @@unique([name, tier, domain])
+  @@index([tier])
+  @@index([domain])
+  @@map("unit_types")
+}
+
+/// UnitAction — execution links for Action Units (Metadata-Reference A-13)
+model UnitAction {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              String    @map("unit_id") @db.Uuid
+  actionStatus        String    @default("pending") @map("action_status") @db.VarChar(20)
+  linkedCalendarEvent String?   @map("linked_calendar_event")
+  linkedTask          String?   @map("linked_task")
+  deadline            DateTime?
+  decisionLog         Json?     @map("decision_log")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  unit                Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId])
+  @@index([actionStatus])
+  @@map("unit_actions")
+}
+
+/// RecontextualizationLog — audit trail for context role changes (D-15)
+model RecontextualizationLog {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              String   @map("unit_id") @db.Uuid
+  sourceContextId     String   @map("source_context_id") @db.Uuid
+  sourceRole          String?  @map("source_role") @db.VarChar(50)
+  sourceFrame         String?  @map("source_frame") @db.VarChar(50)
+  targetContextId     String   @map("target_context_id") @db.Uuid
+  targetRole          String?  @map("target_role") @db.VarChar(50)
+  targetFrame         String?  @map("target_frame") @db.VarChar(50)
+  transformationType  String?  @map("transformation_type") @db.VarChar(50)
+  interpretationNote  String?  @map("interpretation_note")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@index([unitId])
+  @@index([sourceContextId])
+  @@index([targetContextId])
+  @@map("recontextualization_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INFRASTRUCTURE: Rate Limiting, Safety, Export, Webhooks
+// ═══════════════════════════════════════════════════════════════════
 
 model RateLimitEntry {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -607,56 +1039,34 @@ model RateLimitEntry {
   @@map("rate_limit_entries")
 }
 
-// ─── Safety Guard Session (AI rate-limiting) ─────────────────────────
-
 model SafetyGuardSession {
-  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId                String   @map("user_id")
-  consecutiveBranches   Int      @default(0) @map("consecutive_branches")
-  createdAt             DateTime @default(now()) @map("created_at")
-  lastActivityAt        DateTime @default(now()) @map("last_activity_at")
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String   @map("user_id")
+  consecutiveBranches Int      @default(0) @map("consecutive_branches")
+  createdAt           DateTime @default(now()) @map("created_at")
+  lastActivityAt      DateTime @default(now()) @map("last_activity_at")
 
   @@index([userId])
   @@index([lastActivityAt])
   @@map("safety_guard_sessions")
 }
 
-// ─── Export History (Story 7.7) ──────────────────────────────────────
-
 model ExportHistory {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   assemblyId  String   @map("assembly_id") @db.Uuid
-  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   userId      String   @map("user_id")
-  user        User     @relation(fields: [userId], references: [id])
   format      String   @db.VarChar(50)
   unitIds     String[] @map("unit_ids") @db.Uuid
   contentHash String   @map("content_hash") @db.VarChar(64)
   createdAt   DateTime @default(now()) @map("created_at")
 
+  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
   @@index([assemblyId])
   @@index([userId])
   @@map("export_history")
 }
-
-
-// ─── Reasoning Chains (Story 7.9) ─────────────────────────────────────
-
-model ReasoningChain {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  goal      String?
-  contextId String   @map("context_id") @db.Uuid
-  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
-  steps     Json     // Array of { unitId: string, role: "premise"|"inference"|"conclusion", order: number }
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([contextId])
-  @@map("reasoning_chains")
-}
-
-// ─── Webhooks (Story 10.2) ──────────────────────────────────────────
 
 model Webhook {
   id        String   @id @default(cuid())
@@ -668,6 +1078,7 @@ model Webhook {
   userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

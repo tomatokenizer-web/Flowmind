@@ -1,158 +1,93 @@
-"use client";
+import { useEffect } from "react";
+import { useCommandPaletteStore } from "@/stores/command-palette-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
+import { useUnitSelectionStore } from "@/stores/unit-selection-store";
 
-import { useEffect, useCallback, useRef, useSyncExternalStore } from "react";
-import { isMac } from "~/lib/accessibility";
-
-/* ── Types ── */
-
-export interface KeyboardShortcut {
-  /** Unique id, e.g. "command-palette" */
-  id: string;
-  /** Human-readable label shown in help overlay */
-  label: string;
-  /** Keys: use "mod" for Cmd/Ctrl. e.g. "mod+k", "Escape", "mod+1" */
-  keys: string;
-  /** Handler invoked when the shortcut fires */
-  action: () => void;
-  /** Group label for the help overlay (e.g. "Navigation", "General") */
-  group?: string;
-  /** If true, shortcut is active even when an input/textarea is focused */
-  global?: boolean;
-}
-
-/* ── Registry (singleton, lives outside React) ── */
-
-type Listener = () => void;
-
-const shortcuts = new Map<string, KeyboardShortcut>();
-const listeners = new Set<Listener>();
-
-function emitChange() {
-  listeners.forEach((fn) => fn());
-}
-
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-// Stable snapshot — new reference on every change so useSyncExternalStore detects updates
-let cachedSnapshot: ReadonlyMap<string, KeyboardShortcut> = new Map();
-
-// Server snapshot must be a stable reference (never changes on server)
-const SERVER_SNAPSHOT: ReadonlyMap<string, KeyboardShortcut> = new Map();
-
-function getSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
-  return cachedSnapshot;
-}
-
-function getServerSnapshot(): ReadonlyMap<string, KeyboardShortcut> {
-  return SERVER_SNAPSHOT;
-}
-
-export function registerShortcut(shortcut: KeyboardShortcut): () => void {
-  shortcuts.set(shortcut.id, shortcut);
-  cachedSnapshot = new Map(shortcuts);
-  emitChange();
-  return () => {
-    shortcuts.delete(shortcut.id);
-    cachedSnapshot = new Map(shortcuts);
-    emitChange();
-  };
-}
-
-/* ── Hook: access the registry reactively ── */
-
-export function useShortcutRegistry(): ReadonlyMap<string, KeyboardShortcut> {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-}
-
-/* ── Hook: register + listen for keyboard shortcuts ── */
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (target.isContentEditable) return true;
-  return false;
-}
-
-function matchesShortcut(e: KeyboardEvent, keys: string): boolean {
-  const parts = keys.toLowerCase().split("+");
-  const modRequired = parts.includes("mod");
-  const ctrlRequired = parts.includes("ctrl");
-  const shiftRequired = parts.includes("shift");
-  const altRequired = parts.includes("alt");
-
-  const key = parts.filter((p) => !["mod", "ctrl", "shift", "alt"].includes(p))[0];
-  if (!key) return false;
-
-  if (isMac()) {
-    // On Mac: "mod" = Cmd (metaKey), "ctrl" = physical Ctrl
-    if (modRequired !== e.metaKey) return false;
-    if (ctrlRequired !== e.ctrlKey) return false;
-  } else {
-    // On Windows/Linux: "mod" = Ctrl, "ctrl" = Ctrl
-    // Both "mod" and "ctrl" map to the same physical key.
-    // If either is required, Ctrl must be pressed. If neither, Ctrl must not be pressed.
-    const ctrlShouldBePressed = modRequired || ctrlRequired;
-    if (ctrlShouldBePressed !== e.ctrlKey) return false;
-  }
-  if (shiftRequired !== e.shiftKey) return false;
-  if (altRequired !== e.altKey) return false;
-
-  // Handle number keys: e.key for "1" through "9"
-  if (e.key.toLowerCase() === key) return true;
-  // Handle "/" which may need special handling
-  if (key === "/" && e.key === "/") return true;
-
-  return false;
+interface ShortcutOptions {
+  enabled?: boolean;
 }
 
 /**
- * Registers an array of keyboard shortcuts and handles keydown events.
- * Shortcuts are automatically cleaned up on unmount.
- *
- * @example
- * ```tsx
- * useKeyboardShortcuts([
- *   { id: "palette", label: "Command Palette", keys: "mod+k", action: openPalette, group: "General" },
- * ]);
- * ```
+ * Registers global keyboard shortcuts for the application.
+ * Should be mounted once at the app layout level.
  */
-export function useKeyboardShortcuts(
-  defs: KeyboardShortcut[],
-  enabled = true,
-): void {
-  const defsRef = useRef(defs);
-  defsRef.current = defs;
+export function useKeyboardShortcuts(options: ShortcutOptions = {}) {
+  const { enabled = true } = options;
 
-  // Register all shortcuts in the global registry
-  useEffect(() => {
-    if (!enabled) return;
-    const unregisters = defsRef.current.map((s) => registerShortcut(s));
-    return () => unregisters.forEach((fn) => fn());
-  }, [enabled, defs]);
-
-  // Listen for keydown events
   useEffect(() => {
     if (!enabled) return;
 
     function handleKeyDown(e: KeyboardEvent) {
-      for (const shortcut of defsRef.current) {
-        if (matchesShortcut(e, shortcut.keys)) {
-          // Skip non-global shortcuts when focus is in an editable field
-          if (!shortcut.global && isEditableTarget(e.target)) continue;
+      const mod = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
 
-          e.preventDefault();
-          e.stopPropagation();
-          shortcut.action();
+      // Don't intercept shortcuts when typing in inputs
+      const isInput =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+
+      // Cmd/Ctrl+K -> toggle command palette (always active)
+      if (mod && e.key === "k") {
+        e.preventDefault();
+        useCommandPaletteStore.getState().toggle();
+        return;
+      }
+
+      // Escape -> close command palette, clear selection, close panels
+      if (e.key === "Escape") {
+        const cmdPalette = useCommandPaletteStore.getState();
+        if (cmdPalette.open) {
+          cmdPalette.setOpen(false);
           return;
         }
+
+        const selection = useUnitSelectionStore.getState();
+        if (selection.selectedUnitIds.size > 0) {
+          selection.clearSelection();
+          return;
+        }
+
+        const workspace = useWorkspaceStore.getState();
+        if (workspace.rightPanelOpen) {
+          workspace.setRightPanelContent(null);
+          return;
+        }
+        return;
+      }
+
+      // Skip remaining shortcuts if typing in an input
+      if (isInput) return;
+
+      // Cmd/Ctrl+\ -> toggle sidebar
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        useWorkspaceStore.getState().toggleSidebar();
+        return;
+      }
+
+      // Cmd/Ctrl+Shift+G -> toggle graph panel
+      if (mod && e.shiftKey && e.key === "G") {
+        e.preventDefault();
+        const ws = useWorkspaceStore.getState();
+        ws.setRightPanelContent(
+          ws.rightPanelContent === "graph" ? null : "graph",
+        );
+        return;
+      }
+
+      // Cmd/Ctrl+Shift+I -> toggle inspector panel
+      if (mod && e.shiftKey && e.key === "I") {
+        e.preventDefault();
+        const ws = useWorkspaceStore.getState();
+        ws.setRightPanelContent(
+          ws.rightPanelContent === "inspector" ? null : "inspector",
+        );
+        return;
       }
     }
 
-    document.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [enabled]);
 }

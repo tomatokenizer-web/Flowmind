@@ -1,258 +1,224 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createRelationService } from "@/server/services/relationService";
-import { updateLoopbacksForContext } from "@/server/services/cycleDetectionService";
-import { createUnitMergeService } from "@/server/services/unitMergeService";
-import { createThoughtRankService } from "@/server/services/thoughtRankService";
-
-// ─── Zod Schemas ────────────────────────────────────────────────────
-
-const directionEnum = z.enum(["one_way", "bidirectional"]);
-
-const createRelationSchema = z.object({
-  sourceUnitId: z.string().uuid(),
-  targetUnitId: z.string().uuid(),
-  perspectiveId: z.string().uuid().optional(),
-  type: z.string(),
-  strength: z.number().min(0).max(1).default(0.5),
-  direction: directionEnum.default("one_way"),
-  purpose: z.array(z.string()).default([]),
-});
-
-const updateRelationSchema = z.object({
-  id: z.string().uuid(),
-  strength: z.number().min(0).max(1).optional(),
-  type: z.string().optional(),
-  direction: directionEnum.optional(),
-  purpose: z.array(z.string()).optional(),
-});
-
-const idSchema = z.object({
-  id: z.string().uuid(),
-});
-
-const listByUnitSchema = z.object({
-  unitId: z.string().uuid(),
-  contextId: z.string().uuid().optional(),
-});
-
-const listByUnitsSchema = z.object({
-  unitIds: z.array(z.string().uuid()).max(100),
-  contextId: z.string().uuid().optional(),
-});
-
-const listBetweenSchema = z.object({
-  sourceUnitId: z.string().uuid(),
-  targetUnitId: z.string().uuid(),
-});
-
-const neighborsByDepthSchema = z.object({
-  hubId: z.string().uuid(),
-  depth: z.number().int().min(1).max(3).default(1),
-  contextId: z.string().uuid().optional(),
-});
-
-// ─── Router ─────────────────────────────────────────────────────────
 
 export const relationRouter = createTRPCRouter({
-  create: protectedProcedure
-    .input(createRelationSchema)
-    .mutation(async ({ ctx, input }) => {
-      // IDOR fix: verify both units belong to the authenticated user
-      const [sourceUnit, targetUnit] = await Promise.all([
-        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { lifecycle: true } }),
-        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { lifecycle: true } }),
-      ]);
-
-      if (!sourceUnit) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Source unit not found" });
-      }
-      if (!targetUnit) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Target unit not found" });
-      }
-      if (sourceUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Source unit is in draft lifecycle and cannot have relations",
-        });
-      }
-      if (targetUnit.lifecycle === "draft") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Target unit is in draft lifecycle and cannot have relations",
-        });
-      }
-
-      const service = createRelationService(ctx.db);
-      const relation = await service.create(input, ctx.session.user.id!);
-
-      // Run cycle detection if relation belongs to a context (via perspective)
-      if (input.perspectiveId) {
-        const perspective = await ctx.db.unitPerspective.findUnique({
-          where: { id: input.perspectiveId },
-          select: { contextId: true },
-        });
-        if (perspective) {
-          void updateLoopbacksForContext(ctx.db, perspective.contextId).catch(() => {
-            // Non-fatal — cycle detection runs best-effort
-          });
-
-          // Recompute ThoughtRank for the context (non-blocking)
-          const thoughtRankService = createThoughtRankService(ctx.db);
-          void thoughtRankService.updateThoughtRankForContext(perspective.contextId).catch(() => {
-            // Non-fatal — ThoughtRank update runs best-effort
-          });
-        }
-      }
-
-      return relation;
-    }),
-
-  update: protectedProcedure
-    .input(updateRelationSchema)
-    .mutation(async ({ ctx, input }) => {
-      // IDOR fix: verify the relation's source unit belongs to the authenticated user
-      const relation = await ctx.db.relation.findFirst({
-        where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
-        select: { id: true },
-      });
-      if (!relation) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
-      }
-      const { id, ...data } = input;
-      const service = createRelationService(ctx.db);
-      return service.update(id, data, ctx.session.user.id!);
-    }),
-
-  delete: protectedProcedure
-    .input(idSchema)
-    .mutation(async ({ ctx, input }) => {
-      // IDOR fix: verify the relation's source unit belongs to the authenticated user
-      const relation = await ctx.db.relation.findFirst({
-        where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
-        select: { id: true },
-      });
-      if (!relation) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
-      }
-      const service = createRelationService(ctx.db);
-      return service.delete(input.id, ctx.session.user.id!);
-    }),
-
-  listByUnit: protectedProcedure
-    .input(listByUnitSchema)
+  // ---- list relations for a unit ----
+  list: protectedProcedure
+    .input(
+      z.object({
+        unitId: z.string().uuid(),
+        type: z.string().optional(),
+        layer: z.number().int().optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
-      // IDOR fix: verify the unit belongs to the authenticated user
-      const unit = await ctx.db.unit.findFirst({
-        where: { id: input.unitId, userId: ctx.session.user.id! },
-        select: { id: true },
-      });
-      if (!unit) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-      }
-      const service = createRelationService(ctx.db);
-      return service.listByUnit(input.unitId, input.contextId);
-    }),
+      const userId = ctx.session.user.id!;
 
-  listByUnits: protectedProcedure
-    .input(listByUnitsSchema)
-    .query(async ({ ctx, input }) => {
-      if (input.unitIds.length === 0) return [];
-      // IDOR fix: verify all requested units belong to the authenticated user
-      const ownedUnits = await ctx.db.unit.findMany({
-        where: { id: { in: input.unitIds }, userId: ctx.session.user.id! },
-        select: { id: true },
+      // Verify ownership
+      const unit = await ctx.db.unit.findUnique({
+        where: { id: input.unitId },
+        select: { project: { select: { userId: true } } },
       });
-      if (ownedUnits.length !== input.unitIds.length) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "One or more units not found" });
+      if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      if (unit.project.userId !== userId)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not your unit" });
+
+      // Build type filter — optionally join with SystemRelationType for layer filtering
+      let typeFilter: string[] | undefined;
+      if (input.layer !== undefined) {
+        const systemTypes = await ctx.db.systemRelationType.findMany({
+          where: { layer: input.layer },
+          select: { name: true },
+        });
+        typeFilter = systemTypes.map((t) => t.name);
       }
-      const idSet = new Set(input.unitIds);
-      const rows = await ctx.db.relation.findMany({
-        where: {
-          OR: [
-            { sourceUnitId: { in: input.unitIds } },
-            { targetUnitId: { in: input.unitIds } },
-          ],
-          ...(input.contextId
-            ? { perspective: { contextId: input.contextId } }
-            : {}),
-        },
+
+      const where = {
+        OR: [{ sourceUnitId: input.unitId }, { targetUnitId: input.unitId }],
+        ...(input.type ? { type: input.type } : {}),
+        ...(typeFilter ? { type: { in: typeFilter } } : {}),
+      };
+
+      return ctx.db.relation.findMany({
+        where,
         include: {
-          sourceUnit: { select: { id: true, content: true, unitType: true } },
-          targetUnit: { select: { id: true, content: true, unitType: true } },
+          sourceUnit: { select: { id: true, content: true, primaryType: true } },
+          targetUnit: { select: { id: true, content: true, primaryType: true } },
+          perspective: true,
         },
-        orderBy: { strength: "desc" },
+        orderBy: { createdAt: "desc" },
       });
-      // Only return relations where at least one endpoint is in the requested set
-      return rows.filter(
-        (r) => idSet.has(r.sourceUnitId) || idSet.has(r.targetUnitId),
-      );
     }),
 
-  neighborsByDepth: protectedProcedure
-    .input(neighborsByDepthSchema)
-    .query(async ({ ctx, input }) => {
-      // IDOR fix: verify the hub unit belongs to the authenticated user
-      const unit = await ctx.db.unit.findFirst({
-        where: { id: input.hubId, userId: ctx.session.user.id! },
-        select: { id: true },
-      });
-      if (!unit) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-      }
-      const service = createRelationService(ctx.db);
-      return service.neighborsByDepth(input.hubId, input.depth, input.contextId);
-    }),
-
-  listBetween: protectedProcedure
-    .input(listBetweenSchema)
-    .query(async ({ ctx, input }) => {
-      // IDOR fix: verify both units belong to the authenticated user
-      const [source, target] = await Promise.all([
-        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
-        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
-      ]);
-      if (!source || !target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-      }
-      const service = createRelationService(ctx.db);
-      return service.listBetween(input.sourceUnitId, input.targetUnitId);
-    }),
-
-  // ─── Unit Merge ──────────────────────────────────────────────────
-
-  mergePreview: protectedProcedure
-    .input(z.object({ sourceUnitId: z.string().uuid(), targetUnitId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      // IDOR fix: verify both units belong to the authenticated user
-      const [source, target] = await Promise.all([
-        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
-        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
-      ]);
-      if (!source || !target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-      }
-      const service = createUnitMergeService(ctx.db);
-      return service.preview(input.sourceUnitId, input.targetUnitId);
-    }),
-
-  merge: protectedProcedure
-    .input(z.object({
-      sourceUnitId: z.string().uuid(),
-      targetUnitId: z.string().uuid(),
-      keepContent: z.enum(["source", "target"]),
-    }))
+  // ---- create ----
+  create: protectedProcedure
+    .input(
+      z.object({
+        sourceUnitId: z.string().uuid(),
+        targetUnitId: z.string().uuid(),
+        type: z.string().min(1).max(50),
+        fromType: z.string().max(50).optional(),
+        strength: z.number().min(0).max(1).default(0.5),
+        direction: z.enum(["one_way", "bidirectional"]).default("one_way"),
+        nsDirection: z
+          .enum(["nucleus_to_satellite", "satellite_to_nucleus", "multinuclear"])
+          .optional(),
+        purpose: z.array(z.string()).optional(),
+        perspectiveId: z.string().uuid().optional(),
+        createdBy: z
+          .enum(["user", "ai_suggested_confirmed", "ai_auto"])
+          .default("user"),
+        isCustom: z.boolean().default(false),
+        customName: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      // IDOR fix: verify both units belong to the authenticated user
+      const userId = ctx.session.user.id!;
+
+      // Verify both units exist and belong to the same user
       const [source, target] = await Promise.all([
-        ctx.db.unit.findFirst({ where: { id: input.sourceUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
-        ctx.db.unit.findFirst({ where: { id: input.targetUnitId, userId: ctx.session.user.id! }, select: { id: true } }),
+        ctx.db.unit.findUnique({
+          where: { id: input.sourceUnitId },
+          select: { id: true, project: { select: { userId: true } } },
+        }),
+        ctx.db.unit.findUnique({
+          where: { id: input.targetUnitId },
+          select: { id: true, project: { select: { userId: true } } },
+        }),
       ]);
-      if (!source || !target) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+
+      if (!source) throw new TRPCError({ code: "NOT_FOUND", message: "Source unit not found" });
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Target unit not found" });
+      if (source.project.userId !== userId || target.project.userId !== userId)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not your units" });
+
+      const isLoopback = input.sourceUnitId === input.targetUnitId;
+
+      return ctx.db.relation.create({
+        data: {
+          ...input,
+          purpose: input.purpose ?? [],
+          isLoopback,
+        },
+      });
+    }),
+
+  // ---- update ----
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        type: z.string().min(1).max(50).optional(),
+        strength: z.number().min(0).max(1).optional(),
+        maturity: z.string().max(20).optional(),
+        direction: z.enum(["one_way", "bidirectional"]).optional(),
+        nsDirection: z
+          .enum(["nucleus_to_satellite", "satellite_to_nucleus", "multinuclear"])
+          .optional(),
+        purpose: z.array(z.string()).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const relation = await ctx.db.relation.findUnique({
+        where: { id: input.id },
+        select: { sourceUnit: { select: { project: { select: { userId: true } } } } },
+      });
+      if (!relation) throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
+      if (relation.sourceUnit.project.userId !== userId)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not your relation" });
+
+      const { id, ...data } = input;
+      return ctx.db.relation.update({ where: { id }, data });
+    }),
+
+  // ---- delete (relations CAN be deleted) ----
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const relation = await ctx.db.relation.findUnique({
+        where: { id: input.id },
+        select: { sourceUnit: { select: { project: { select: { userId: true } } } } },
+      });
+      if (!relation) throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
+      if (relation.sourceUnit.project.userId !== userId)
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not your relation" });
+
+      return ctx.db.relation.delete({ where: { id: input.id } });
+    }),
+
+  // ---- bulkCreate (for AI pipeline pass 5-6) ----
+  bulkCreate: protectedProcedure
+    .input(
+      z.object({
+        relations: z
+          .array(
+            z.object({
+              sourceUnitId: z.string().uuid(),
+              targetUnitId: z.string().uuid(),
+              type: z.string().min(1).max(50),
+              fromType: z.string().max(50).optional(),
+              strength: z.number().min(0).max(1).default(0.5),
+              direction: z.enum(["one_way", "bidirectional"]).default("one_way"),
+              nsDirection: z
+                .enum(["nucleus_to_satellite", "satellite_to_nucleus", "multinuclear"])
+                .optional(),
+              purpose: z.array(z.string()).optional(),
+              perspectiveId: z.string().uuid().optional(),
+              createdBy: z
+                .enum(["user", "ai_suggested_confirmed", "ai_auto"])
+                .default("ai_auto"),
+            }),
+          )
+          .min(1)
+          .max(200),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Collect all unique unit IDs for a single ownership check
+      const unitIds = new Set<string>();
+      for (const r of input.relations) {
+        unitIds.add(r.sourceUnitId);
+        unitIds.add(r.targetUnitId);
       }
-      const service = createUnitMergeService(ctx.db);
-      return service.merge({ ...input, userId: ctx.session.user.id! });
+
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: [...unitIds] } },
+        select: { id: true, project: { select: { userId: true } } },
+      });
+
+      const unitMap = new Map(units.map((u) => [u.id, u]));
+
+      for (const uid of unitIds) {
+        const unit = unitMap.get(uid);
+        if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: `Unit ${uid} not found` });
+        if (unit.project.userId !== userId)
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your unit" });
+      }
+
+      const data = input.relations.map((r) => ({
+        ...r,
+        purpose: r.purpose ?? [],
+        isLoopback: r.sourceUnitId === r.targetUnitId,
+      }));
+
+      const result = await ctx.db.relation.createMany({ data });
+      return { count: result.count };
+    }),
+
+  // ---- getSystemTypes (for UI type selector) ----
+  getSystemTypes: protectedProcedure
+    .input(z.object({ layer: z.number().int().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      return ctx.db.systemRelationType.findMany({
+        where: input?.layer !== undefined ? { layer: input.layer } : {},
+        orderBy: [{ layer: "asc" }, { sortOrder: "asc" }],
+      });
     }),
 });

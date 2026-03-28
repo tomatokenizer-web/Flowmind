@@ -1,330 +1,367 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createContextService } from "@/server/services/contextService";
-import { createThoughtRankService } from "@/server/services/thoughtRankService";
 import { TRPCError } from "@trpc/server";
-import type { PrismaClient } from "@prisma/client";
-
-// ─── Zod Schemas ───────────────────────────────────────────────────
-
-const contextIdSchema = z.object({
-  id: z.string().uuid(),
-});
-
-const createContextSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100),
-  description: z.string().max(500).optional(),
-  projectId: z.string().uuid(),
-  parentId: z.string().uuid().optional(),
-});
-
-const updateContextSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1).max(100).optional(),
-  description: z.string().max(500).optional(),
-});
-
-const listContextsSchema = z.object({
-  projectId: z.string().uuid().optional(),
-  parentId: z.string().uuid().nullish(),
-});
-
-const unitContextSchema = z.object({
-  unitId: z.string().uuid(),
-  contextId: z.string().uuid(),
-});
-
-const splitContextSchema = z.object({
-  contextId: z.string().uuid(),
-  subContextA: z.object({
-    name: z.string().min(1).max(100),
-    unitIds: z.array(z.string().uuid()),
-  }),
-  subContextB: z.object({
-    name: z.string().min(1).max(100),
-    unitIds: z.array(z.string().uuid()),
-  }),
-  projectId: z.string().uuid(),
-});
-
-const mergeContextSchema = z.object({
-  contextIdA: z.string().uuid(),
-  contextIdB: z.string().uuid(),
-  mergedName: z.string().min(1).max(100),
-  conflictResolutions: z.array(z.object({
-    unitId: z.string().uuid(),
-    keepFrom: z.enum(["A", "B"]),
-  })).optional(),
-});
-
-const mergeConflictsSchema = z.object({
-  contextIdA: z.string().uuid(),
-  contextIdB: z.string().uuid(),
-});
-
-const reorderContextsSchema = z.object({
-  orderedIds: z.array(z.string().uuid()).min(1),
-  projectId: z.string().uuid(),
-  parentId: z.string().uuid().nullable(),
-});
-
-const moveContextSchema = z.object({
-  id: z.string().uuid(),
-  newParentId: z.string().uuid().nullable(),
-  projectId: z.string().uuid(),
-});
-
-// ─── IDOR Helpers ─────────────────────────────────────────────────
-
-/** Verify a context belongs to the authenticated user (via project.userId). */
-async function verifyContextOwnership(db: PrismaClient, contextId: string, userId: string) {
-  const ctx = await db.context.findFirst({
-    where: { id: contextId, project: { userId } },
-    select: { id: true },
-  });
-  if (!ctx) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
-  }
-  return ctx;
-}
-
-/** Verify a project belongs to the authenticated user. */
-async function verifyProjectOwnership(db: PrismaClient, projectId: string, userId: string) {
-  const project = await db.project.findFirst({
-    where: { id: projectId, userId },
-    select: { id: true },
-  });
-  if (!project) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
-  }
-  return project;
-}
-
-/** Verify a unit belongs to the authenticated user. */
-async function verifyUnitOwnership(db: PrismaClient, unitId: string, userId: string) {
-  const unit = await db.unit.findFirst({
-    where: { id: unitId, userId },
-    select: { id: true },
-  });
-  if (!unit) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
-  }
-  return unit;
-}
-
-// ─── Router ────────────────────────────────────────────────────────
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
 export const contextRouter = createTRPCRouter({
-  create: protectedProcedure
-    .input(createContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
-      if (input.parentId) {
-        await verifyContextOwnership(ctx.db, input.parentId, ctx.session.user.id!);
-      }
-      const service = createContextService(ctx.db);
-      return service.createContext(input);
-    }),
-
-  getById: protectedProcedure
-    .input(contextIdSchema)
-    .query(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.getContextById(input.id);
-    }),
-
   list: protectedProcedure
-    .input(listContextsSchema)
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        inquiryId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
-      if (!input.projectId) return [];
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.listContexts(input.projectId, input.parentId);
-    }),
+      // Verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+        select: { id: true },
+      });
 
-  update: protectedProcedure
-    .input(updateContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      const { id, ...data } = input;
-      return service.updateContext(id, data);
-    }),
-
-  delete: protectedProcedure
-    .input(contextIdSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.deleteContext(input.id);
-    }),
-
-  addUnit: protectedProcedure
-    .input(unitContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
-      await verifyUnitOwnership(ctx.db, input.unitId, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.addUnit(input.unitId, input.contextId);
-    }),
-
-  removeUnit: protectedProcedure
-    .input(unitContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
-      await verifyUnitOwnership(ctx.db, input.unitId, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.removeUnit(input.unitId, input.contextId);
-    }),
-
-  getUnitsForContext: protectedProcedure
-    .input(z.object({ id: z.string().uuid().optional() }))
-    .query(async ({ ctx, input }) => {
-      if (!input.id) return [];
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.getUnitsForContext(input.id);
-    }),
-
-  getMergeConflicts: protectedProcedure
-    .input(mergeConflictsSchema)
-    .query(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextIdA, ctx.session.user.id!);
-      await verifyContextOwnership(ctx.db, input.contextIdB, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.getMergeConflicts(input.contextIdA, input.contextIdB);
-    }),
-
-  split: protectedProcedure
-    .input(splitContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.splitContext(input);
-    }),
-
-  merge: protectedProcedure
-    .input(mergeContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.contextIdA, ctx.session.user.id!);
-      await verifyContextOwnership(ctx.db, input.contextIdB, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      return service.mergeContexts(input);
-    }),
-
-  reorder: protectedProcedure
-    .input(reorderContextsSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
-      const service = createContextService(ctx.db);
-      await service.reorderContexts(input.orderedIds, input.projectId, input.parentId);
-      return { success: true };
-    }),
-
-  move: protectedProcedure
-    .input(moveContextSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
-      if (input.newParentId) {
-        await verifyContextOwnership(ctx.db, input.newParentId, ctx.session.user.id!);
+      if (!project) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
       }
-      const service = createContextService(ctx.db);
-      return service.moveContext(input.id, input.newParentId, input.projectId);
-    }),
 
-  recomputeThoughtRank: protectedProcedure
-    .input(contextIdSchema)
-    .mutation(async ({ ctx, input }) => {
-      await verifyContextOwnership(ctx.db, input.id, ctx.session.user.id!);
-      const service = createThoughtRankService(ctx.db);
-      await service.updateThoughtRankForContext(input.id);
-      return { success: true };
-    }),
-
-  // ─── Story 6.6: Context stats ──────────────────────────────────
-  getContextStats: protectedProcedure
-    .input(z.object({ contextId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const { contextId } = input;
-
-      await verifyContextOwnership(ctx.db, contextId, ctx.session.user.id!);
-
-      // Fetch all unit-context records with unit details
-      const unitContexts = await ctx.db.unitContext.findMany({
-        where: { contextId },
-        include: {
-          unit: {
+      const contexts = await ctx.db.context.findMany({
+        where: {
+          projectId: input.projectId,
+          ...(input.inquiryId !== undefined && {
+            inquiryId: input.inquiryId,
+          }),
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          status: true,
+          parentId: true,
+          inquiryId: true,
+          snapshot: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
             select: {
-              id: true,
-              unitType: true,
-              createdAt: true,
+              unitContexts: true,
+              perspectives: true,
+              children: true,
             },
           },
         },
       });
 
-      const unitIds = unitContexts.map((uc) => uc.unit.id);
+      return contexts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        status: c.status,
+        parentId: c.parentId,
+        inquiryId: c.inquiryId,
+        snapshot: c.snapshot,
+        sortOrder: c.sortOrder,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        counts: {
+          units: c._count.unitContexts,
+          perspectives: c._count.perspectives,
+          children: c._count.children,
+        },
+      }));
+    }),
 
-      // Count relations that connect units within this context
-      const relationCount = await ctx.db.relation.count({
+  getById: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const context = await ctx.db.context.findFirst({
         where: {
-          sourceUnitId: { in: unitIds },
-          targetUnitId: { in: unitIds },
+          id: input.id,
+          project: { userId: ctx.session.user.id },
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          status: true,
+          parentId: true,
+          inquiryId: true,
+          projectId: true,
+          snapshot: true,
+          openQuestions: true,
+          contradictions: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              unitContexts: true,
+              perspectives: true,
+              children: true,
+              navigators: true,
+            },
+          },
         },
       });
 
-      const unitCount = unitContexts.length;
-      const claimCount = unitContexts.filter((uc) => uc.unit.unitType === "claim").length;
-      const evidenceCount = unitContexts.filter((uc) => uc.unit.unitType === "evidence").length;
-      const questionCount = unitContexts.filter((uc) => uc.unit.unitType === "question").length;
-      const avgRelationsPerUnit = unitCount > 0 ? Math.round((relationCount * 2 / unitCount) * 10) / 10 : 0;
-
-      // Recent activity: count of units created per day over last 7 days
-      const recentActivity: Array<{ date: string; unitCount: number }> = [];
-      for (let i = 6; i >= 0; i--) {
-        const dayStart = new Date();
-        dayStart.setDate(dayStart.getDate() - i);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setHours(23, 59, 59, 999);
-
-        const count = unitContexts.filter((uc) => {
-          const d = uc.unit.createdAt;
-          return d >= dayStart && d <= dayEnd;
-        }).length;
-
-        recentActivity.push({
-          date: dayStart.toISOString().slice(0, 10),
-          unitCount: count,
+      if (!context) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Context not found",
         });
       }
 
-      // Top contributing unit types by count
-      const typeCounts: Record<string, number> = {};
-      for (const uc of unitContexts) {
-        typeCounts[uc.unit.unitType] = (typeCounts[uc.unit.unitType] ?? 0) + 1;
-      }
-      const topContributingTypes = Object.entries(typeCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([type, count]) => ({
-          type,
-          count,
-          pct: unitCount > 0 ? Math.round((count / unitCount) * 100) : 0,
-        }));
-
       return {
-        unitCount,
-        claimCount,
-        evidenceCount,
-        questionCount,
-        relationCount,
-        avgRelationsPerUnit,
-        recentActivity,
-        topContributingTypes,
+        id: context.id,
+        name: context.name,
+        description: context.description,
+        status: context.status,
+        parentId: context.parentId,
+        inquiryId: context.inquiryId,
+        projectId: context.projectId,
+        snapshot: context.snapshot,
+        openQuestions: context.openQuestions as string[],
+        contradictions: context.contradictions as string[],
+        sortOrder: context.sortOrder,
+        createdAt: context.createdAt,
+        updatedAt: context.updatedAt,
+        counts: {
+          units: context._count.unitContexts,
+          perspectives: context._count.perspectives,
+          children: context._count.children,
+          navigators: context._count.navigators,
+        },
       };
+    }),
+
+  create: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(200),
+        description: z.string().max(2000).optional(),
+        projectId: z.string().uuid(),
+        inquiryId: z.string().uuid().optional(),
+        parentId: z.string().uuid().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+        select: { id: true },
+      });
+
+      if (!project) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+      }
+
+      // Verify inquiry belongs to same project if provided
+      if (input.inquiryId) {
+        const inquiry = await ctx.db.inquiry.findFirst({
+          where: {
+            id: input.inquiryId,
+            projectId: input.projectId,
+          },
+          select: { id: true },
+        });
+
+        if (!inquiry) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Inquiry not found in this project",
+          });
+        }
+      }
+
+      // Verify parent context belongs to same project if provided
+      if (input.parentId) {
+        const parent = await ctx.db.context.findFirst({
+          where: {
+            id: input.parentId,
+            projectId: input.projectId,
+          },
+          select: { id: true },
+        });
+
+        if (!parent) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Parent context not found in this project",
+          });
+        }
+      }
+
+      const context = await ctx.db.context.create({
+        data: {
+          name: input.name,
+          description: input.description ?? null,
+          projectId: input.projectId,
+          inquiryId: input.inquiryId ?? null,
+          parentId: input.parentId ?? null,
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          status: true,
+          parentId: true,
+          inquiryId: true,
+          projectId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return context;
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(200).optional(),
+        description: z.string().max(2000).nullish(),
+        status: z
+          .enum(["active", "paused", "resolved", "archived"])
+          .optional(),
+        snapshot: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.context.findFirst({
+        where: {
+          id: input.id,
+          project: { userId: ctx.session.user.id },
+        },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Context not found",
+        });
+      }
+
+      const context = await ctx.db.context.update({
+        where: { id: input.id },
+        data: {
+          ...(input.name !== undefined && { name: input.name }),
+          ...(input.description !== undefined && {
+            description: input.description ?? null,
+          }),
+          ...(input.status !== undefined && { status: input.status }),
+          ...(input.snapshot !== undefined && { snapshot: input.snapshot }),
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          status: true,
+          snapshot: true,
+          updatedAt: true,
+        },
+      });
+
+      return context;
+    }),
+
+  assignToInquiry: protectedProcedure
+    .input(
+      z.object({
+        contextId: z.string().uuid(),
+        inquiryId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const context = await ctx.db.context.findFirst({
+        where: {
+          id: input.contextId,
+          project: { userId: ctx.session.user.id },
+        },
+        select: { id: true, projectId: true },
+      });
+
+      if (!context) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Context not found",
+        });
+      }
+
+      // Verify inquiry belongs to same project
+      const inquiry = await ctx.db.inquiry.findFirst({
+        where: {
+          id: input.inquiryId,
+          projectId: context.projectId,
+        },
+        select: { id: true },
+      });
+
+      if (!inquiry) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Inquiry not found in the same project",
+        });
+      }
+
+      const updated = await ctx.db.context.update({
+        where: { id: input.contextId },
+        data: { inquiryId: input.inquiryId },
+        select: {
+          id: true,
+          name: true,
+          inquiryId: true,
+          updatedAt: true,
+        },
+      });
+
+      return updated;
+    }),
+
+  mute: protectedProcedure
+    .input(
+      z.object({
+        contextId: z.string().uuid(),
+        unitId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify context ownership
+      const context = await ctx.db.context.findFirst({
+        where: {
+          id: input.contextId,
+          project: { userId: ctx.session.user.id },
+        },
+        select: { id: true },
+      });
+
+      if (!context) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Context not found",
+        });
+      }
+
+      // Remove the unit-context association (mute = hide from this context)
+      const deleted = await ctx.db.unitContext.deleteMany({
+        where: {
+          contextId: input.contextId,
+          unitId: input.unitId,
+        },
+      });
+
+      if (deleted.count === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Unit is not associated with this context",
+        });
+      }
+
+      return { contextId: input.contextId, unitId: input.unitId, muted: true };
     }),
 });

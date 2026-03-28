@@ -1,474 +1,368 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { createAssemblyService } from "@/server/services/assemblyService";
 import { TRPCError } from "@trpc/server";
-
-// ─── Zod Schemas ───────────────────────────────────────────────────────────
-
-const createAssemblySchema = z.object({
-  name: z.string().min(1, "Name is required").max(200),
-  description: z.string().max(2000).optional(),
-  projectId: z.string().uuid(),
-  templateType: z.string().max(50).optional(),
-});
-
-const updateAssemblySchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1).max(200).optional(),
-  description: z.string().max(2000).optional(),
-});
-
-const addUnitSchema = z.object({
-  assemblyId: z.string().uuid(),
-  unitId: z.string().uuid(),
-  position: z.number().int().min(0).optional(),
-  slotName: z.string().max(100).optional(),
-});
-
-const removeUnitSchema = z.object({
-  assemblyId: z.string().uuid(),
-  unitId: z.string().uuid(),
-});
-
-const reorderUnitsSchema = z.object({
-  assemblyId: z.string().uuid(),
-  orderedUnitIds: z.array(z.string().uuid()).min(1).max(100),
-});
-
-const updateBridgeTextSchema = z.object({
-  assemblyId: z.string().uuid(),
-  unitId: z.string().uuid(),
-  bridgeText: z.string().max(5000).nullable(),
-});
-
-const createFromTemplateSchema = z.object({
-  name: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  projectId: z.string().uuid(),
-  templateType: z.string().max(50),
-  slots: z.array(
-    z.object({
-      name: z.string().min(1).max(100),
-      position: z.number().int().min(0),
-    })
-  ),
-});
-
-// ─── Router ────────────────────────────────────────────────────────────────
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
 export const assemblyRouter = createTRPCRouter({
   /**
-   * Create a new assembly
+   * List assemblies by project ID.
    */
-  create: protectedProcedure
-    .input(createAssemblySchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      return service.create(input, ctx.session.user.id!);
-    }),
-
-  /**
-   * List all assemblies that contain a given unit.
-   */
-  listByUnit: protectedProcedure
-    .input(z.object({ unitId: z.string().uuid() }))
+  list: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
       return ctx.db.assembly.findMany({
-        where: {
-          project: { userId: ctx.session.user.id! },
-          items: { some: { unitId: input.unitId } },
-        },
-        select: {
-          id: true,
-          name: true,
-          templateType: true,
-          items: {
-            where: { unitId: input.unitId },
-            select: { position: true },
-          },
-        },
+        where: { projectId: input.projectId },
+        include: { _count: { select: { items: true } } },
+        orderBy: { createdAt: "desc" },
       });
     }),
 
   /**
-   * Get assembly by ID with ordered items and unit data
+   * Get assembly by ID with ordered items and their unit content.
    */
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      const assembly = await service.getById(input.id, ctx.session.user.id!);
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.id },
+        include: {
+          project: { select: { userId: true } },
+          items: {
+            orderBy: { position: "asc" },
+            include: {
+              unit: {
+                select: {
+                  id: true,
+                  content: true,
+                  primaryType: true,
+                  typeTier: true,
+                  lifecycle: true,
+                  certainty: true,
+                  completeness: true,
+                },
+              },
+            },
+          },
+        },
+      });
 
       if (!assembly) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Assembly not found",
-        });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
 
-      return assembly;
+      const { project: _project, ...rest } = assembly;
+      return rest;
     }),
 
   /**
-   * List assemblies for a project with item counts
+   * Create a new assembly.
    */
-  list: protectedProcedure
-    .input(z.object({ projectId: z.string().uuid().optional() }))
-    .query(async ({ ctx, input }) => {
-      if (!input.projectId) return [];
-      const service = createAssemblyService(ctx.db);
-      return service.list(input.projectId, ctx.session.user.id!);
+  create: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(200),
+        projectId: z.string().uuid(),
+        rhetoricalShape: z
+          .enum(["argument", "narrative", "analysis", "comparison", "synthesis"])
+          .optional(),
+        situationMeta: z
+          .object({
+            exigence: z.string().optional(),
+            audience: z.string().optional(),
+            constraints: z.string().optional(),
+            rhetorPosition: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      return ctx.db.assembly.create({
+        data: {
+          name: input.name,
+          projectId: input.projectId,
+          rhetoricalShape: input.rhetoricalShape,
+          situationMeta: input.situationMeta ?? undefined,
+        },
+      });
     }),
 
   /**
-   * Update assembly metadata (name, description)
+   * Update assembly metadata.
    */
   update: protectedProcedure
-    .input(updateAssemblySchema)
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(200).optional(),
+        rhetoricalShape: z
+          .enum(["argument", "narrative", "analysis", "comparison", "synthesis"])
+          .nullish(),
+        situationMeta: z
+          .object({
+            exigence: z.string().optional(),
+            audience: z.string().optional(),
+            constraints: z.string().optional(),
+            rhetorPosition: z.string().optional(),
+          })
+          .nullish(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
-      const service = createAssemblyService(ctx.db);
-      const assembly = await service.update(id, data, ctx.session.user.id!);
-
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.id },
+        include: { project: { select: { userId: true } } },
+      });
       if (!assembly) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Assembly not found",
-        });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
 
-      return assembly;
+      const { id, ...data } = input;
+      return ctx.db.assembly.update({
+        where: { id },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.rhetoricalShape !== undefined && {
+            rhetoricalShape: data.rhetoricalShape,
+          }),
+          ...(data.situationMeta !== undefined && {
+            situationMeta: data.situationMeta ?? undefined,
+          }),
+        },
+      });
     }),
 
   /**
-   * Delete an assembly
+   * Delete an assembly and its items.
    */
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      const deleted = await service.delete(input.id, ctx.session.user.id!);
-
-      if (!deleted) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Assembly not found",
-        });
-      }
-
-      return { success: true };
-    }),
-
-  /**
-   * Add a unit to an assembly
-   * Rejects if unit.lifecycle === 'draft'
-   */
-  addUnit: protectedProcedure
-    .input(addUnitSchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      return service.addUnit(input, ctx.session.user.id!);
-    }),
-
-  /**
-   * Remove a unit from an assembly (does not delete the unit)
-   */
-  removeUnit: protectedProcedure
-    .input(removeUnitSchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      const removed = await service.removeUnit(
-        input.assemblyId,
-        input.unitId,
-        ctx.session.user.id!
-      );
-
-      if (!removed) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Unit not found in assembly",
-        });
-      }
-
-      return { success: true };
-    }),
-
-  /**
-   * Reorder units in an assembly
-   */
-  reorderUnits: protectedProcedure
-    .input(reorderUnitsSchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      await service.reorderUnits(
-        input.assemblyId,
-        input.orderedUnitIds,
-        ctx.session.user.id!
-      );
-
-      return { success: true };
-    }),
-
-  /**
-   * Update bridge text between units
-   */
-  updateBridgeText: protectedProcedure
-    .input(updateBridgeTextSchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      const item = await service.updateBridgeText(
-        input.assemblyId,
-        input.unitId,
-        input.bridgeText,
-        ctx.session.user.id!
-      );
-
-      if (!item) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Assembly item not found",
-        });
-      }
-
-      return item;
-    }),
-
-  /**
-   * Create assembly from template with pre-defined slots
-   */
-  createFromTemplate: protectedProcedure
-    .input(createFromTemplateSchema)
-    .mutation(async ({ ctx, input }) => {
-      const service = createAssemblyService(ctx.db);
-      return service.createFromTemplate(input, ctx.session.user.id!);
-    }),
-
-  /**
-   * Export assembly as formatted text
-   */
-  export: protectedProcedure
-    .input(z.object({
-      assemblyId: z.string().uuid(),
-      format: z.enum(["essay", "presentation", "email", "social"]),
-    }))
-    .query(async ({ ctx, input }) => {
       const assembly = await ctx.db.assembly.findUnique({
-        where: { id: input.assemblyId },
-        include: {
-          items: {
-            orderBy: { position: "asc" },
-            include: {
-              unit: { select: { id: true, content: true, unitType: true } },
-            },
-          },
-        },
+        where: { id: input.id },
+        include: { project: { select: { userId: true } } },
       });
-
-      if (!assembly) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
-
-      const units = assembly.items
-        .filter((item) => item.unit !== null)
-        .map((item) => ({
-          content: item.unit!.content,
-          type: item.unit!.unitType,
-          slotName: null as string | null,
-          bridgeText: item.bridgeText,
-        }));
-
-      let content = "";
-
-      if (input.format === "essay") {
-        content = units.map((u) => {
-          const heading = u.slotName ? `\n## ${u.slotName}\n\n` : "\n";
-          return `${heading}${u.content}${u.bridgeText ? `\n\n${u.bridgeText}` : ""}`;
-        }).join("\n");
-      } else if (input.format === "presentation") {
-        content = units.map((u, i) => {
-          return `Slide ${i + 1}${u.slotName ? ` — ${u.slotName}` : ""}\n• ${u.content}`;
-        }).join("\n\n");
-      } else if (input.format === "email") {
-        const actionItems = units.filter((u) => u.type === "action");
-        const keyPoints = units.filter((u) => u.type !== "action");
-        content = `Key Points:\n${keyPoints.map((u) => `• ${u.content}`).join("\n")}`;
-        if (actionItems.length > 0) {
-          content += `\n\nAction Items:\n${actionItems.map((u) => `☐ ${u.content}`).join("\n")}`;
-        }
-      } else if (input.format === "social") {
-        content = units.map((u) => {
-          const truncated = u.content.length > 240 ? u.content.slice(0, 237) + "..." : u.content;
-          return truncated;
-        }).join("\n\n---\n\n");
+      if (!assembly) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
 
-      return {
-        content,
-        format: input.format,
-        unitCount: units.length,
-        exportedAt: new Date(),
-      };
+      await ctx.db.assembly.delete({ where: { id: input.id } });
+      return { success: true };
     }),
 
   /**
-   * Get source map for an assembly — groups units by origin type
+   * Add a unit to an assembly at a given position.
+   * Existing items at or after that position are shifted down.
    */
-  getSourceMap: protectedProcedure
-    .input(z.object({ assemblyId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const assembly = await ctx.db.assembly.findUnique({
-        where: { id: input.assemblyId },
-        include: {
-          project: { select: { userId: true } },
-          items: {
-            include: {
-              unit: { select: { originType: true } },
-            },
-          },
-        },
-      });
-
-      if (!assembly) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
-      if (assembly.project.userId !== ctx.session.user.id) throw new TRPCError({ code: "FORBIDDEN" });
-
-      // Categorize origin types into display groups
-      const groupOf = (originType: string | null): string => {
-        if (!originType) return "human";
-        if (originType === "direct_write") return "human";
-        if (originType === "ai_generated" || originType === "ai_refined") return "ai";
-        if (
-          originType === "external_excerpt" ||
-          originType === "external_inspiration" ||
-          originType === "external_summary"
-        )
-          return "import";
-        return "decomposition";
-      };
-
-      const counts: Record<string, number> = {};
-      for (const item of assembly.items) {
-        const group = groupOf(item.unit?.originType ?? null);
-        counts[group] = (counts[group] ?? 0) + 1;
-      }
-
-      const totalUnits = assembly.items.length;
-      const sources = Object.entries(counts).map(([origin, count]) => ({
-        origin,
-        count,
-        percentage: totalUnits > 0 ? Math.round((count / totalUnits) * 100) : 0,
-      }));
-
-      return { sources, totalUnits };
-    }),
-
-  /**
-   * Propose slot mappings for a template based on unit types in a context
-   */
-  proposeSlotMappings: protectedProcedure
+  addItem: protectedProcedure
     .input(
       z.object({
-        contextId: z.string().uuid().optional(),
-        templateType: z.string().max(50),
-      })
+        assemblyId: z.string().uuid(),
+        unitId: z.string().uuid(),
+        position: z.number().int().min(0),
+        assemblyRole: z.string().max(50).optional(),
+        bridgeText: z.string().optional(),
+      }),
     )
-    .query(async ({ ctx, input }) => {
-      if (!input.contextId) return [];
-      // Fetch units in this context via UnitContext join
-      const unitContexts = await ctx.db.unitContext.findMany({
-        where: { contextId: input.contextId },
-        include: {
-          unit: {
-            select: {
-              id: true,
-              unitType: true,
-              lifecycle: true,
-              relationsAsSource: { select: { id: true } },
-              relationsAsTarget: { select: { id: true } },
-            },
-          },
-        },
+    .mutation(async ({ ctx, input }) => {
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.assemblyId },
+        include: { project: { select: { userId: true } } },
       });
-
-      const units = unitContexts
-        .map((uc) => uc.unit)
-        .filter((u) => u.lifecycle !== "draft" && u.lifecycle !== "archived" && u.lifecycle !== "discarded");
-
-      // Slot → unit type heuristic mapping
-      const SLOT_HEURISTICS: Record<string, { types: string[]; preferMostRelated?: boolean }> = {
-        thesis: { types: ["claim"] },
-        claim: { types: ["claim"] },
-        introduction: { types: ["observation", "definition"] },
-        evidence: { types: ["evidence"] },
-        conclusion: { types: ["claim"], preferMostRelated: true },
-        warrant: { types: ["claim", "evidence"] },
-        rebuttal: { types: ["counterargument"] },
-        abstract: { types: ["observation", "claim"] },
-        methods: { types: ["action", "observation"] },
-        results: { types: ["evidence", "observation"] },
-        discussion: { types: ["claim", "assumption"] },
-        hook: { types: ["claim", "observation", "question"] },
-        problem: { types: ["observation", "question"] },
-        solution: { types: ["claim", "idea"] },
-        "call to action": { types: ["action"] },
-      };
-
-      // Template slot definitions (mirrors AssemblyTemplateDialog)
-      const TEMPLATE_SLOTS: Record<string, string[]> = {
-        essay: ["Introduction", "Body I", "Body II", "Body III", "Conclusion"],
-        research_paper: ["Abstract", "Introduction", "Methods", "Results", "Discussion"],
-        presentation: ["Hook", "Problem", "Solution", "Evidence", "Call to Action"],
-        debate_brief: ["Claim", "Warrant I", "Warrant II", "Evidence", "Rebuttal"],
-      };
-
-      const slots = TEMPLATE_SLOTS[input.templateType] ?? [];
-      const usedUnitIds = new Set<string>();
-      const proposals: { slot: string; proposedUnitId: string; confidence: number }[] = [];
-
-      for (const slot of slots) {
-        const heuristic = SLOT_HEURISTICS[slot.toLowerCase().replace(/\s+[ivx]+$/i, "").trim()];
-        if (!heuristic) continue;
-
-        // Filter to units of matching types not yet proposed
-        let candidates = units.filter(
-          (u) => heuristic.types.includes(u.unitType) && !usedUnitIds.has(u.id)
-        );
-
-        if (candidates.length === 0) continue;
-
-        // If preferMostRelated, sort by total relation count descending
-        if (heuristic.preferMostRelated) {
-          candidates = [...candidates].sort((a, b) => {
-            const aRels = a.relationsAsSource.length + a.relationsAsTarget.length;
-            const bRels = b.relationsAsSource.length + b.relationsAsTarget.length;
-            return bRels - aRels;
-          });
-        }
-
-        const picked = candidates[0]!;
-        const confidence = heuristic.types[0] === picked.unitType ? 0.85 : 0.6;
-        proposals.push({ slot, proposedUnitId: picked.id, confidence });
-        usedUnitIds.add(picked.id);
+      if (!assembly) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
 
-      return proposals;
+      // Shift items at or after the target position
+      await ctx.db.assemblyItem.updateMany({
+        where: {
+          assemblyId: input.assemblyId,
+          position: { gte: input.position },
+        },
+        data: { position: { increment: 1 } },
+      });
+
+      return ctx.db.assemblyItem.create({
+        data: {
+          assemblyId: input.assemblyId,
+          unitId: input.unitId,
+          position: input.position,
+          assemblyRole: input.assemblyRole,
+          bridgeText: input.bridgeText,
+        },
+      });
     }),
 
   /**
-   * Diff two assemblies
+   * Remove an item from an assembly and close the position gap.
    */
-  diff: protectedProcedure
-    .input(z.object({ assemblyAId: z.string().uuid(), assemblyBId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const [a, b] = await Promise.all([
-        ctx.db.assembly.findUnique({ where: { id: input.assemblyAId }, include: { items: { include: { unit: true } } } }),
-        ctx.db.assembly.findUnique({ where: { id: input.assemblyBId }, include: { items: { include: { unit: true } } } }),
+  removeItem: protectedProcedure
+    .input(z.object({ itemId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const item = await ctx.db.assemblyItem.findUnique({
+        where: { id: input.itemId },
+        include: {
+          assembly: {
+            include: { project: { select: { userId: true } } },
+          },
+        },
+      });
+      if (!item) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });
+      }
+      if (item.assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+
+      await ctx.db.$transaction([
+        ctx.db.assemblyItem.delete({ where: { id: input.itemId } }),
+        ctx.db.assemblyItem.updateMany({
+          where: {
+            assemblyId: item.assemblyId,
+            position: { gt: item.position },
+          },
+          data: { position: { decrement: 1 } },
+        }),
       ]);
-      if (!a || !b) throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
 
-      const aIds = new Set(a.items.map((i) => i.unitId));
-      const bIds = new Set(b.items.map((i) => i.unitId));
-      const onlyInA = a.items.filter((i) => !bIds.has(i.unitId)).map((i) => i.unitId);
-      const onlyInB = b.items.filter((i) => !aIds.has(i.unitId)).map((i) => i.unitId);
-      const shared = a.items.filter((i) => bIds.has(i.unitId)).map((i) => i.unitId);
+      return { success: true };
+    }),
 
-      return { onlyInA, onlyInB, shared, summary: { added: onlyInB.length, removed: onlyInA.length, shared: shared.length } };
+  /**
+   * Bulk reorder items within an assembly.
+   */
+  reorderItems: protectedProcedure
+    .input(
+      z.object({
+        assemblyId: z.string().uuid(),
+        items: z.array(
+          z.object({
+            itemId: z.string().uuid(),
+            position: z.number().int().min(0),
+          }),
+        ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.assemblyId },
+        include: { project: { select: { userId: true } } },
+      });
+      if (!assembly) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+
+      await ctx.db.$transaction(
+        input.items.map((item) =>
+          ctx.db.assemblyItem.update({
+            where: { id: item.itemId },
+            data: { position: item.position },
+          }),
+        ),
+      );
+
+      return { success: true };
+    }),
+
+  /**
+   * Update assemblyRole or bridgeText on an item.
+   */
+  updateItem: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string().uuid(),
+        assemblyRole: z.string().max(50).nullish(),
+        bridgeText: z.string().nullish(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const item = await ctx.db.assemblyItem.findUnique({
+        where: { id: input.itemId },
+        include: {
+          assembly: {
+            include: { project: { select: { userId: true } } },
+          },
+        },
+      });
+      if (!item) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });
+      }
+      if (item.assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+
+      return ctx.db.assemblyItem.update({
+        where: { id: input.itemId },
+        data: {
+          ...(input.assemblyRole !== undefined && {
+            assemblyRole: input.assemblyRole,
+          }),
+          ...(input.bridgeText !== undefined && {
+            bridgeText: input.bridgeText,
+          }),
+        },
+      });
+    }),
+
+  /**
+   * Create an export history entry for an assembly.
+   */
+  export: protectedProcedure
+    .input(
+      z.object({
+        assemblyId: z.string().uuid(),
+        format: z.string().max(50),
+        unitIds: z.array(z.string().uuid()),
+        contentHash: z.string().max(64),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const assembly = await ctx.db.assembly.findUnique({
+        where: { id: input.assemblyId },
+        include: { project: { select: { userId: true } } },
+      });
+      if (!assembly) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+      if (assembly.project.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+
+      return ctx.db.exportHistory.create({
+        data: {
+          assemblyId: input.assemblyId,
+          userId: ctx.session.user.id,
+          format: input.format,
+          unitIds: input.unitIds,
+          contentHash: input.contentHash,
+        },
+      });
     }),
 });
