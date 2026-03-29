@@ -301,9 +301,9 @@ export function ThreadView({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Fetch units — scoped to active context if one is selected, otherwise all project units
+  // Fetch ALL project units — thread view shows everything including orphans
   const { data: unitsData, isLoading } = api.unit.list.useQuery(
-    { projectId, contextId: activeContextId ?? undefined, limit: 200 },
+    { projectId, limit: 200 },
     { enabled: !!projectId },
   );
   const units = unitsData?.items ?? [];
