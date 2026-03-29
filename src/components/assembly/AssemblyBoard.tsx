@@ -146,7 +146,7 @@ function SortableUnitCard({
             }
             placeholder="Bridge text (AI-generated or type your own)..."
             rows={2}
-            className="w-full resize-none rounded-lg border border-dashed border-border bg-bg-secondary px-3 py-2 text-xs text-text-secondary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary"
+            className="w-full resize-none rounded-lg border border-dashed border-border bg-bg-secondary px-3 py-2 text-xs text-text-secondary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:border-transparent transition-colors duration-fast"
           />
         ) : (
           <button
@@ -295,7 +295,7 @@ function UnitBrowser({ projectId, assemblyId, existingUnitIds }: UnitBrowserProp
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search units..."
-          className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+          className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-sm placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary transition-colors duration-fast"
         />
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">

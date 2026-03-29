@@ -210,9 +210,9 @@ export function DetailPanel({ className }: DetailPanelProps) {
             transition={{ type: "spring", damping: 28, stiffness: 340, mass: 0.8 }}
             className={cn(
               "fixed inset-0 z-50 m-auto",
-              "h-[min(85vh,720px)] w-[min(90vw,480px)]",
+              "h-[min(85vh,720px)] w-[min(92vw,520px)]",
               "rounded-2xl border border-border bg-bg-primary shadow-modal",
-              "overflow-hidden focus-visible:outline-none",
+              "flex flex-col overflow-hidden focus-visible:outline-none",
               className,
             )}
           >

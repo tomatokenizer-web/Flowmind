@@ -50,9 +50,9 @@ export function VersionDiffView({
                   className={cn(
                     "px-3 py-0.5 flex",
                     line.type === "added" &&
-                      "bg-[#ECFDF5] text-[#065F46]",
+                      "bg-[--accent-success]/10 text-[--accent-success]",
                     line.type === "removed" &&
-                      "bg-[#FEF2F2] text-[#991B1B] line-through",
+                      "bg-[--accent-error]/10 text-[--accent-error] line-through",
                     line.type === "unchanged" && "text-[--text-secondary]",
                   )}
                 >

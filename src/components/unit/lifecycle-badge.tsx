@@ -36,17 +36,17 @@ const LIFECYCLE_CONFIG: Record<
     label: "Pending",
     description: "Under review",
     Icon: Clock,
-    containerClass: "border-solid border-[--accent-warning] bg-[#FEF3C7]/30",
-    iconClass: "text-[#92400E]",
-    textClass: "text-[#92400E]",
+    containerClass: "border-solid border-[--accent-warning] bg-[--accent-warning]/10",
+    iconClass: "text-[--accent-warning]",
+    textClass: "text-[--accent-warning]",
   },
   confirmed: {
     label: "Confirmed",
     description: "Approved and active",
     Icon: CheckCircle2,
-    containerClass: "border-solid border-[--accent-success] bg-[#ECFDF5]/30",
-    iconClass: "text-[#065F46]",
-    textClass: "text-[#065F46]",
+    containerClass: "border-solid border-[--accent-success] bg-[--accent-success]/10",
+    iconClass: "text-[--accent-success]",
+    textClass: "text-[--accent-success]",
   },
 };
 

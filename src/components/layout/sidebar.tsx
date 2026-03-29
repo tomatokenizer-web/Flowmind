@@ -102,18 +102,22 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Bottom nav items — utilities (always visible, never scrolled away) */}
       <div className="border-t border-border p-space-2 space-y-0.5">
         <button type="button" onClick={() => setImportOpen(true)}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors", isCollapsed && "justify-center px-0")}
-          title="Import External Content">
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-fast", isCollapsed && "justify-center px-0")}
+          title="Import External Content"
+          aria-label="Import External Content">
           <Link2 className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Import</span>}
         </button>
-        <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm transition-colors", isCollapsed && "justify-center px-0", pathname?.startsWith("/settings") ? "bg-bg-hover text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary")}>
+        <Link href="/settings" className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm transition-colors duration-fast", isCollapsed && "justify-center px-0", pathname?.startsWith("/settings") ? "bg-bg-hover text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary")}
+          title="Settings"
+          aria-label="Settings">
           <Settings className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Settings</span>}
         </Link>
         <button type="button" onClick={() => void signOut({ callbackUrl: "/" })}
-          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-accent-danger transition-colors", isCollapsed && "justify-center px-0")}
-          title="Sign out">
+          className={cn("flex w-full items-center gap-space-3 rounded-lg px-space-3 py-space-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-accent-danger transition-colors duration-fast", isCollapsed && "justify-center px-0")}
+          title="Sign out"
+          aria-label="Sign out">
           <LogOut className="h-5 w-5 shrink-0" />
           {!isCollapsed && <span>Sign out</span>}
         </button>

@@ -1467,4 +1467,249 @@ ${unitList}`,
         unitsAdded: units.length,
       };
     }),
+
+  // ─── Deep Dive: Generate follow-up questions ─────────────────────────
+
+  deepDiveQuestions: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      content: z.string().min(1),
+      unitType: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      const prompt = `Given the following thought unit, generate 4-6 follow-up questions that would deepen understanding of this topic. Each question should explore a different angle: supporting evidence, counterarguments, implications, definitions, related concepts, or practical applications.
+
+Unit type: ${input.unitType ?? "observation"}
+Content: "${input.content}"
+
+Return ONLY a JSON object with this exact format:
+{"questions":[{"text":"The question text","angle":"evidence|counter|implication|definition|related|application","priority":"high|medium"}]}
+
+Make questions specific and thought-provoking, not generic.`;
+
+      try {
+        const raw = await provider.generateText(prompt, { temperature: 0.7, maxTokens: 1024 });
+        const jsonMatch = raw.match(/\{[\s\S]*"questions"[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Invalid AI response");
+
+        const result = JSON.parse(jsonMatch[0]) as {
+          questions: Array<{ text: string; angle: string; priority: string }>;
+        };
+
+        return {
+          questions: (result.questions ?? []).slice(0, 6).map((q) => ({
+            text: q.text,
+            angle: q.angle ?? "related",
+            priority: q.priority ?? "medium",
+          })),
+        };
+      } catch (err) {
+        return handleAIError(err, "deepDiveQuestions");
+      }
+    }),
+
+  // ─── Deep Dive: Answer a question and organize into units ────────────
+
+  deepDiveAnswer: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      question: z.string().min(1),
+      projectId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Verify ownership
+      const [unit, project] = await Promise.all([
+        ctx.db.unit.findFirst({
+          where: { id: input.unitId, userId },
+          select: { id: true, content: true, unitType: true, projectId: true },
+        }),
+        ctx.db.project.findFirst({
+          where: { id: input.projectId, userId },
+          select: { id: true },
+        }),
+      ]);
+      if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      const prompt = `You are analyzing a thought unit and answering a follow-up question about it. Your answer should be comprehensive and well-structured.
+
+Original unit (${unit.unitType}): "${unit.content}"
+
+Question: "${input.question}"
+
+Provide a thorough answer, then decompose it into discrete thought units. Each unit should be a single, self-contained idea.
+
+Return ONLY a JSON object:
+{
+  "answer": "Your full answer text",
+  "units": [
+    {
+      "content": "A single self-contained thought",
+      "unitType": "claim|evidence|definition|observation|question|counterargument|idea|assumption",
+      "relationToOriginal": "expands|supports|contradicts|derives_from|defines|exemplifies|questions|references",
+      "strength": 0.8
+    }
+  ],
+  "suggestContext": true or false,
+  "contextName": "Suggested context name if suggestContext is true"
+}
+
+Rules:
+- Generate 2-5 units from your answer
+- Each unit must stand alone as a meaningful thought
+- Use appropriate unit types (evidence for facts, claim for assertions, definition for term clarifications, etc.)
+- Set relation strength 0.5-1.0 based on how directly it connects to the original`;
+
+      try {
+        const raw = await provider.generateText(prompt, { temperature: 0.4, maxTokens: 2048 });
+        const jsonMatch = raw.match(/\{[\s\S]*"answer"[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Invalid AI response");
+
+        const result = JSON.parse(jsonMatch[0]) as {
+          answer: string;
+          units: Array<{
+            content: string;
+            unitType: string;
+            relationToOriginal: string;
+            strength: number;
+          }>;
+          suggestContext: boolean;
+          contextName?: string;
+        };
+
+        const VALID_TYPES = new Set([
+          "claim", "evidence", "definition", "observation",
+          "question", "counterargument", "idea", "assumption", "action",
+        ]);
+        const VALID_RELATIONS = new Set([
+          "supports", "contradicts", "derives_from", "expands",
+          "references", "exemplifies", "defines", "questions",
+        ]);
+
+        // Create units and relations
+        const createdUnits: Array<{ id: string; content: string; unitType: string }> = [];
+        const createdRelations: Array<{ id: string; type: string }> = [];
+
+        for (const u of (result.units ?? []).slice(0, 5)) {
+          if (!u.content?.trim()) continue;
+
+          const unitType = VALID_TYPES.has(u.unitType) ? u.unitType : "observation";
+          const relationType = VALID_RELATIONS.has(u.relationToOriginal) ? u.relationToOriginal : "derives_from";
+          const strength = Math.max(0.3, Math.min(1, u.strength ?? 0.7));
+
+          // Create the unit
+          const newUnit = await ctx.db.unit.create({
+            data: {
+              content: u.content.trim(),
+              unitType: unitType as import("@prisma/client").UnitType,
+              lifecycle: "draft",
+              originType: "ai_generated",
+              sourceSpan: { deepDiveFrom: input.unitId, question: input.question },
+              projectId: input.projectId,
+              userId,
+            },
+          });
+          createdUnits.push({ id: newUnit.id, content: newUnit.content, unitType: newUnit.unitType });
+
+          // Create relation from original to new unit
+          const relation = await ctx.db.relation.create({
+            data: {
+              sourceUnitId: input.unitId,
+              targetUnitId: newUnit.id,
+              type: relationType,
+              strength,
+              direction: "one_way",
+            },
+          });
+          createdRelations.push({ id: relation.id, type: relation.type });
+        }
+
+        // Also create inter-unit relations among the new units if there are 3+
+        if (createdUnits.length >= 3) {
+          for (let i = 0; i < createdUnits.length - 1; i++) {
+            await ctx.db.relation.create({
+              data: {
+                sourceUnitId: createdUnits[i]!.id,
+                targetUnitId: createdUnits[i + 1]!.id,
+                type: "expands",
+                strength: 0.5,
+                direction: "one_way",
+              },
+            });
+          }
+        }
+
+        return {
+          answer: result.answer,
+          createdUnits,
+          createdRelations,
+          suggestContext: result.suggestContext && createdUnits.length >= 2,
+          contextName: result.contextName,
+        };
+      } catch (err) {
+        return handleAIError(err, "deepDiveAnswer");
+      }
+    }),
+
+  // ─── Deep Dive: Bundle branched units into a context ──────────────────
+
+  deepDiveBundleContext: rateLimitedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      unitIds: z.array(z.string().uuid()).min(2).max(30),
+      contextName: z.string().min(1).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+        select: { id: true },
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+
+      // Verify all units belong to user
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: input.unitIds }, userId },
+        select: { id: true },
+      });
+      if (units.length !== input.unitIds.length) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "One or more units not found" });
+      }
+
+      const newContext = await ctx.db.context.create({
+        data: {
+          name: input.contextName,
+          description: `Deep dive exploration with ${units.length} units`,
+          projectId: input.projectId,
+        },
+      });
+
+      await ctx.db.unitContext.createMany({
+        data: input.unitIds.map((uid) => ({ unitId: uid, contextId: newContext.id })),
+        skipDuplicates: true,
+      });
+
+      return {
+        contextId: newContext.id,
+        contextName: newContext.name,
+        unitsAdded: units.length,
+      };
+    }),
 });

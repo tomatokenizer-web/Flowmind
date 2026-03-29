@@ -78,8 +78,90 @@ export function VersionHistory({
     );
   }
 
+  // The latest version snapshot is the content *before* the most recent edit.
+  // We show a "Current" entry at the top so users can always get back to
+  // the live content (e.g. after AI refinement) if they restore an older version.
+  const latestVersion = versions[0];
+  const currentIsDifferent =
+    latestVersion && latestVersion.content !== currentContent;
+
   return (
     <div className={cn("space-y-1", className)} role="list" aria-label="Version history">
+      {/* Current (live) content entry — always at the top */}
+      {currentIsDifferent && (
+        <div role="listitem">
+          <button
+            type="button"
+            className={cn(
+              "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left",
+              "transition-colors duration-fast",
+              "hover:bg-[--bg-hover] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--border-focus] focus-visible:ring-offset-2",
+              "bg-[--accent-primary]/5 border border-[--accent-primary]/20",
+            )}
+            onClick={() => toggleExpanded("__current__")}
+            aria-expanded={expandedVersion === "__current__"}
+            aria-label="Current version (latest)"
+          >
+            <div className="relative flex flex-col items-center">
+              <div className="h-2.5 w-2.5 rounded-full bg-[--accent-primary] ring-2 ring-[--accent-primary]/30" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-[--accent-primary]">
+                  Current
+                </span>
+                <span className="text-xs text-[--text-tertiary]">now</span>
+              </div>
+              <div className="text-xs text-[--text-secondary] mt-0.5">
+                Live version (latest edits)
+              </div>
+            </div>
+            {expandedVersion === "__current__" ? (
+              <ChevronUp className="h-4 w-4 text-[--text-tertiary] shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[--text-tertiary] shrink-0" aria-hidden="true" />
+            )}
+          </button>
+          <AnimatePresence>
+            {expandedVersion === "__current__" && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="pl-8 pr-3 pb-3">
+                  <div className="rounded-lg border border-[--border-default] bg-[--bg-surface] p-3">
+                    <p className="text-xs text-[--text-secondary] whitespace-pre-wrap line-clamp-6">
+                      {currentContent}
+                    </p>
+                  </div>
+                  {isRestoring ? null : (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5",
+                          "text-xs font-medium text-[--accent-primary] hover:bg-[--accent-primary]/10",
+                          "transition-colors",
+                          "disabled:opacity-50",
+                        )}
+                        onClick={() => restore(0)}
+                        disabled
+                        aria-label="Already on current version"
+                      >
+                        Active version
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
       {versions.map((version) => {
         const isExpanded = expandedVersion === version.id;
 

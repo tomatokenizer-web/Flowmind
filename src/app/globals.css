@@ -46,6 +46,7 @@
   --text-tertiary: #8a857b;
 
   --border-default: #3d3d38;
+  --border-subtle: #33332f;
   --border-focus: #c9a96e;
 
   --accent-primary: #c9a96e;
@@ -82,12 +83,6 @@
   --unit-action-bg: #1e2033;
   --unit-action-accent: #7b85c9;
 }
-
-.natural-dark *:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
 
 /* ─── Tiptap Rich Text Editor ─────────────────────────────────────── */
 

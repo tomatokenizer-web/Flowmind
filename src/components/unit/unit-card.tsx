@@ -83,10 +83,10 @@ const TYPE_BORDER_COLORS: Record<UnitType, string> = {
 // ─── Stance Badge ────────────────────────────────────────────────────
 
 const STANCE_CONFIG: Record<Stance, { label: string; className: string }> = {
-  support:   { label: "Support",   className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
-  oppose:    { label: "Oppose",    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
-  neutral:   { label: "Neutral",   className: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400" },
-  exploring: { label: "Exploring", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
+  support:   { label: "Support",   className: "bg-[--accent-success]/15 text-[--accent-success]" },
+  oppose:    { label: "Oppose",    className: "bg-[--accent-error]/15 text-[--accent-error]" },
+  neutral:   { label: "Neutral",   className: "bg-[--bg-secondary] text-[--text-secondary]" },
+  exploring: { label: "Exploring", className: "bg-[--accent-warning]/15 text-[--accent-warning]" },
 };
 
 function StanceBadge({ stance }: { stance: Stance }) {
@@ -289,7 +289,7 @@ export function UnitCard({
           {/* Hover-only actions — standard variant hides until hover */}
           <div className={cn(
             "flex items-center gap-2",
-            variant === "standard" && "opacity-0 group-hover:opacity-100 transition-opacity duration-150",
+            variant === "standard" && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150",
           )}>
             {variant !== "compact" && (unit.relationCount ?? 0) > 0 && (
               <span
@@ -437,7 +437,7 @@ export function UnitCard({
             {/* Hover-only metadata — standard variant fades in on hover */}
             <div className={cn(
               "contents",
-              variant === "standard" && "[&>*]:opacity-0 [&>*]:group-hover:opacity-100 [&>*]:transition-opacity [&>*]:duration-150",
+              variant === "standard" && "[&>*]:opacity-0 [&>*]:group-hover:opacity-100 [&>*]:group-focus-within:opacity-100 [&>*]:transition-opacity [&>*]:duration-150",
             )}>
               {/* Branch potential — clickable popover with live computed score */}
               <BranchPotentialPopover unitId={unit.id}>

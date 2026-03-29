@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 import { ExternalKnowledgePanel } from "~/components/ai/ExternalKnowledgePanel";
 import { toast } from "~/lib/toast";
 import { useAIIntensity, isAtLeastBalanced, isProactive } from "~/hooks/useAIIntensity";
-import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight } from "lucide-react";
+import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight, Telescope, MessageCircleQuestion, Sparkles, ChevronRight, Layers } from "lucide-react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 
@@ -218,6 +218,11 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
         </div>
       )}
 
+      {/* Deep Dive — prompt-based exploration */}
+      {projectId && (
+        <DeepDiveSection unitId={unitId} content={content} unitType={unitType} projectId={projectId} />
+      )}
+
       {/* Context suggestion */}
       {projectId && <ContextSuggestionSection unitId={unitId} projectId={projectId} />}
 
@@ -227,6 +232,262 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
         unitContent={content}
         onAddAsUnit={onAddAsUnit}
       />
+    </div>
+  );
+}
+
+// ─── Deep Dive Sub-component ──────────────────────────────────────────
+
+interface DeepDiveProps {
+  unitId: string;
+  content: string;
+  unitType?: string;
+  projectId: string;
+}
+
+const ANGLE_ICONS: Record<string, string> = {
+  evidence: "evidence",
+  counter: "counterargument",
+  implication: "idea",
+  definition: "definition",
+  related: "observation",
+  application: "action",
+};
+
+function DeepDiveSection({ unitId, content, unitType, projectId }: DeepDiveProps) {
+  const [prompt, setPrompt] = React.useState("");
+  const [history, setHistory] = React.useState<Array<{
+    question: string;
+    answer: string;
+    units: Array<{ id: string; content: string; unitType: string }>;
+    suggestContext: boolean;
+    contextName?: string;
+  }>>([]);
+  const utils = api.useUtils();
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Pre-generated question suggestions
+  const questionsMutation = api.ai.deepDiveQuestions.useMutation();
+
+  // Store the prompt at submission time so it survives re-renders
+  const submittedPromptRef = React.useRef("");
+
+  // Answer + organize mutation
+  const answerMutation = api.ai.deepDiveAnswer.useMutation({
+    onSuccess: (result) => {
+      if (!result || !("answer" in result)) return;
+      setHistory((prev) => [
+        ...prev,
+        {
+          question: submittedPromptRef.current,
+          answer: result.answer,
+          units: result.createdUnits,
+          suggestContext: result.suggestContext ?? false,
+          contextName: result.contextName,
+        },
+      ]);
+      setPrompt("");
+      // Only invalidate relations — the new branched units are shown in history,
+      // no need to invalidate unit.list which causes parent re-render and textarea reset
+      void utils.relation.listByUnit.invalidate({ unitId });
+      toast.success(`${result.createdUnits.length} units branched`);
+    },
+    onError: (err) => {
+      toast.error("Deep dive failed", { description: err.message });
+    },
+  });
+
+  // Bundle into context
+  const bundleMutation = api.ai.deepDiveBundleContext.useMutation({
+    onSuccess: (result) => {
+      void utils.context.list.invalidate({ projectId });
+      toast.success(`Context "${result.contextName}" created with ${result.unitsAdded} units`);
+    },
+    onError: (err) => toast.error("Failed to create context", { description: err.message }),
+  });
+
+  const handleSubmit = () => {
+    const q = prompt.trim();
+    if (!q || answerMutation.isPending) return;
+    submittedPromptRef.current = q;
+    answerMutation.mutate({ unitId, question: q, projectId });
+  };
+
+  // Collect all branched unit IDs for context bundling
+  const allBranchedIds = React.useMemo(
+    () => [unitId, ...history.flatMap((h) => h.units.map((u) => u.id))],
+    [unitId, history],
+  );
+
+  const latestSuggestContext = history.length > 0 ? history[history.length - 1] : null;
+  const showContextSuggestion =
+    latestSuggestContext?.suggestContext && allBranchedIds.length >= 3;
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5">
+          <Telescope className="h-3.5 w-3.5 text-accent-primary" />
+          Deep Dive
+        </p>
+        {/* Quick question suggestions */}
+        {!questionsMutation.data && !questionsMutation.isPending && (
+          <button
+            onClick={() => questionsMutation.mutate({ unitId, content, unitType })}
+            className="text-[10px] text-text-tertiary hover:text-accent-primary transition-colors"
+          >
+            Suggest questions
+          </button>
+        )}
+      </div>
+
+      {/* Suggested questions — clickable chips */}
+      {questionsMutation.isPending && (
+        <div className="flex items-center gap-2 mb-3">
+          <Loader2 className="h-3 w-3 animate-spin text-text-tertiary" />
+          <span className="text-xs text-text-tertiary">Generating questions...</span>
+        </div>
+      )}
+      {questionsMutation.data && "questions" in questionsMutation.data && (questionsMutation.data as { questions: Array<{ text: string; angle: string; priority: string }> }).questions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {(questionsMutation.data as { questions: Array<{ text: string; angle: string; priority: string }> }).questions.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setPrompt(q.text);
+                inputRef.current?.focus();
+              }}
+              className={cn(
+                "rounded-lg border px-2 py-1.5 text-left text-xs transition-all duration-fast",
+                "hover:-translate-y-px hover:shadow-sm",
+                q.priority === "high"
+                  ? "border-accent-primary/30 bg-accent-primary/5 text-text-primary hover:border-accent-primary/50"
+                  : "border-border bg-bg-secondary text-text-secondary hover:border-border",
+              )}
+            >
+              <MessageCircleQuestion className="inline h-3 w-3 mr-1 text-text-tertiary" />
+              {q.text}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Prompt input */}
+      <div className="relative">
+        <textarea
+          ref={inputRef}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+          placeholder="Ask a follow-up question about this unit..."
+          rows={2}
+          className={cn(
+            "w-full resize-none rounded-lg border border-border bg-bg-secondary px-3 py-2 pr-10 text-sm text-text-primary",
+            "placeholder:text-text-tertiary",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+            "transition-colors duration-fast",
+          )}
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!prompt.trim() || answerMutation.isPending}
+          className={cn(
+            "absolute right-2 bottom-2 rounded-lg p-1.5 transition-colors",
+            prompt.trim()
+              ? "bg-accent-primary text-white hover:bg-accent-primary/90"
+              : "bg-bg-hover text-text-tertiary",
+            "disabled:opacity-50",
+          )}
+          aria-label="Send question"
+        >
+          {answerMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+
+      {/* Loading state */}
+      {answerMutation.isPending && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-accent-primary/30 bg-accent-primary/5 p-3">
+          <Loader2 className="h-4 w-4 animate-spin text-accent-primary shrink-0" />
+          <div>
+            <p className="text-xs font-medium text-accent-primary">Analyzing & organizing...</p>
+            <p className="text-[10px] text-text-tertiary mt-0.5">AI is answering and splitting into branched units</p>
+          </div>
+        </div>
+      )}
+
+      {/* Conversation history */}
+      {history.map((entry, i) => (
+        <div key={i} className="mt-3 space-y-2">
+          {/* Question */}
+          <div className="flex items-start gap-2">
+            <MessageCircleQuestion className="h-3.5 w-3.5 text-accent-primary mt-0.5 shrink-0" />
+            <p className="text-xs font-medium text-text-primary">{entry.question}</p>
+          </div>
+
+          {/* Answer */}
+          <div className="rounded-lg bg-bg-secondary border border-border p-3">
+            <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{entry.answer}</p>
+          </div>
+
+          {/* Branched units */}
+          {entry.units.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-text-tertiary font-medium flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                {entry.units.length} units branched
+              </p>
+              {entry.units.map((u) => (
+                <div
+                  key={u.id}
+                  className="flex items-start gap-2 rounded-lg border border-border bg-bg-primary p-2 text-xs"
+                >
+                  <span className="shrink-0 rounded-md bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary capitalize">
+                    {u.unitType}
+                  </span>
+                  <span className="text-text-secondary line-clamp-2">{u.content}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Context bundling suggestion */}
+      {showContextSuggestion && latestSuggestContext?.contextName && (
+        <button
+          onClick={() =>
+            bundleMutation.mutate({
+              projectId,
+              unitIds: allBranchedIds,
+              contextName: latestSuggestContext.contextName!,
+            })
+          }
+          disabled={bundleMutation.isPending}
+          className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-accent-primary/30 bg-accent-primary/5 p-2.5 text-left hover:bg-accent-primary/10 transition-colors disabled:opacity-50"
+        >
+          <Layers className="h-4 w-4 shrink-0 text-accent-primary" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-accent-primary">Bundle into context</p>
+            <p className="text-[10px] text-text-tertiary truncate">
+              &ldquo;{latestSuggestContext.contextName}&rdquo; &mdash; {allBranchedIds.length} units
+            </p>
+          </div>
+          {bundleMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-primary shrink-0" />
+          ) : (
+            <ArrowRight className="h-3.5 w-3.5 text-accent-primary shrink-0" />
+          )}
+        </button>
+      )}
     </div>
   );
 }

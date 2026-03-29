@@ -74,12 +74,28 @@ interface UnitDetailPanelProps {
 
 function PanelSkeleton() {
   return (
-    <div className="space-y-4 p-space-4">
-      <div className="animate-pulse bg-bg-secondary rounded-lg h-6 w-24" />
-      <div className="animate-pulse bg-bg-secondary rounded-lg h-4 w-full" />
-      <div className="animate-pulse bg-bg-secondary rounded-lg h-4 w-3/4" />
-      <div className="animate-pulse bg-bg-secondary rounded-xl h-40 w-full" />
-      <div className="animate-pulse bg-bg-secondary rounded-lg h-4 w-1/2" />
+    <div className="space-y-4 p-space-4 animate-pulse">
+      {/* Tab bar skeleton */}
+      <div className="flex gap-2">
+        {[48, 56, 52, 60, 36, 72].map((w, i) => (
+          <div key={i} className="bg-bg-secondary rounded-md h-7" style={{ width: w }} />
+        ))}
+      </div>
+      {/* Type badge + lifecycle */}
+      <div className="flex items-center gap-2">
+        <div className="bg-bg-secondary rounded-full h-5 w-20" />
+        <div className="bg-bg-secondary rounded-full h-5 w-16" />
+      </div>
+      {/* Content lines */}
+      <div className="space-y-2">
+        <div className="bg-bg-secondary rounded h-4 w-full" />
+        <div className="bg-bg-secondary rounded h-4 w-[85%]" />
+        <div className="bg-bg-secondary rounded h-4 w-[60%]" />
+      </div>
+      {/* Metadata block */}
+      <div className="bg-bg-secondary rounded-xl h-32 w-full" />
+      {/* Footer line */}
+      <div className="bg-bg-secondary rounded h-3 w-1/3" />
     </div>
   );
 }

@@ -19,6 +19,7 @@ const config: Config = {
         },
         border: {
           DEFAULT: "var(--border-default)",
+          subtle: "var(--border-subtle)",
           focus: "var(--border-focus)",
         },
         accent: {

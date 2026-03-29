@@ -46,8 +46,8 @@ function QuickActionButton({ icon: Icon, label, onClick, accent }: Omit<QuickAct
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
-        "hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-fast",
+        "hover:shadow-sm hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
         accent
           ? "border-accent-primary/40 bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/15"
           : "border-border bg-bg-primary text-text-secondary hover:bg-bg-secondary hover:text-text-primary",
@@ -81,10 +81,19 @@ function ProjectStatsBar({ projectId, onCreateContext }: { projectId: string; on
 
   if (isLoading) {
     return (
-      <div className="flex flex-wrap gap-3 px-4 pt-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-14 w-32 animate-pulse rounded-xl bg-bg-secondary" />
-        ))}
+      <div className="px-6 pt-5 animate-pulse">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[72, 88, 96, 140].map((w, i) => (
+              <div key={i} className="h-8 rounded-lg bg-bg-secondary" style={{ width: w }} />
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {[76, 76, 68].map((w, i) => (
+              <div key={i} className="h-8 rounded-lg bg-bg-secondary" style={{ width: w }} />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -206,7 +215,7 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {assemblies.map((a: { id: string; name: string; updatedAt: Date; _count?: { items: number } }) => (
-            <div key={a.id} className="group flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 hover:shadow-hover transition-shadow">
+            <div key={a.id} className="group flex flex-col gap-2 rounded-xl border border-border bg-bg-primary p-4 hover:shadow-hover hover:-translate-y-px transition-all duration-fast">
               <button type="button" onClick={() => setActiveAssembly(a.id)} className="flex items-center gap-2 text-left min-w-0">
                 <BookOpen className="h-4 w-4 text-accent-primary shrink-0" />
                 <span className="font-medium text-text-primary truncate">{a.name}</span>
@@ -332,7 +341,7 @@ function ContextOverviewGrid({ projectId, onCreateContext }: { projectId: string
               type="button"
               onClick={() => setActiveContext(ctx.id)}
               className={cn(
-                "group flex flex-col gap-2.5 rounded-xl border p-4 text-left transition-all",
+                "group flex flex-col gap-2.5 rounded-xl border p-4 text-left transition-all duration-fast",
                 "hover:-translate-y-px hover:shadow-hover",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
                 isActive

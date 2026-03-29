@@ -56,7 +56,7 @@ function InsightsSection({
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
       >
-        <ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} />
+        <ChevronRight className={cn("h-4 w-4 transition-transform duration-fast ease-default", expanded && "rotate-90")} />
         <span className="flex items-center gap-1.5">
           Insights & Analysis
           {!expanded && gapCount > 0 && (
@@ -589,7 +589,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               </span>
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 transition-transform",
+                  "h-4 w-4 transition-transform duration-fast ease-default",
                   showAiInsights && "rotate-180",
                 )}
               />

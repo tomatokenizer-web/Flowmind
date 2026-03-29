@@ -171,7 +171,7 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
                 if (e.key === "Escape") setCreating(false);
               }}
               placeholder="Navigator name..."
-              className="flex-1 rounded-lg border border-border bg-bg-primary px-2 py-1 text-xs placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-primary"
+              className="flex-1 rounded-lg border border-border bg-bg-primary px-2 py-1 text-xs placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
             />
           </div>
         )}
@@ -448,7 +448,7 @@ function AddUnitPopover({ projectId, navigatorId, addUnit }: AddUnitPopoverProps
               className={cn(
                 "w-full rounded-lg border border-border bg-bg-primary py-2 pl-9 pr-3 text-sm",
                 "text-text-primary placeholder:text-text-tertiary",
-                "focus:outline-none focus:ring-2 focus:ring-accent-primary",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
               )}
             />
           </div>
