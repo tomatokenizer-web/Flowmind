@@ -19,8 +19,8 @@ export function DetailPanel({ className }: DetailPanelProps) {
   const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
   const viewMode = useLayoutStore((s) => s.viewMode);
-  // Don't show the detail panel overlay in reading-focused views
-  const suppressed = viewMode === "thread" || viewMode === "navigate";
+  // Don't show the detail panel overlay in FlowReader (navigate) view
+  const suppressed = viewMode === "navigate";
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
 

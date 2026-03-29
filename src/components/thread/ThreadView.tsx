@@ -164,9 +164,7 @@ function ThreadItem({
   onExpandBranches?: (unitId: string) => void;
 }) {
   const primaryRelation = relations[0];
-  const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
-  const selectUnit = usePanelStore((s) => s.selectUnit);
-  const isSelected = selectedUnitId === unit.id;
+  const openPanel = usePanelStore((s) => s.openPanel);
   const createdAt = typeof unit.createdAt === "string"
     ? new Date(unit.createdAt)
     : unit.createdAt;
@@ -194,16 +192,13 @@ function ThreadItem({
       <div className="relative">
         <button
           type="button"
-          onClick={() => selectUnit(unit.id)}
+          onClick={() => openPanel(unit.id)}
           className={cn(
-            "w-full text-left rounded-xl border bg-bg-primary p-4",
+            "w-full text-left rounded-xl border border-border bg-bg-primary p-4",
             "transition-all duration-fast",
             "hover:shadow-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
             "cursor-pointer",
-            isSelected
-              ? "border-accent-primary ring-2 ring-accent-primary/20 shadow-hover"
-              : "border-border",
           )}
         >
           {/* Header row */}
@@ -302,13 +297,13 @@ export function ThreadView({
   const [searchOpen, setSearchOpen] = React.useState(false);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
-  const selectUnit = usePanelStore((s) => s.selectUnit);
+  const openPanel = usePanelStore((s) => s.openPanel);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Fetch units
+  // Fetch ALL units for the project (no context filter — thread shows everything)
   const { data: unitsData, isLoading } = api.unit.list.useQuery(
-    { projectId, contextId: activeContextId ?? undefined, limit: 100 },
+    { projectId, limit: 200 },
     { enabled: !!projectId },
   );
   const units = unitsData?.items ?? [];
@@ -451,21 +446,21 @@ export function ThreadView({
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         const next = Math.min(currentIndex + 1, threadUnits.length - 1);
-        if (threadUnits[next]) selectUnit(threadUnits[next].id);
+        if (threadUnits[next]) openPanel(threadUnits[next].id);
       } else if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault();
         const prev = Math.max(currentIndex - 1, 0);
-        if (threadUnits[prev]) selectUnit(threadUnits[prev].id);
+        if (threadUnits[prev]) openPanel(threadUnits[prev].id);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [threadUnits, selectedUnitId, selectUnit]);
+  }, [threadUnits, selectedUnitId, openPanel]);
 
   const handleExpandBranches = React.useCallback(
-    (unitId: string) => selectUnit(unitId),
-    [selectUnit],
+    (unitId: string) => openPanel(unitId),
+    [openPanel],
   );
 
   return (
