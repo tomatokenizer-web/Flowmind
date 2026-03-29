@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { usePanelStore } from "~/stores/panel-store";
+import { useLayoutStore } from "~/stores/layout-store";
 import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
 import type { MetadataValues } from "~/components/unit/metadata-editor";
 import { toast } from "~/lib/toast";
@@ -17,6 +18,7 @@ export function DetailPanel({ className }: DetailPanelProps) {
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
+  const viewMode = useLayoutStore((s) => s.viewMode);
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
@@ -181,9 +183,12 @@ export function DetailPanel({ className }: DetailPanelProps) {
     />
   );
 
+  // Don't show the detail panel overlay in thread (flow reading) view
+  const suppressed = viewMode === "thread";
+
   return (
     <AnimatePresence>
-      {detailPanelOpen && (
+      {detailPanelOpen && !suppressed && (
         <>
           {/* Backdrop */}
           <motion.div

@@ -13,6 +13,8 @@ interface PanelState {
   spotlightUnitId: string | null;
 
   openPanel: (unitId: string) => void;
+  /** Select a unit without opening the detail panel overlay */
+  selectUnit: (unitId: string) => void;
   closePanel: () => void;
   /** Close the panel and clear the selected unit ID. */
   clearSelection: () => void;
@@ -32,6 +34,9 @@ export const usePanelStore = create<PanelState>((set, get) => ({
 
   openPanel: (unitId) =>
     set({ isOpen: true, selectedUnitId: unitId }),
+
+  selectUnit: (unitId) =>
+    set({ selectedUnitId: unitId }),
 
   closePanel: () =>
     set({ isOpen: false }),
