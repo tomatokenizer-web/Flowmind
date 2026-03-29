@@ -19,6 +19,8 @@ export function DetailPanel({ className }: DetailPanelProps) {
   const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
   const viewMode = useLayoutStore((s) => s.viewMode);
+  // Don't show the detail panel overlay in reading-focused views
+  const suppressed = viewMode === "thread" || viewMode === "navigate";
   const panelRef = React.useRef<HTMLElement>(null);
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
@@ -115,8 +117,9 @@ export function DetailPanel({ className }: DetailPanelProps) {
     deleteMutation.mutate({ id: unitId });
   }, [deleteMutation]);
 
-  // Track element that opened the panel for focus return
+  // Track element that opened the panel for focus return — skip when suppressed
   React.useEffect(() => {
+    if (suppressed) return;
     if (detailPanelOpen) {
       returnFocusRef.current = document.activeElement as HTMLElement;
       requestAnimationFrame(() => {
@@ -126,11 +129,11 @@ export function DetailPanel({ className }: DetailPanelProps) {
       returnFocusRef.current.focus();
       returnFocusRef.current = null;
     }
-  }, [detailPanelOpen]);
+  }, [detailPanelOpen, suppressed]);
 
-  // Escape to close
+  // Escape to close — skip when suppressed so other views can handle Escape
   React.useEffect(() => {
-    if (!detailPanelOpen) return;
+    if (!detailPanelOpen || suppressed) return;
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -140,11 +143,11 @@ export function DetailPanel({ className }: DetailPanelProps) {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [detailPanelOpen, handleClose]);
+  }, [detailPanelOpen, handleClose, suppressed]);
 
-  // Focus trap
+  // Focus trap — skip when suppressed
   React.useEffect(() => {
-    if (!detailPanelOpen) return;
+    if (!detailPanelOpen || suppressed) return;
 
     function handleTab(e: KeyboardEvent) {
       if (e.key !== "Tab" || !panelRef.current) return;
@@ -182,10 +185,6 @@ export function DetailPanel({ className }: DetailPanelProps) {
       onDelete={handleDelete}
     />
   );
-
-  // Don't show the detail panel overlay in reading-focused views
-  // (thread = flow reading, navigate = FlowReader cards)
-  const suppressed = viewMode === "thread" || viewMode === "navigate";
 
   return (
     <AnimatePresence>
