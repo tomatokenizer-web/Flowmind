@@ -183,8 +183,9 @@ export function DetailPanel({ className }: DetailPanelProps) {
     />
   );
 
-  // Don't show the detail panel overlay in thread (flow reading) view
-  const suppressed = viewMode === "thread";
+  // Don't show the detail panel overlay in reading-focused views
+  // (thread = flow reading, navigate = FlowReader cards)
+  const suppressed = viewMode === "thread" || viewMode === "navigate";
 
   return (
     <AnimatePresence>
