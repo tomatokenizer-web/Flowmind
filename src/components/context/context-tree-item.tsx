@@ -22,6 +22,8 @@ interface ContextTreeItemProps {
   isActive: boolean;
   isExpanded: boolean;
   collapsed: boolean;
+  isMergeSource?: boolean;
+  isMergeTarget?: boolean;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -40,6 +42,8 @@ export function ContextTreeItem({
   isActive,
   isExpanded,
   collapsed,
+  isMergeSource,
+  isMergeTarget,
   onSelect,
   onToggleExpand,
   onRename,
@@ -160,6 +164,81 @@ export function ContextTreeItem({
     );
   }
 
+  // During merge mode, suppress context menu — clicks go directly to merge target selection
+  if (isMergeSource || isMergeTarget) {
+    return (
+      <div
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        role="treeitem"
+        tabIndex={0}
+        aria-expanded={node.hasChildren ? isExpanded : undefined}
+        aria-selected={isActive}
+        aria-level={node.depth + 1}
+        onClick={() => onSelect(node.id)}
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-space-1 rounded-lg py-[6px] pr-space-2",
+          "text-sm text-text-secondary",
+          "transition-colors duration-fast ease-default",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
+          "motion-reduce:transition-none",
+          isMergeSource && "border-l-2 border-l-accent-primary bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30",
+          isMergeTarget && "border-l-2 border-l-transparent hover:bg-accent-primary/10 hover:text-accent-primary",
+          isDragging && "z-10 opacity-50",
+        )}
+        style={{
+          ...style,
+          paddingLeft: `${node.depth * 16 + 8}px`,
+        }}
+      >
+        {node.hasChildren ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(node.id);
+            }}
+            className={cn(
+              "flex h-5 w-5 shrink-0 items-center justify-center rounded",
+              "text-text-tertiary hover:text-text-secondary",
+              "transition-colors duration-fast",
+            )}
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+            tabIndex={-1}
+          >
+            <ChevronRight
+              className={cn(
+                "h-3.5 w-3.5 transition-transform duration-fast",
+                isExpanded && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <span className="w-5 shrink-0" />
+        )}
+
+        {isMergeTarget && (
+          <Merge className="h-3.5 w-3.5 shrink-0 text-accent-primary" />
+        )}
+
+        <span className="min-w-0 flex-1 truncate">{node.name}</span>
+
+        {node.unitCount > 0 && (
+          <span
+            className={cn(
+              "ml-auto shrink-0 rounded-full bg-bg-secondary px-1.5 py-0.5",
+              "text-[11px] font-medium leading-none text-text-tertiary",
+              isMergeSource && "opacity-100",
+            )}
+          >
+            {node.unitCount}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -183,8 +262,10 @@ export function ContextTreeItem({
             "hover:bg-bg-hover hover:text-text-primary",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
             "motion-reduce:transition-none",
-            isActive && "border-l-2 border-l-accent-primary bg-bg-hover text-text-primary",
-            !isActive && "border-l-2 border-l-transparent",
+            isMergeSource && "border-l-2 border-l-accent-primary bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30",
+            isMergeTarget && "border-l-2 border-l-transparent hover:bg-accent-primary/10 hover:text-accent-primary cursor-pointer",
+            !isMergeSource && !isMergeTarget && isActive && "border-l-2 border-l-accent-primary bg-bg-hover text-text-primary",
+            !isMergeSource && !isMergeTarget && !isActive && "border-l-2 border-l-transparent",
             isDragging && "z-10 opacity-50",
           )}
           style={{
@@ -217,6 +298,11 @@ export function ContextTreeItem({
             </button>
           ) : (
             <span className="w-5 shrink-0" />
+          )}
+
+          {/* Merge target indicator */}
+          {isMergeTarget && (
+            <Merge className="h-3.5 w-3.5 shrink-0 text-accent-primary" />
           )}
 
           {/* Context name or inline edit */}

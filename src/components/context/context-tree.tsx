@@ -68,7 +68,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   }, []);
 
   const handleMergeStart = useCallback((id: string) => {
-    // First click sets source; if source already set and different, that's the target
+    // First invocation sets source; subsequent invocation with a different id sets target
     if (mergeSourceId && mergeSourceId !== id) {
       setMergeTargetId(id);
     } else {
@@ -76,6 +76,18 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
       setMergeTargetId(null);
     }
   }, [mergeSourceId]);
+
+  // When merge source is set, intercept select to use it as merge target
+  const handleSelectWithMerge = useCallback(
+    (id: string) => {
+      if (mergeSourceId && mergeSourceId !== id) {
+        setMergeTargetId(id);
+      } else {
+        setActiveContext(id);
+      }
+    },
+    [mergeSourceId, setActiveContext],
+  );
 
   const handleCloseMerge = useCallback(() => {
     setMergeSourceId(null);
@@ -230,7 +242,9 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
             isActive={activeContextId === node.id}
             isExpanded={expandedNodes.has(node.id)}
             collapsed
-            onSelect={setActiveContext}
+            isMergeSource={node.id === mergeSourceId}
+            isMergeTarget={!!mergeSourceId && node.id !== mergeSourceId}
+            onSelect={handleSelectWithMerge}
             onToggleExpand={toggleNode}
             onRename={renameContext}
             onDelete={deleteContext}
@@ -328,7 +342,9 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
                   isActive={activeContextId === node.id}
                   isExpanded={expandedNodes.has(node.id)}
                   collapsed={false}
-                  onSelect={setActiveContext}
+                  isMergeSource={node.id === mergeSourceId}
+                  isMergeTarget={!!mergeSourceId && node.id !== mergeSourceId}
+                  onSelect={handleSelectWithMerge}
                   onToggleExpand={toggleNode}
                   onRename={renameContext}
                   onDelete={deleteContext}
@@ -359,7 +375,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
       {mergeSourceId && !mergeTargetId && (
         <div className="border-t border-border bg-bg-surface px-space-3 py-space-2">
           <p className="text-xs text-text-secondary">
-            Right-click another context to merge with &ldquo;{mergeSource?.name}&rdquo;
+            Click another context to merge with &ldquo;{mergeSource?.name}&rdquo;
           </p>
           <Button
             variant="ghost"

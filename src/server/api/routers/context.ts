@@ -174,6 +174,23 @@ export const contextRouter = createTRPCRouter({
       return service.addUnit(input.unitId, input.contextId);
     }),
 
+  addUnits: protectedProcedure
+    .input(z.object({
+      unitIds: z.array(z.string().uuid()).min(1).max(50),
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+      for (const uid of input.unitIds) {
+        await verifyUnitOwnership(ctx.db, uid, ctx.session.user.id!);
+      }
+      const service = createContextService(ctx.db);
+      const results = await Promise.all(
+        input.unitIds.map((uid) => service.addUnit(uid, input.contextId)),
+      );
+      return { added: results.length };
+    }),
+
   removeUnit: protectedProcedure
     .input(unitContextSchema)
     .mutation(async ({ ctx, input }) => {

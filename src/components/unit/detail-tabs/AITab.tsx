@@ -22,6 +22,7 @@ interface AITabProps {
 
 export function AITab({ unitId, content, unitType, branchPotential, onContentChange, onMetadataChange, onAddAsUnit }: AITabProps) {
   const filled = Math.round((branchPotential ?? 0) * 4);
+  const [deepDiveUnitIds, setDeepDiveUnitIds] = React.useState<string[]>([]);
   const utils = api.useUtils();
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const projectId = useProjectId();
@@ -220,11 +221,23 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
 
       {/* Deep Dive — prompt-based exploration */}
       {projectId && (
-        <DeepDiveSection unitId={unitId} content={content} unitType={unitType} projectId={projectId} />
+        <DeepDiveSection
+          unitId={unitId}
+          content={content}
+          unitType={unitType}
+          projectId={projectId}
+          onBranchedUnitsChange={setDeepDiveUnitIds}
+        />
       )}
 
-      {/* Context suggestion */}
-      {projectId && <ContextSuggestionSection unitId={unitId} projectId={projectId} />}
+      {/* Context suggestion — includes deep dive branched units */}
+      {projectId && (
+        <ContextSuggestionSection
+          unitId={unitId}
+          projectId={projectId}
+          deepDiveUnitIds={deepDiveUnitIds}
+        />
+      )}
 
       {/* External knowledge search */}
       <ExternalKnowledgePanel
@@ -243,6 +256,7 @@ interface DeepDiveProps {
   content: string;
   unitType?: string;
   projectId: string;
+  onBranchedUnitsChange?: (unitIds: string[]) => void;
 }
 
 const ANGLE_ICONS: Record<string, string> = {
@@ -254,7 +268,7 @@ const ANGLE_ICONS: Record<string, string> = {
   application: "action",
 };
 
-function DeepDiveSection({ unitId, content, unitType, projectId }: DeepDiveProps) {
+function DeepDiveSection({ unitId, content, unitType, projectId, onBranchedUnitsChange }: DeepDiveProps) {
   const [prompt, setPrompt] = React.useState("");
   const [history, setHistory] = React.useState<Array<{
     question: string;
@@ -276,16 +290,21 @@ function DeepDiveSection({ unitId, content, unitType, projectId }: DeepDiveProps
   const answerMutation = api.ai.deepDiveAnswer.useMutation({
     onSuccess: (result) => {
       if (!result || !("answer" in result)) return;
-      setHistory((prev) => [
-        ...prev,
-        {
-          question: submittedPromptRef.current,
-          answer: result.answer,
-          units: result.createdUnits,
-          suggestContext: result.suggestContext ?? false,
-          contextName: result.contextName,
-        },
-      ]);
+      setHistory((prev) => {
+        const next = [
+          ...prev,
+          {
+            question: submittedPromptRef.current,
+            answer: result.answer,
+            units: result.createdUnits,
+            suggestContext: result.suggestContext ?? false,
+            contextName: result.contextName,
+          },
+        ];
+        // Notify parent of all branched unit IDs so context suggestions can include them
+        onBranchedUnitsChange?.(next.flatMap((h) => h.units.map((u) => u.id)));
+        return next;
+      });
       setPrompt("");
       // Only invalidate relations — the new branched units are shown in history,
       // no need to invalidate unit.list which causes parent re-render and textarea reset
@@ -494,8 +513,22 @@ function DeepDiveSection({ unitId, content, unitType, projectId }: DeepDiveProps
 
 // ─── Context Suggestion Sub-component ────────────────────────────────
 
-function ContextSuggestionSection({ unitId, projectId }: { unitId: string; projectId: string }) {
+function ContextSuggestionSection({
+  unitId,
+  projectId,
+  deepDiveUnitIds,
+}: {
+  unitId: string;
+  projectId: string;
+  deepDiveUnitIds?: string[];
+}) {
   const utils = api.useUtils();
+  const hasDeepDiveUnits = deepDiveUnitIds && deepDiveUnitIds.length > 0;
+  // All unit IDs to associate (original + deep dive branched)
+  const allUnitIds = React.useMemo(
+    () => [unitId, ...(deepDiveUnitIds ?? [])],
+    [unitId, deepDiveUnitIds],
+  );
 
   const { data, isLoading } = api.ai.suggestContextForUnit.useQuery(
     { unitId, projectId },
@@ -509,6 +542,15 @@ function ContextSuggestionSection({ unitId, projectId }: { unitId: string; proje
       toast.success("Unit added to context");
     },
     onError: (err) => toast.error("Failed to add to context", { description: err.message }),
+  });
+
+  const addMultipleToContext = api.context.addUnits.useMutation({
+    onSuccess: () => {
+      void utils.ai.suggestContextForUnit.invalidate({ unitId, projectId });
+      void utils.context.list.invalidate({ projectId });
+      toast.success(`${allUnitIds.length} units added to context`);
+    },
+    onError: (err) => toast.error("Failed to add units to context", { description: err.message }),
   });
 
   const autoCreate = api.ai.autoCreateContext.useMutation({
@@ -529,6 +571,16 @@ function ContextSuggestionSection({ unitId, projectId }: { unitId: string; proje
         <FolderPlus className="h-3 w-3 text-accent-primary" />
         Context Suggestion
       </p>
+
+      {/* Deep dive scope indicator */}
+      {hasDeepDiveUnits && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-md border border-accent-primary/20 bg-accent-primary/5 px-2 py-1.5">
+          <Sparkles className="h-3 w-3 text-accent-primary shrink-0" />
+          <span className="text-[10px] text-text-secondary">
+            Includes <span className="font-medium text-accent-primary">{deepDiveUnitIds.length}</span> deep dive units — add all or just this unit
+          </span>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-2">
@@ -561,13 +613,25 @@ function ContextSuggestionSection({ unitId, projectId }: { unitId: string; proje
                   <Check className="h-3 w-3" />
                 </span>
               ) : (
-                <button
-                  onClick={() => addToContext.mutate({ unitId, contextId: s.contextId })}
-                  disabled={addToContext.isPending}
-                  className="shrink-0 ml-2 flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-xs text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
-                >
-                  <ArrowRight className="h-3 w-3" /> Add
-                </button>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <button
+                    onClick={() => addToContext.mutate({ unitId, contextId: s.contextId })}
+                    disabled={addToContext.isPending}
+                    className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-xs text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
+                  >
+                    <ArrowRight className="h-3 w-3" /> Add
+                  </button>
+                  {hasDeepDiveUnits && (
+                    <button
+                      onClick={() => addMultipleToContext.mutate({ unitIds: allUnitIds, contextId: s.contextId })}
+                      disabled={addMultipleToContext.isPending}
+                      className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-xs text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
+                      title={`Add this unit + ${deepDiveUnitIds.length} deep dive units`}
+                    >
+                      <Layers className="h-3 w-3" /> All
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -579,14 +643,16 @@ function ContextSuggestionSection({ unitId, projectId }: { unitId: string; proje
       {/* Suggest creating a new context */}
       {newContextName && !suggestions.some((s) => s.confidence >= 0.7) && (
         <button
-          onClick={() => autoCreate.mutate({ projectId, unitIds: [unitId] })}
+          onClick={() => autoCreate.mutate({ projectId, unitIds: hasDeepDiveUnits ? allUnitIds : [unitId] })}
           disabled={autoCreate.isPending}
           className="mt-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-accent-primary/30 bg-accent-primary/5 p-2 text-left hover:bg-accent-primary/10 disabled:opacity-50"
         >
           <FolderPlus className="h-4 w-4 shrink-0 text-accent-primary" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-accent-primary">Create new context</p>
-            <p className="text-xs text-text-tertiary truncate">&ldquo;{newContextName}&rdquo;</p>
+            <p className="text-xs text-text-tertiary truncate">
+              &ldquo;{newContextName}&rdquo;{hasDeepDiveUnits ? ` — ${allUnitIds.length} units` : ""}
+            </p>
           </div>
           {autoCreate.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-primary" />}
         </button>
