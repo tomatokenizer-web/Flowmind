@@ -36,11 +36,13 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
     },
   });
 
-  // Auto-trigger classification on mount
+  // Auto-trigger classification on mount — skip if unit already has a non-default type
   const autoClassifiedRef = React.useRef<string | null>(null);
+  const alreadyClassified = !!unitType && unitType !== "claim";
   React.useEffect(() => {
     if (
       showAISections &&
+      !alreadyClassified &&
       content?.trim() &&
       unitId !== autoClassifiedRef.current &&
       !suggestTypeMutation.data &&
@@ -49,7 +51,7 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
       autoClassifiedRef.current = unitId;
       suggestTypeMutation.mutate({ content, contextId: activeContextId ?? undefined });
     }
-  }, [unitId, showAISections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [unitId, showAISections, alreadyClassified]); // eslint-disable-line react-hooks/exhaustive-deps
   const refineMutation = api.ai.refineUnit.useMutation({
     onError: (err) => {
       toast.error("AI refinement failed", { description: err.message });
