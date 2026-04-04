@@ -312,7 +312,7 @@ type IncubationUnit = {
 function IncubationSection({
   units,
   contexts,
-  projectId,
+  projectId: _projectId2,
 }: {
   units: IncubationUnit[];
   contexts: Array<{ id: string; name: string; parentId: string | null }>;

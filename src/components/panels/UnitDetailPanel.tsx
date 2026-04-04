@@ -18,7 +18,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
+import { type MetadataValues } from "~/components/unit/metadata-editor";
 import type { ResourceAttachment } from "~/components/unit/resource-attachment";
 import { usePanelStore, type DetailTab } from "~/stores/panel-store";
 import { useSidebarStore } from "~/stores/sidebar-store";

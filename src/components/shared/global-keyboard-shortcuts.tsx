@@ -35,7 +35,7 @@ export function GlobalKeyboardShortcuts() {
     onSuccess: (unitId, newState) => {
       announceToScreenReader(`Unit transitioned to ${newState}`);
     },
-    onError: (error) => {
+    onError: (_error) => {
       toast.error("Lifecycle transition failed");
     },
   });

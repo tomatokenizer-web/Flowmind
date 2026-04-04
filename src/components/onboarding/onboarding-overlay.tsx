@@ -29,7 +29,7 @@ export function OnboardingOverlay({ projectId }: OnboardingOverlayProps) {
     isFirstTime,
     isLoading,
     startTour,
-    completeTour,
+    completeTour: _completeTour,
     skipTour,
     tourStep,
     nextStep,

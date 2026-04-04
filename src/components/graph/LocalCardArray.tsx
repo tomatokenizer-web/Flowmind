@@ -163,8 +163,8 @@ export function LocalCardArray() {
     { enabled: !!localHubId },
   );
 
-  const relations = subgraph?.relations ?? [];
-  const layers = subgraph?.layers ?? [];
+  const relations = React.useMemo(() => subgraph?.relations ?? [], [subgraph?.relations]);
+  const layers = React.useMemo(() => subgraph?.layers ?? [], [subgraph?.layers]);
 
   // Collect all unit IDs across all depth layers
   const allIds = React.useMemo(() => {

@@ -1,5 +1,4 @@
-import type { PrismaClient, UnitType, Lifecycle } from "@prisma/client";
-import { Prisma } from "@prisma/client";
+import type { PrismaClient, UnitType, Lifecycle, Prisma } from "@prisma/client";
 import { generateEmbedding } from "@/server/ai/embedding";
 
 // ─── Types ───────────────────────────────────────────────────────────

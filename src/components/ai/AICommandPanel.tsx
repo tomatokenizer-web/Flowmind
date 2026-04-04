@@ -29,10 +29,6 @@ import { PromptGeneratorDialog } from "./PromptGeneratorDialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface ActionResult {
-  label: string;
-  value: string;
-}
 
 // ─── Action Button ─────────────────────────────────────────────────────────────
 

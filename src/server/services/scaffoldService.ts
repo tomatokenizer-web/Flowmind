@@ -1,4 +1,4 @@
-import { PrismaClient, UnitType, Lifecycle, OriginType } from "@prisma/client";
+import type { PrismaClient, UnitType, Lifecycle, OriginType } from "@prisma/client";
 
 type ScaffoldQuestion = {
   type: string;

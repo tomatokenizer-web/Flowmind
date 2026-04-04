@@ -4,7 +4,6 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, X } from "lucide-react";
 import { api } from "~/trpc/react";
-import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 
 interface ActionCompletionSheetProps {
@@ -42,7 +41,7 @@ export function ActionCompletionSheet({
     },
   });
 
-  const [relatedUnits, setRelatedUnits] = React.useState<{ id: string; content: string }[]>([]);
+  const [_relatedUnits, setRelatedUnits] = React.useState<{ id: string; content: string }[]>([]);
 
   const createResult = async ({ relatedUnits }: { relatedUnits: { id: string; content: string }[] }) => {
     setRelatedUnits(relatedUnits);

@@ -5,7 +5,6 @@ import { cn } from "~/lib/utils";
 import { Check, X, RotateCcw, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type LifecycleAction = "approve" | "reject" | "reset";
 
 interface ApproveRejectButtonsProps {
   lifecycle: "draft" | "pending" | "confirmed";

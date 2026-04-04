@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Sparkles, X, ArrowRight, SkipForward } from "lucide-react";
 import { ONBOARDING_STEPS } from "~/lib/onboarding-config";
 

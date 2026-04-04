@@ -23,7 +23,7 @@ interface AISuggestionState {
 
 export const useAISuggestionStore = create<AISuggestionState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       suggestions: [],
       pendingCount: 0,
       addSuggestion: (s) => {

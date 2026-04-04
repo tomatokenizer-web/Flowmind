@@ -14,7 +14,6 @@ import type { PrismaClient } from "@prisma/client";
 import {
   createTestDb,
   cleanupTestDb,
-  resetTestData,
   seedUser,
   seedProject,
   seedUnit,

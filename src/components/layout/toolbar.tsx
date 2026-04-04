@@ -42,6 +42,7 @@ export function Toolbar({
   const focusMode = useFocusModeStore((s) => s.focusMode);
   const toggleFocusMode = useFocusModeStore((s) => s.toggleFocusMode);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
+  const setActiveContext = useSidebarStore((s) => s.setActiveContext);
   const panelIsOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
@@ -66,13 +67,13 @@ export function Toolbar({
   // Build breadcrumb segments with full depth: Home > Context > View > Unit
   const defaultSegments = React.useMemo((): BreadcrumbSegment[] => {
     const segs: BreadcrumbSegment[] = [
-      { label: "Home", href: "/dashboard", depth: "project" },
+      { label: "Home", onClick: () => setActiveContext(null), depth: "project" },
     ];
 
     if (activeContextId && contextData) {
       segs.push({
         label: contextData.name,
-        href: `/context/${activeContextId}`,
+        onClick: () => setActiveContext(activeContextId),
         depth: "context",
         icon: Layers,
       });
@@ -106,6 +107,7 @@ export function Toolbar({
     return segs;
   }, [
     activeContextId,
+    setActiveContext,
     contextData,
     viewMode,
     viewModeLabel,

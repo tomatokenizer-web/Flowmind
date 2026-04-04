@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Flag, Trash2 } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Trash2 } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { NudgeBadge } from "./NudgeBadge";
 import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPopover";
@@ -16,7 +16,7 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast } from "~/lib/toast";
 import { UnitTypeBadge } from "./unit-type-badge";
-import { LifecycleIndicator, type LifecycleState } from "./lifecycle-indicator";
+import { type LifecycleState } from "./lifecycle-indicator";
 import { AILifecycleBadge } from "./lifecycle-badge";
 import { AIBadge } from "./ai-badge";
 import { ApproveRejectButtons } from "./approve-reject-buttons";

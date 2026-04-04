@@ -67,6 +67,7 @@ export function ProfilePanel() {
       <div className="rounded-xl border border-border p-4">
         <div className="flex items-center gap-4">
           {session?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={session.image}
               alt="Profile avatar"

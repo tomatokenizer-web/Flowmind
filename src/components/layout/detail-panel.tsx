@@ -172,7 +172,7 @@ export function DetailPanel({ className }: DetailPanelProps) {
 
     document.addEventListener("keydown", handleTab);
     return () => document.removeEventListener("keydown", handleTab);
-  }, [detailPanelOpen]);
+  }, [detailPanelOpen, suppressed]);
 
   const panelContent = (
     <UnitDetailPanel

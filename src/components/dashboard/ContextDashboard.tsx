@@ -93,7 +93,7 @@ function ConnectedUnitChip({
 
 export function ContextDashboard({
   contextId,
-  projectId,
+  projectId: _projectId,
   className,
 }: ContextDashboardProps) {
   const openPanel = usePanelStore((s) => s.openPanel);

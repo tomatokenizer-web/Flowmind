@@ -23,10 +23,11 @@ import { render } from "@testing-library/react";
 // is present, the full test suite runs; otherwise tests are skipped
 // with an explanatory message.
 //
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let axe: ((container: Element | Document) => Promise<import("axe-core").AxeResults>) | null = null;
 try {
   // Dynamic import so missing package does not throw at module load time
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/consistent-type-imports
   axe = (require("axe-core") as typeof import("axe-core")).run;
 } catch {
   // axe-core is not installed — tests will be skipped below

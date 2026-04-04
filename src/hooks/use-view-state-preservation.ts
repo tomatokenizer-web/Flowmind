@@ -68,9 +68,11 @@ export function useViewStatePreservation(
 
   // Save on unmount — captures scroll position + any live state updates
   useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const liveState = liveStateRef.current;
     return () => {
       const container =
-        scrollContainerRef.current ??
+        scrollContainer ??
         document.getElementById("main-content");
       const scrollPosition = container
         ? { x: container.scrollLeft, y: container.scrollTop }
@@ -78,7 +80,7 @@ export function useViewStatePreservation(
 
       saveViewState(viewId, {
         scrollPosition,
-        ...liveStateRef.current,
+        ...liveState,
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

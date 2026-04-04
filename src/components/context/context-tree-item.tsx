@@ -177,6 +177,12 @@ export function ContextTreeItem({
         aria-selected={isActive}
         aria-level={node.depth + 1}
         onClick={() => onSelect(node.id)}
+        onContextMenu={(e) => {
+          if (isMergeTarget) {
+            e.preventDefault();
+            onSelect(node.id);
+          }
+        }}
         className={cn(
           "group flex w-full cursor-pointer items-center gap-space-1 rounded-lg py-[6px] pr-space-2",
           "text-sm text-text-secondary",

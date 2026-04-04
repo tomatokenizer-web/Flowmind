@@ -301,12 +301,12 @@ export function ThreadView({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Fetch ALL project units — thread view shows everything including orphans
+  // Fetch units — scoped to active context when set, or ALL project units (including orphans) when Home
   const { data: unitsData, isLoading } = api.unit.list.useQuery(
-    { projectId, limit: 200 },
+    { projectId, ...(activeContextId ? { contextId: activeContextId } : {}), limit: 100 },
     { enabled: !!projectId },
   );
-  const units = unitsData?.items ?? [];
+  const units = React.useMemo(() => unitsData?.items ?? [], [unitsData?.items]);
 
   // Fetch relations
   const unitIds = React.useMemo(() => units.map((u) => u.id), [units]);

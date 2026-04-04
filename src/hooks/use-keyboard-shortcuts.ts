@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { isMac } from "~/lib/accessibility";
 
 /* ── Types ── */

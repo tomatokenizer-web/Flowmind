@@ -1,4 +1,4 @@
-import type { PrismaClient, Prisma } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { createContextRepository } from "@/server/repositories/contextRepository";
 import { TRPCError } from "@trpc/server";
 

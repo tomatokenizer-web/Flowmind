@@ -22,7 +22,7 @@ export interface MergeInput {
 
 // ─── Hook ────────────────────────────────────────────────────────────
 
-export function useContextActions(projectId: string | undefined) {
+export function useContextActions(_projectId: string | undefined) {
   const utils = api.useUtils();
   const setActiveContext = useSidebarStore((s) => s.setActiveContext);
   const expandNode = useSidebarStore((s) => s.expandNode);

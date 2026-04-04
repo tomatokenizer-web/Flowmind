@@ -1,15 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
-import crypto from "crypto";
-
-function hashKey(key: string): string {
-  return crypto.createHash("sha256").update(key).digest("hex");
-}
-
-function generateKey(): string {
-  return `fm_${crypto.randomBytes(32).toString("hex")}`;
-}
 
 export const apiKeyRouter = createTRPCRouter({
   list: protectedProcedure.query(async () => {

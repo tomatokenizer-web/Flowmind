@@ -181,7 +181,7 @@ For each unit, provide:
   if (existingUnits.length > 0 && proposals.length > 0) {
     const existingUnitsDesc = existingUnits
       .slice(0, 10)
-      .map((u, i) => `[${u.id}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
+      .map((u, _i) => `[${u.id}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
       .join("\n");
 
     const newUnitsDesc = proposals

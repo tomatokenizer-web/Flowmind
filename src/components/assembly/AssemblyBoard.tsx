@@ -20,9 +20,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, X, Eye, Edit3, Plus, Download, Loader2, Layers, ArrowLeft, Shuffle } from "lucide-react";
+import { GripVertical, X, Eye, Edit3, Download, Loader2, Layers, ArrowLeft, Shuffle } from "lucide-react";
 import { useLayoutStore } from "~/stores/layout-store";
-import { motion, AnimatePresence } from "framer-motion";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { useAssemblyStore } from "~/stores/assemblyStore";

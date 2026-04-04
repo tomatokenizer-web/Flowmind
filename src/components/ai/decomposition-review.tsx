@@ -67,7 +67,7 @@ export function DecompositionReview({
   proposals: initialProposals,
   relationProposals,
   projectId,
-  contextId,
+  contextId: _contextId,
   onComplete,
   onCancel,
   className,

@@ -390,13 +390,15 @@ export default function DashboardPage() {
   const isLoading = useProjectLoading();
   const [createContextOpen, setCreateContextOpen] = React.useState(false);
 
-  // Auto-select first context if none is active (so views aren't empty)
+  // Auto-select first context only on initial mount (not when user explicitly clicks Home)
   const { data: contextList } = api.context.list.useQuery(
     { projectId: projectId! },
     { enabled: !!projectId, staleTime: 30_000 },
   );
+  const hasAutoSelected = React.useRef(false);
   React.useEffect(() => {
-    if (!activeContextId && contextList && contextList.length > 0) {
+    if (!hasAutoSelected.current && !activeContextId && contextList && contextList.length > 0) {
+      hasAutoSelected.current = true;
       useSidebarStore.getState().setActiveContext(contextList[0]!.id);
     }
   }, [activeContextId, contextList]);

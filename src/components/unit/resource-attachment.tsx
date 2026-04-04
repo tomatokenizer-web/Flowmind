@@ -101,6 +101,7 @@ function ResourceChip({
       aria-label={`${resource.resourceType}: ${label}`}
     >
       {showThumbnail ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={resource.url}
           alt={label}

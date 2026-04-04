@@ -36,7 +36,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     decompositionData,
     errorMessage,
     isSubmitting,
-    isDecomposing,
+    isDecomposing: _isDecomposing,
     close,
     toggleMode,
     setText,

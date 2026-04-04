@@ -3,6 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
 import { inferUnitType } from "@/server/services/typeHeuristicService";
 import { TRPCError } from "@trpc/server";
+import type { UnitType } from "@prisma/client";
 
 const captureSubmitSchema = z.object({
   content: z.string().min(1, "Content is required"),
@@ -66,7 +67,7 @@ export const captureRouter = createTRPCRouter({
             if (result.confidence >= 0.7 && result.unitType !== classifiedType) {
               await ctx.db.unit.update({
                 where: { id: unit.id },
-                data: { unitType: result.unitType as import("@prisma/client").UnitType },
+                data: { unitType: result.unitType as UnitType },
               });
             }
           } catch {

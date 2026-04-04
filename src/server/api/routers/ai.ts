@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import type { UnitType } from "@prisma/client";
 import { createAIService, generateSessionId, createSafetyGuard, enforceRateLimit } from "@/server/ai";
 import { TRPCError } from "@trpc/server";
 import { getContextUnits } from "@/server/api/helpers/context-units";
@@ -529,7 +530,7 @@ export const aiRouter = createTRPCRouter({
       unitId: z.string().uuid(),
       content: z.string().min(1).max(5000),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ ctx: _ctx, input }) => {
       const { getAIProvider } = await import("@/server/ai/provider");
       const { z: zod } = await import("zod");
       const provider = getAIProvider();
@@ -658,7 +659,7 @@ Suggest 2-3 specific exploration directions that would help develop this thought
 
   refineUnit: rateLimitedProcedure
     .input(z.object({ unitId: z.string().uuid(), content: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ ctx: _ctx, input }) => {
       try {
         const prompt = `Refine this thought for clarity and coherence. Preserve the core meaning.
 Original: "${input.content}"
@@ -943,7 +944,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
           limit: 20,
         },
         intent.unitTypes?.length
-          ? { unitTypes: intent.unitTypes as import("@prisma/client").UnitType[] }
+          ? { unitTypes: intent.unitTypes as UnitType[] }
           : undefined,
       );
 
@@ -1027,7 +1028,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
    */
   searchExternalKnowledge: rateLimitedProcedure
     .input(searchExternalKnowledgeSchema)
-    .mutation(async ({ ctx, input }): Promise<{
+    .mutation(async ({ ctx: _ctx, input }): Promise<{
       suggestions: Array<{ title: string; description: string; relevance: string }>;
       relatedConcepts: string[];
     }> => {
@@ -1618,7 +1619,7 @@ Rules:
           const newUnit = await ctx.db.unit.create({
             data: {
               content: u.content.trim(),
-              unitType: unitType as import("@prisma/client").UnitType,
+              unitType: unitType as UnitType,
               lifecycle: "draft",
               originType: "ai_generated",
               sourceSpan: { deepDiveFrom: input.unitId, question: input.question },

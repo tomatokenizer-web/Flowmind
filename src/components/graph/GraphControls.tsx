@@ -57,14 +57,14 @@ export function GraphControls() {
   const localHubLabel = useGraphStore((s) => s.localHubLabel);
   const zoomLevel = useGraphStore((s) => s.zoomLevel);
   const setZoom = useGraphStore((s) => s.setZoom);
-  const setPan = useGraphStore((s) => s.setPan);
+  const _setPan = useGraphStore((s) => s.setPan);
   const filters = useGraphStore((s) => s.filters);
   const toggleUnitTypeFilter = useGraphStore((s) => s.toggleUnitTypeFilter);
   const toggleRelationCategoryFilter = useGraphStore(
     (s) => s.toggleRelationCategoryFilter,
   );
   const setViewMode = useLayoutStore((s) => s.setViewMode);
-  const prefersReducedMotion = usePrefersReducedMotion();
+  const _prefersReducedMotion = usePrefersReducedMotion();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
 
   const handleFitAll = React.useCallback(() => {

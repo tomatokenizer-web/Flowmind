@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "~/lib/utils";
 

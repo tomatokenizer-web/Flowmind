@@ -13,7 +13,6 @@ import { cn } from "~/lib/utils";
 import { useDragDrop } from "~/hooks/use-drag-drop";
 import { useContextTree } from "~/hooks/use-context-tree";
 import type { FlattenedNode } from "~/hooks/use-context-tree";
-import { useSidebarStore } from "~/stores/sidebar-store";
 import { ContextTreeItem } from "./context-tree-item";
 import { ContextSplitDialog } from "./context-split-dialog";
 import { ContextMergeDialog } from "./context-merge-dialog";

@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   Merge,
   CheckCircle2,
-  ArrowRight,
   Sparkles,
   BookOpen,
   Target,

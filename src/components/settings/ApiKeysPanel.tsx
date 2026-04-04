@@ -7,7 +7,8 @@ import { Button } from "~/components/ui/button";
 
 export function ApiKeysPanel() {
   const [newKeyName, setNewKeyName] = React.useState("");
-  const [createdKey, setCreatedKey] = React.useState<string | null>(null);
+  // TODO: wire up setCreatedKey in create mutation onSuccess
+  const [createdKey, _setCreatedKey] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
   const utils = api.useUtils();
 

@@ -261,7 +261,7 @@ interface DeepDiveProps {
   onBranchedUnitsChange?: (unitIds: string[]) => void;
 }
 
-const ANGLE_ICONS: Record<string, string> = {
+const _ANGLE_ICONS: Record<string, string> = {
   evidence: "evidence",
   counter: "counterargument",
   implication: "idea",

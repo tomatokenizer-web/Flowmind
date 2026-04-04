@@ -165,7 +165,7 @@ export const feedbackRouter = createTRPCRouter({
   // ─── Reverse Provenance (8.5) ────────────────────────────────────
   getReverseProvenance: protectedProcedure
     .input(z.object({ unitId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ ctx, input: _input }) => {
       // Find units that reference this unit as their source
       const derivedUnits = await ctx.db.unit.findMany({
         where: {

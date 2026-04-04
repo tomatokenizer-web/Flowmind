@@ -154,7 +154,7 @@ export function createResourceService(db: PrismaClient) {
       return repo.findByUnitId(unitId);
     },
 
-    async transitionLifecycle(id: string, targetState: string, userId: string) {
+    async transitionLifecycle(id: string, targetState: string, _userId: string) {
       const existing = await repo.findById(id);
       if (!existing) return null;
 

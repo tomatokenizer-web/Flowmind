@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Copy, Check, X, ChevronDown, ChevronRight, GitMerge } from "lucide-react";
 import { api } from "~/trpc/react";
-import { cn } from "~/lib/utils";
 import { toast } from "~/lib/toast";
 
 interface SimilarUnitsPanelProps {

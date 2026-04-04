@@ -171,7 +171,7 @@ export function RichTextEditor({
   onChange,
   editable = true,
   className,
-  placeholder = "Write your thought...",
+  placeholder: _placeholder = "Write your thought...",
 }: RichTextEditorProps) {
   const handleUpdate = useCallback(
     ({ editor: e }: { editor: { getHTML: () => string } }) => {

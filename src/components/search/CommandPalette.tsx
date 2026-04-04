@@ -72,7 +72,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
   }>>([]);
   const [nlqSummary, setNlqSummary] = React.useState("");
 
-  const [nlqError, setNlqError] = React.useState<string | null>(null);
+  const [_nlqError, setNlqError] = React.useState<string | null>(null);
   const nlqMutation = api.ai.naturalLanguageQuery.useMutation({
     onSuccess: (data) => {
       setNlqError(null);
@@ -316,6 +316,8 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
     quickActions,
     openPanel,
     setOpen,
+    setActiveContext,
+    setViewMode,
   ]);
 
   // Keyboard navigation

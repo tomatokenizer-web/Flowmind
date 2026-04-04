@@ -146,7 +146,7 @@ export function GraphView({ projectId }: GraphViewProps) {
     { enabled: !!projectId },
   );
 
-  const units = unitsData?.items ?? [];
+  const units = React.useMemo(() => unitsData?.items ?? [], [unitsData?.items]);
 
   const unitIds = React.useMemo(
     () => units.map((u) => u.id),

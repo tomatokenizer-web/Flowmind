@@ -3,7 +3,7 @@
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { RotateCcw } from "lucide-react";
-import { type DiffLine, computeLineDiff } from "@/server/services/versionService";
+import { computeLineDiff } from "@/server/services/versionService";
 
 // ─── Types ──────────────────────────────────────────────────────────
 

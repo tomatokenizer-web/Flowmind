@@ -433,7 +433,7 @@ For each unit, provide:
       if (existingUnits.length > 0 && proposals.length > 0) {
         const existingUnitsDesc = existingUnits
           .slice(0, 10)
-          .map((u, i) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 100)}..."`)
+          .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 100)}..."`)
           .join("\n");
 
         const newUnitsDesc = proposals
@@ -534,7 +534,7 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
       unitId: string,
       contentA: string,
       contentB: string,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<SplitReattributionResult> {
       // Fetch the unit's existing relations
       const relations = await db.relation.findMany({
@@ -610,7 +610,7 @@ For each relation, determine which part (A or B) should inherit it based on sema
     async generateAlternativeFraming(
       content: string,
       currentType: string,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<AlternativeFraming[]> {
       const prompt = `Suggest alternative ways to frame or express this thought unit.
 
@@ -664,7 +664,7 @@ Generate 2-3 alternative framings that:
     async suggestCounterArguments(
       content: string,
       unitType: string,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<CounterArgument[]> {
       const prompt = `Generate thoughtful counter-arguments or challenges to this thought unit.
 
@@ -714,7 +714,7 @@ Generate 2-3 counter-arguments that:
      */
     async identifyAssumptions(
       content: string,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<IdentifiedAssumption[]> {
       const prompt = `Identify the underlying assumptions in this thought unit.
 
@@ -763,7 +763,7 @@ Find both explicit and implicit assumptions that:
      */
     async detectContradictions(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<ContradictionPair[]> {
       if (units.length < 2) return [];
 
@@ -820,7 +820,7 @@ Identify pairs that:
      */
     async suggestMerge(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<MergeSuggestion[]> {
       if (units.length < 2) return [];
 
@@ -880,7 +880,7 @@ Identify groups that:
      */
     async analyzeCompleteness(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<CompletenessAnalysis> {
       const unitsDesc = units
         .map((u) => `[${u.id}] (${u.unitType}) "${u.content.slice(0, 150)}"`)
@@ -932,8 +932,8 @@ Evaluate:
 
     async summarizeContext(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
-    ): Promise<import("./types").ContextSummary> {
+      _ctx: AIServiceContext
+    ): Promise<ContextSummary> {
       const unitsDesc = units
         .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
@@ -949,7 +949,7 @@ Provide:
 - Open questions
 - Conflicting views`;
 
-      const result = await provider.generateStructured<import("./types").ContextSummary>(prompt, {
+      const result = await provider.generateStructured<ContextSummary>(prompt, {
         temperature: 0.4,
         maxTokens: 1024,
         zodSchema: ContextSummarySchema,
@@ -974,8 +974,8 @@ Provide:
 
     async generateQuestions(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
-    ): Promise<import("./types").GeneratedQuestion[]> {
+      _ctx: AIServiceContext
+    ): Promise<GeneratedQuestion[]> {
       const unitsDesc = units
         .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
@@ -991,7 +991,7 @@ Generate questions that:
 - Explore connections
 - Push reasoning deeper`;
 
-      const result = await provider.generateStructured<{ questions: import("./types").GeneratedQuestion[] }>(prompt, {
+      const result = await provider.generateStructured<{ questions: GeneratedQuestion[] }>(prompt, {
         temperature: 0.6,
         maxTokens: 768,
         zodSchema: GeneratedQuestionsSchema,
@@ -1026,8 +1026,8 @@ Generate questions that:
 
     async suggestNextSteps(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
-    ): Promise<import("./types").NextStepSuggestion[]> {
+      _ctx: AIServiceContext
+    ): Promise<NextStepSuggestion[]> {
       const unitsDesc = units
         .map((u) => `[${u.unitType}] ${u.content.slice(0, 150)}`)
         .join("\n");
@@ -1042,7 +1042,7 @@ Suggest steps that:
 - Strengthen existing claims
 - Explore new directions`;
 
-      const result = await provider.generateStructured<{ steps: import("./types").NextStepSuggestion[] }>(prompt, {
+      const result = await provider.generateStructured<{ steps: NextStepSuggestion[] }>(prompt, {
         temperature: 0.5,
         maxTokens: 768,
         zodSchema: NextStepsSchema,
@@ -1077,8 +1077,8 @@ Suggest steps that:
 
     async extractKeyTerms(
       units: Array<{ id: string; content: string; unitType: string }>,
-      ctx: AIServiceContext
-    ): Promise<import("./types").ExtractedTerm[]> {
+      _ctx: AIServiceContext
+    ): Promise<ExtractedTerm[]> {
       const allContent = units.map((u) => u.content).join(" ");
 
       const prompt = `Extract key terms from this content that may need definition or clarification.
@@ -1091,7 +1091,7 @@ Identify terms that:
 - Could be ambiguous
 - Should be explicitly defined`;
 
-      const result = await provider.generateStructured<{ terms: import("./types").ExtractedTerm[] }>(prompt, {
+      const result = await provider.generateStructured<{ terms: ExtractedTerm[] }>(prompt, {
         temperature: 0.3,
         maxTokens: 768,
         zodSchema: ExtractedTermsSchema,
@@ -1128,8 +1128,8 @@ Identify terms that:
     async classifyStance(
       unitContent: string,
       targetContent: string,
-      ctx: AIServiceContext
-    ): Promise<import("./types").StanceClassification> {
+      _ctx: AIServiceContext
+    ): Promise<StanceClassification> {
       const prompt = `Classify the stance of one thought unit relative to another.
 
 Unit A: ${unitContent.slice(0, 400)}
@@ -1138,7 +1138,7 @@ Unit B (target): ${targetContent.slice(0, 400)}
 
 Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit B's position.`;
 
-      const result = await provider.generateStructured<import("./types").StanceClassification>(prompt, {
+      const result = await provider.generateStructured<StanceClassification>(prompt, {
         temperature: 0.3,
         maxTokens: 512,
         zodSchema: StanceClassificationSchema,
@@ -1167,7 +1167,7 @@ Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit 
     async detectScopeJump(
       text: string,
       existingUnits: Array<{ content: string; unitType: string }>,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<{ isJump: boolean; currentScope: string; suggestedScope: string; confidence: number }> {
       if (existingUnits.length === 0) {
         return { isJump: false, currentScope: "", suggestedScope: "", confidence: 0 };
@@ -1228,7 +1228,7 @@ Determine:
      */
     async extractNLQIntent(
       query: string,
-      ctx: AIServiceContext
+      _ctx: AIServiceContext
     ): Promise<{ keywords: string[]; unitTypes?: string[]; summary: string }> {
       const prompt = `Extract search intent from this natural language query about a knowledge base of thought units.
 

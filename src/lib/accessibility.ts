@@ -8,7 +8,7 @@
 /* ── Live Region Announcer ── */
 
 // eslint-disable-next-line prefer-const
-let liveRegion: HTMLElement | null = null;
+let _liveRegion: HTMLElement | null = null;
 
 function getOrCreateLiveRegion(
   politeness: "polite" | "assertive" = "polite",

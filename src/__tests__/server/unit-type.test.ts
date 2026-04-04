@@ -15,8 +15,6 @@ import {
   BASE_UNIT_TYPES,
   UNIT_TYPE_COLORS,
   UNIT_TYPE_ICONS,
-  UNIT_TYPE_DESCRIPTIONS,
-  UNIT_TYPE_NATURALLY_FOLLOWS,
   getBaseUnitType,
   BASE_UNIT_TYPE_IDS,
 } from "@/lib/unit-types";
