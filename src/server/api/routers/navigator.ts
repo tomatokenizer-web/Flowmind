@@ -578,65 +578,104 @@ export const navigatorRouter = createTRPCRouter({
           };
         });
 
-        // Generate AI description for this path
+        // AI: reorder path for natural reading flow + generate description
         let description: string | null = null;
         let reasoning: string | null = null;
+        let finalPath = path;
 
         if (aiProvider) {
           try {
-            const stepsDescription = unitPreviews
-              .map((u, i) => `${i + 1}. [${u.unitType}] ${u.content}`)
+            // Use full content (up to 200 chars) for better AI understanding
+            const fullPreviews = path.map((id) => {
+              const u = unitMap.get(id);
+              return {
+                id,
+                content: u ? u.content.slice(0, 200) : "Unknown unit",
+                unitType: u?.unitType ?? "observation",
+              };
+            });
+
+            const stepsDescription = fullPreviews
+              .map((u, i) => `${i}. [ID:${u.id}] [${u.unitType}] ${u.content}`)
               .join("\n");
 
             const result = await aiProvider.generateStructured<{
               name: string;
               description: string;
               reasoning: string;
+              orderedUnitIds?: string[];
             }>(
-              `You are analyzing a reading path through a knowledge graph. This path follows a "${strategy.name}" strategy (${strategy.purpose}).
+              `You are organizing a reading path through a knowledge graph. The path follows a "${strategy.name}" strategy (purpose: ${strategy.purpose}).
 
-Here are the steps in order:
+Here are the units collected for this path (currently in algorithm-generated order, which may NOT be the best reading order):
 ${stepsDescription}
 
-Provide:
-1. A concise name for this path (max 100 chars)
-2. A description explaining what narrative or logical flow this path follows and WHY reading these units in this order is valuable (max 500 chars)
-3. Brief reasoning about the path's coherence and what the reader will gain (max 300 chars)`,
+Your tasks:
+1. **Reorder** these units into the most natural, coherent reading sequence. Think about narrative flow: what should the reader encounter first to build understanding? What follows logically? Arrange them so each step builds on the previous one.
+2. Give this path a concise, descriptive **name** (max 100 chars)
+3. Write a **description** explaining the narrative/logical flow and WHY this reading order is valuable (max 500 chars)
+4. Provide brief **reasoning** about what the reader will gain (max 300 chars)
+
+Return orderedUnitIds as the array of unit IDs in your recommended reading order. You MUST include ALL unit IDs from the input — do not drop or add any.`,
               {
                 temperature: 0.5,
-                maxTokens: 512,
+                maxTokens: 800,
                 zodSchema: PathProposalSchema,
                 schema: {
                   name: "PathProposal",
-                  description: "AI-generated path description and reasoning",
+                  description: "AI-reordered path with description",
                   properties: {
                     name: { type: "string", description: "A concise, descriptive name for the path" },
                     description: { type: "string", description: "Narrative explanation of the path flow" },
                     reasoning: { type: "string", description: "Why this reading order is valuable" },
+                    orderedUnitIds: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Unit IDs reordered for optimal reading flow",
+                    },
                   },
-                  required: ["name", "description", "reasoning"],
+                  required: ["name", "description", "reasoning", "orderedUnitIds"],
                 },
               },
             );
             description = result.description;
             reasoning = result.reasoning;
-            // Use AI-suggested name if available
             if (result.name) {
               strategy.name = result.name;
             }
+
+            // Apply AI reordering if valid (all IDs present, no extras)
+            if (result.orderedUnitIds && result.orderedUnitIds.length === path.length) {
+              const pathSet = new Set(path);
+              const allPresent = result.orderedUnitIds.every((id) => pathSet.has(id));
+              const noDuplicates = new Set(result.orderedUnitIds).size === result.orderedUnitIds.length;
+              if (allPresent && noDuplicates) {
+                finalPath = result.orderedUnitIds;
+              }
+            }
           } catch {
-            // AI failed for this proposal — continue with null description
+            // AI failed — keep greedy order, null description
           }
         }
+
+        // Rebuild previews with final ordering
+        const finalPreviews = finalPath.map((id) => {
+          const u = unitMap.get(id);
+          return {
+            id,
+            content: u ? u.content.slice(0, 80) + (u.content.length > 80 ? "…" : "") : "Unknown unit",
+            unitType: u?.unitType ?? "observation",
+          };
+        });
 
         proposals.push({
           name: strategy.name,
           purpose: strategy.purpose,
           description,
           reasoning,
-          path,
+          path: finalPath,
           contextId: resolvedContextId!,
-          unitPreviews,
+          unitPreviews: finalPreviews,
         });
       }
 

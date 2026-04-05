@@ -47,13 +47,16 @@ export function DerivationSuggestions({
   className,
 }: DerivationSuggestionsProps) {
   const [expanded, setExpanded] = React.useState(false);
+  const [createdContents, setCreatedContents] = React.useState<Set<string>>(new Set());
 
   const { data, isLoading } = api.ai.suggestDerivations.useQuery(
     { unitId, contextId: contextId ?? undefined },
     { enabled: expanded, retry: false },
   );
 
-  const derivations: Derivation[] = data?.derivations ?? [];
+  const derivations: Derivation[] = (data?.derivations ?? []).filter(
+    (d) => !createdContents.has(d.content),
+  );
 
   return (
     <div className={cn("border-t border-border pt-3", className)}>
@@ -80,11 +83,17 @@ export function DerivationSuggestions({
       </button>
 
       {expanded && (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" />
-              <span className="ml-2 text-xs text-text-tertiary">Generating suggestions...</span>
+              <span className="ml-2 text-xs text-text-tertiary">AI analyzing unit content...</span>
+            </div>
+          ) : data && !data.aiGenerated ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                AI analysis failed. Check server logs for details.
+              </p>
             </div>
           ) : derivations.length > 0 ? (
             derivations.map((d, i) => (
@@ -120,6 +129,7 @@ export function DerivationSuggestions({
                       onClick={(e) => {
                         e.stopPropagation();
                         onCreateUnit(d.content, d.unitType as UnitType, d.relationToOrigin);
+                        setCreatedContents((prev) => new Set(prev).add(d.content));
                       }}
                       className={cn(
                         "shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1.5",

@@ -21,6 +21,7 @@ import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
+import { DerivationSuggestions } from "~/components/unit/DerivationSuggestions";
 import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
 
@@ -401,7 +402,7 @@ export function FlowReader({
                     <div className="h-4 w-3/4 animate-pulse rounded bg-bg-secondary" />
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-border bg-bg-surface p-8 shadow-lg space-y-4">
+                  <div className="rounded-2xl border border-border bg-bg-surface p-8 shadow-lg space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
                     {/* Type badge + metadata */}
                     <div className="flex items-center gap-3">
                       <UnitTypeBadge unitType={unit.unitType} />
@@ -444,7 +445,43 @@ export function FlowReader({
                       </div>
                     )}
 
-                    {/* Create derived unit section */}
+                    {/* AI Derivation Suggestions */}
+                    {currentUnitId && (
+                      <DerivationSuggestions
+                        unitId={currentUnitId}
+                        contextId={contextId}
+                        projectId={projectId}
+                        onCreateUnit={async (content, unitType, relation) => {
+                          const created = await createUnit.mutateAsync({
+                            content,
+                            unitType,
+                            lifecycle: "draft",
+                            originType: "ai_refined",
+                            sourceSpan: { derivedFrom: currentUnitId },
+                            projectId,
+                          });
+
+                          await createRelation.mutateAsync({
+                            sourceUnitId: currentUnitId,
+                            targetUnitId: created.id,
+                            type: relation,
+                            strength: 0.7,
+                          });
+
+                          setLastDerivedUnitId(created.id);
+
+                          if (navigatorId) {
+                            suggestPlacement.mutate({
+                              derivedUnitId: created.id,
+                              originUnitId: currentUnitId,
+                              navigatorId,
+                            });
+                          }
+                        }}
+                      />
+                    )}
+
+                    {/* Create derived unit section (manual) */}
                     {!showCreate ? (
                       <button
                         type="button"
@@ -452,7 +489,7 @@ export function FlowReader({
                         className="flex items-center gap-2 text-sm text-text-tertiary hover:text-accent-primary transition-colors"
                       >
                         <Plus className="h-4 w-4" />
-                        Create derived unit
+                        Create derived unit manually
                       </button>
                     ) : (
                       <div className="border-t border-border pt-4 space-y-3">

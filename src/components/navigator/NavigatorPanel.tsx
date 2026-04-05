@@ -139,7 +139,12 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
   const detectBridgeGaps = api.ai.detectBridgeGaps.useMutation({
     onSuccess: (result) => {
       if (result.bridges.length === 0) {
-        toast.success("No gaps detected — path flow looks good!");
+        if (result.aiAnalyzed) {
+          toast.success("No gaps detected — path flow looks good!");
+        } else {
+          toast.error("AI analysis failed — check server logs");
+          setAnalyzingGaps(null);
+        }
       }
     },
     onError: () => {

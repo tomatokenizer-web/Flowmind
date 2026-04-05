@@ -709,15 +709,16 @@ Suggest 2-3 specific exploration directions that would help develop this thought
 "${unit.content.slice(0, 500)}"${contextSnippet}
 
 Suggest 3-4 specific new thought units the user could derive from this one to deepen their thinking. Each suggestion should:
-- Be a concrete, self-contained thought (not a vague prompt)
+- Be a concrete, self-contained thought (not a vague prompt). Keep content under 300 characters.
 - Have a specific unit type (claim, question, evidence, counterargument, observation, idea, definition, assumption, action)
 - Have a clear relationship to the original (supports, contradicts, derives_from, expands, questions, etc.)
 - Help the user explore different angles, challenge assumptions, or build on the idea
+- Include a brief rationale (under 150 characters) explaining why this derivation is useful
 
 Prioritize diversity: suggest different types and relationships, not just more of the same.`,
           {
             temperature: 0.7,
-            maxTokens: 800,
+            maxTokens: 1200,
             zodSchema: DerivationSuggestionsSchema,
             schema: {
               name: "DerivationSuggestions",
@@ -741,31 +742,10 @@ Prioritize diversity: suggest different types and relationships, not just more o
             },
           },
         );
-        return result;
-      } catch {
-        // Fallback heuristic suggestions when AI is unavailable
-        const fallbacks: Record<string, { content: string; unitType: string; relationToOrigin: string; rationale: string }[]> = {
-          claim: [
-            { content: "What evidence supports this claim?", unitType: "question", relationToOrigin: "questions", rationale: "Every claim needs supporting evidence" },
-            { content: "Consider the opposite perspective", unitType: "counterargument", relationToOrigin: "contradicts", rationale: "Strengthens reasoning by examining counterarguments" },
-            { content: "What assumptions does this claim rest on?", unitType: "question", relationToOrigin: "questions", rationale: "Uncovering hidden assumptions improves clarity" },
-          ],
-          question: [
-            { content: "A possible answer based on current evidence", unitType: "claim", relationToOrigin: "derives_from", rationale: "Questions deserve attempted answers" },
-            { content: "What would we need to know to answer this?", unitType: "question", relationToOrigin: "expands", rationale: "Breaking down complex questions into smaller ones" },
-            { content: "An observation related to this question", unitType: "observation", relationToOrigin: "references", rationale: "Observations can ground abstract questions" },
-          ],
-          evidence: [
-            { content: "What claim does this evidence support?", unitType: "question", relationToOrigin: "questions", rationale: "Evidence should be connected to claims" },
-            { content: "Is there counter-evidence to consider?", unitType: "question", relationToOrigin: "questions", rationale: "Strong arguments consider counter-evidence" },
-          ],
-          default: [
-            { content: "What follows from this?", unitType: "question", relationToOrigin: "expands", rationale: "Explore implications" },
-            { content: "How does this connect to other ideas?", unitType: "question", relationToOrigin: "questions", rationale: "Build connections" },
-            { content: "What assumptions are being made here?", unitType: "question", relationToOrigin: "questions", rationale: "Surface hidden assumptions" },
-          ],
-        };
-        return { derivations: fallbacks[unit.unitType] ?? fallbacks.default ?? [] };
+        return { derivations: result.derivations, aiGenerated: true };
+      } catch (error) {
+        console.error("suggestDerivations AI call failed:", error);
+        return { derivations: [], aiGenerated: false };
       }
     }),
 
@@ -1838,7 +1818,7 @@ Rules:
         where: { id: input.navigatorId, context: { project: { userId: ctx.session.user.id! } } },
       });
       if (!nav || nav.path.length < 2) {
-        return { bridges: [] };
+        return { bridges: [], aiAnalyzed: true };
       }
 
       const units = await ctx.db.unit.findMany({
@@ -1908,9 +1888,10 @@ For each bridge, specify:
             },
           },
         );
-        return result;
-      } catch {
-        return { bridges: [] };
+        return { ...result, aiAnalyzed: true };
+      } catch (error) {
+        console.error("detectBridgeGaps AI call failed:", error);
+        return { bridges: [], aiAnalyzed: false };
       }
     }),
 

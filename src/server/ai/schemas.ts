@@ -231,12 +231,12 @@ export const RefinementSchema = z.object({
 export const DerivationSuggestionsSchema = z.object({
   derivations: z.array(
     z.object({
-      content: z.string().max(500),
+      content: z.string().max(2000),
       unitType: z.enum(["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"]),
       relationToOrigin: z.enum(["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"]),
-      rationale: z.string().max(200),
+      rationale: z.string().max(500),
     })
-  ).max(4),
+  ).max(5),
 });
 
 // ─── Navigation Path AI Schemas ─────────────────────────────────────────────
@@ -245,15 +245,16 @@ export const PathProposalSchema = z.object({
   name: z.string().max(100),
   description: z.string().max(500),
   reasoning: z.string().max(300),
+  orderedUnitIds: z.array(z.string()).optional(),
 });
 
 export const BridgeSuggestionsSchema = z.object({
   bridges: z.array(
     z.object({
       afterStepIndex: z.number().min(0),
-      content: z.string().max(500),
+      content: z.string().max(2000),
       unitType: unitTypeEnum,
-      rationale: z.string().max(300),
+      rationale: z.string().max(500),
       relationToPrev: relationTypeEnum,
       relationToNext: relationTypeEnum,
     })
