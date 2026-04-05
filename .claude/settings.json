@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_TOOL_ARG_FILE_PATH||''; if(f.endsWith('.ts')||f.endsWith('.tsx')){const{execSync}=require('child_process'); try{const r=execSync('npx tsc --noEmit --pretty 2>&1',{cwd:'/c/Users/USER/clawd/projects/flowmind',encoding:'utf8',timeout:55000}); console.log(r.split('\\n').slice(0,30).join('\\n'));}catch(e){console.log(e.stdout?e.stdout.split('\\n').slice(0,30).join('\\n'):'Type check failed');}}\"",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_TOOL_ARG_FILE_PATH||''; const bad=['.env','secret','credential','password','token','apikey','private_key']; const hit=bad.find(b=>f.toLowerCase().includes(b)); if(hit){console.error('SECURITY BLOCKED: Cannot write to sensitive file containing: '+hit); process.exit(1);}\"",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const c=process.env.CLAUDE_TOOL_ARG_COMMAND||''; const blocked=['rm -rf /','rm -rf ~','rm -rf .','rm -rf src','DROP TABLE','DROP DATABASE','git push --force','git reset --hard','git clean -f','git checkout .']; const hit=blocked.find(b=>c.includes(b)); if(hit){console.error('BLOCKED: Destructive command detected: '+hit); process.exit(1);}\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /c/Users/USER/clawd/projects/flowmind && npx tsc --noEmit --pretty 2>&1 | tail -5",
+            "timeout": 120000
+          },
+          {
+            "type": "command",
+            "command": "cd /c/Users/USER/clawd/projects/flowmind && node -e \"const{execSync}=require('child_process'); try{const r=execSync('grep -rn --include=*.ts --include=*.tsx -E \\\"(ANTHROPIC_API_KEY|password\\\\s*=\\\\s*[^\\\\s]+|secret\\\\s*=\\\\s*[^\\\\s]+)\\\" src/ 2>/dev/null',{encoding:'utf8'}); if(r.trim()){console.error('SECURITY WARNING: Potential secrets in code:\\n'+r.split('\\n').slice(0,5).join('\\n'));}}catch(e){} console.log('Security scan complete');\"",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}
