@@ -31,8 +31,9 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
   const showBranchPotential = isProactive(aiLevel);
 
   const suggestTypeMutation = api.ai.suggestType.useMutation({
-    onError: (err) => {
-      toast.error("AI suggestion failed", { description: err.message });
+    retry: false,
+    onError: () => {
+      // Silently fail for auto-classification — user can manually retry
     },
   });
 
@@ -534,7 +535,7 @@ function ContextSuggestionSection({
 
   const { data, isLoading } = api.ai.suggestContextForUnit.useQuery(
     { unitId, projectId },
-    { enabled: !!unitId && !!projectId },
+    { enabled: !!unitId && !!projectId, retry: false },
   );
 
   const addToContext = api.context.addUnit.useMutation({

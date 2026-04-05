@@ -70,7 +70,7 @@ export function MissingArgumentAlert({
 
   const { data, isLoading } = api.ai.detectMissingArguments.useQuery(
     { contextId },
-    { enabled: !!contextId },
+    { enabled: !!contextId, retry: false },
   );
 
   const gaps: Gap[] = data?.gaps ?? [];

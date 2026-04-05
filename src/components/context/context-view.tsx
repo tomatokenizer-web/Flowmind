@@ -45,7 +45,7 @@ function InsightsSection({
   // Piggyback on the same query MissingArgumentAlert runs — React Query deduplicates
   const { data: missingArgs } = api.ai.detectMissingArguments.useQuery(
     { contextId },
-    { enabled: !!contextId },
+    { enabled: !!contextId, retry: false },
   );
   const gapCount = missingArgs?.gaps?.length ?? 0;
 

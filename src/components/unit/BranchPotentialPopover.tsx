@@ -61,7 +61,7 @@ export function BranchPotentialPopover({ unitId, children }: BranchPotentialPopo
   // Fetch branch potential score eagerly on mount so the dots are live
   const { data: branchData } = api.ai.computeBranchPotential.useQuery(
     { unitId },
-    { enabled: !!unitId },
+    { enabled: !!unitId, retry: false },
   );
 
   const computedScore = branchData?.score ?? 0;
@@ -71,7 +71,7 @@ export function BranchPotentialPopover({ unitId, children }: BranchPotentialPopo
   const { data: directionsData, isLoading: isDirectionsLoading } =
     api.ai.suggestExplorationDirections.useQuery(
       { unitId, contextId: activeContextId ?? undefined },
-      { enabled: open },
+      { enabled: open, retry: false },
     );
 
   const createUnit = api.capture.submit.useMutation({

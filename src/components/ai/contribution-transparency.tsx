@@ -26,7 +26,7 @@ export function ContributionTransparency({
 }: ContributionTransparencyProps) {
   const { data, isLoading } = api.ai.getContributionRatio.useQuery(
     { contextId },
-    { enabled: !!contextId }
+    { enabled: !!contextId, retry: false }
   );
 
   if (isLoading || !data || data.total === 0) {
