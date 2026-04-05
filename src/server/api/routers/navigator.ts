@@ -3,6 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import type { PrismaClient } from "@prisma/client";
 import { createRelationService } from "@/server/services/relationService";
+import { PathProposalSchema } from "@/server/ai/schemas";
 
 // ─── Ownership helpers ──────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ export const navigatorRouter = createTRPCRouter({
   create: protectedProcedure
     .input(z.object({
       name: z.string().min(1).max(100),
+      description: z.string().max(500).optional(),
       contextId: z.string().uuid().optional(),
       projectId: z.string().uuid().optional(),
       purpose: z.string().max(30).optional(),
@@ -100,6 +102,7 @@ export const navigatorRouter = createTRPCRouter({
       return ctx.db.navigator.create({
         data: {
           name: input.name,
+          description: input.description,
           contextId,
           purpose: input.purpose,
           path: input.path,
@@ -111,6 +114,7 @@ export const navigatorRouter = createTRPCRouter({
     .input(z.object({
       id: z.string().uuid(),
       name: z.string().min(1).max(100).optional(),
+      description: z.string().max(500).nullish(),
       path: z.array(z.string().uuid()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -421,6 +425,273 @@ export const navigatorRouter = createTRPCRouter({
         autoCreatedRelations: autoCreatedCount,
         totalUnits: unitIds.length,
       };
+    }),
+
+  /**
+   * Propose navigation paths with AI-generated descriptions for user approval.
+   * Same path-building logic as analyzeAndGenerate but returns proposals
+   * instead of immediately creating navigators.
+   */
+  proposeAndGenerate: protectedProcedure
+    .input(z.object({
+      contextId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      let resolvedContextId = input.contextId;
+      let unitIds: string[];
+
+      if (input.projectId) {
+        await verifyProjectOwnership(ctx.db, input.projectId, ctx.session.user.id!);
+        const projectUnits = await ctx.db.unit.findMany({
+          where: { projectId: input.projectId },
+          select: { id: true },
+        });
+        unitIds = projectUnits.map((u) => u.id);
+
+        if (!resolvedContextId) {
+          const firstContext = await ctx.db.context.findFirst({
+            where: { projectId: input.projectId },
+            select: { id: true },
+            orderBy: { createdAt: "asc" },
+          });
+          if (!firstContext) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Project has no contexts." });
+          }
+          resolvedContextId = firstContext.id;
+        }
+      } else if (input.contextId) {
+        await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
+        const contextUnits = await ctx.db.unitContext.findMany({
+          where: { contextId: input.contextId },
+          select: { unitId: true },
+        });
+        unitIds = contextUnits.map((u) => u.unitId);
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Either projectId or contextId is required" });
+      }
+
+      if (unitIds.length < 2) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to generate paths." });
+      }
+
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: unitIds } },
+        select: { id: true, content: true, unitType: true, importance: true },
+      });
+      const unitMap = new Map(units.map((u) => [u.id, u]));
+
+      let allRelations = await ctx.db.relation.findMany({
+        where: {
+          OR: [
+            { sourceUnitId: { in: unitIds } },
+            { targetUnitId: { in: unitIds } },
+          ],
+        },
+        select: {
+          id: true, sourceUnitId: true, targetUnitId: true,
+          type: true, strength: true, direction: true,
+        },
+      });
+
+      const minRelationsNeeded = Math.max(unitIds.length - 1, 5);
+      let autoCreatedCount = 0;
+      if (allRelations.length < minRelationsNeeded) {
+        const existingPairs = new Set(
+          allRelations.map((r) => `${r.sourceUnitId}|${r.targetUnitId}`),
+        );
+        autoCreatedCount = await autoCreateRelations(ctx.db, units, existingPairs);
+        allRelations = await ctx.db.relation.findMany({
+          where: {
+            OR: [
+              { sourceUnitId: { in: unitIds } },
+              { targetUnitId: { in: unitIds } },
+            ],
+          },
+          select: {
+            id: true, sourceUnitId: true, targetUnitId: true,
+            type: true, strength: true, direction: true,
+          },
+        });
+      }
+
+      if (allRelations.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Could not find or create relations between units." });
+      }
+
+      const strategies: Array<{
+        name: string;
+        purpose: string;
+        types: string[] | null;
+        minSteps: number;
+      }> = [
+        { name: "Argument chain", purpose: "argument", types: ["supports", "contradicts", "questions", "defines"], minSteps: 5 },
+        { name: "Derivation trail", purpose: "derivation", types: ["derives_from", "expands", "elaborates", "transforms_into"], minSteps: 5 },
+        { name: "Evidence & examples", purpose: "evidence", types: ["exemplifies", "references", "grounded_in", "instantiates"], minSteps: 5 },
+        { name: "Full exploration", purpose: "exploration", types: null, minSteps: 5 },
+      ];
+
+      // Build proposals without creating navigators
+      const proposals: Array<{
+        name: string;
+        purpose: string;
+        description: string | null;
+        reasoning: string | null;
+        path: string[];
+        contextId: string;
+        unitPreviews: Array<{ id: string; content: string; unitType: string }>;
+      }> = [];
+
+      // Try to load AI provider once for all proposals
+      // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+      let aiProvider: Awaited<ReturnType<typeof import("@/server/ai/provider").getAIProvider>> | null = null;
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        aiProvider = getAIProvider();
+      } catch {
+        // AI unavailable — descriptions will be null
+      }
+
+      for (const strategy of strategies) {
+        const filtered = strategy.types
+          ? allRelations.filter((r) => strategy.types!.includes(r.type))
+          : allRelations;
+
+        if (filtered.length === 0) continue;
+
+        const counts = new Map<string, number>();
+        for (const r of filtered) {
+          counts.set(r.sourceUnitId, (counts.get(r.sourceUnitId) ?? 0) + 1);
+          counts.set(r.targetUnitId, (counts.get(r.targetUnitId) ?? 0) + 1);
+        }
+        const hubId = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? unitIds[0]!;
+        const path = buildGreedyPath(hubId, filtered, strategy.types);
+
+        if (path.length < strategy.minSteps) continue;
+
+        const unitPreviews = path.map((id) => {
+          const u = unitMap.get(id);
+          return {
+            id,
+            content: u ? u.content.slice(0, 80) + (u.content.length > 80 ? "…" : "") : "Unknown unit",
+            unitType: u?.unitType ?? "observation",
+          };
+        });
+
+        // Generate AI description for this path
+        let description: string | null = null;
+        let reasoning: string | null = null;
+
+        if (aiProvider) {
+          try {
+            const stepsDescription = unitPreviews
+              .map((u, i) => `${i + 1}. [${u.unitType}] ${u.content}`)
+              .join("\n");
+
+            const result = await aiProvider.generateStructured<{
+              name: string;
+              description: string;
+              reasoning: string;
+            }>(
+              `You are analyzing a reading path through a knowledge graph. This path follows a "${strategy.name}" strategy (${strategy.purpose}).
+
+Here are the steps in order:
+${stepsDescription}
+
+Provide:
+1. A concise name for this path (max 100 chars)
+2. A description explaining what narrative or logical flow this path follows and WHY reading these units in this order is valuable (max 500 chars)
+3. Brief reasoning about the path's coherence and what the reader will gain (max 300 chars)`,
+              {
+                temperature: 0.5,
+                maxTokens: 512,
+                zodSchema: PathProposalSchema,
+                schema: {
+                  name: "PathProposal",
+                  description: "AI-generated path description and reasoning",
+                  properties: {
+                    name: { type: "string", description: "A concise, descriptive name for the path" },
+                    description: { type: "string", description: "Narrative explanation of the path flow" },
+                    reasoning: { type: "string", description: "Why this reading order is valuable" },
+                  },
+                  required: ["name", "description", "reasoning"],
+                },
+              },
+            );
+            description = result.description;
+            reasoning = result.reasoning;
+            // Use AI-suggested name if available
+            if (result.name) {
+              strategy.name = result.name;
+            }
+          } catch {
+            // AI failed for this proposal — continue with null description
+          }
+        }
+
+        proposals.push({
+          name: strategy.name,
+          purpose: strategy.purpose,
+          description,
+          reasoning,
+          path,
+          contextId: resolvedContextId!,
+          unitPreviews,
+        });
+      }
+
+      if (proposals.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Not enough relations to generate meaningful paths.",
+        });
+      }
+
+      return {
+        proposals,
+        totalRelationsAnalyzed: allRelations.length,
+        autoCreatedRelations: autoCreatedCount,
+        totalUnits: unitIds.length,
+      };
+    }),
+
+  /**
+   * Accept proposed navigation paths and create the actual navigators.
+   */
+  acceptProposals: protectedProcedure
+    .input(z.object({
+      proposals: z.array(z.object({
+        name: z.string().min(1).max(100),
+        description: z.string().max(500).nullish(),
+        purpose: z.string().max(30),
+        contextId: z.string().uuid(),
+        path: z.array(z.string().uuid()),
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const created: Array<{ id: string; name: string; steps: number }> = [];
+
+      for (const proposal of input.proposals) {
+        await verifyContextOwnership(ctx.db, proposal.contextId, ctx.session.user.id!);
+
+        // Delete existing ai-generated navigator for same purpose in same context
+        await ctx.db.navigator.deleteMany({
+          where: { contextId: proposal.contextId, purpose: proposal.purpose },
+        });
+
+        const nav = await ctx.db.navigator.create({
+          data: {
+            name: proposal.name,
+            description: proposal.description ?? undefined,
+            contextId: proposal.contextId,
+            purpose: proposal.purpose,
+            path: proposal.path,
+          },
+        });
+        created.push({ id: nav.id, name: nav.name, steps: nav.path.length });
+      }
+
+      return { created };
     }),
 });
 

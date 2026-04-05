@@ -228,6 +228,56 @@ export const RefinementSchema = z.object({
   changes: z.array(z.string()),
 });
 
+export const DerivationSuggestionsSchema = z.object({
+  derivations: z.array(
+    z.object({
+      content: z.string().max(500),
+      unitType: z.enum(["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"]),
+      relationToOrigin: z.enum(["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"]),
+      rationale: z.string().max(200),
+    })
+  ).max(4),
+});
+
+// ─── Navigation Path AI Schemas ─────────────────────────────────────────────
+
+export const PathProposalSchema = z.object({
+  name: z.string().max(100),
+  description: z.string().max(500),
+  reasoning: z.string().max(300),
+});
+
+export const BridgeSuggestionsSchema = z.object({
+  bridges: z.array(
+    z.object({
+      afterStepIndex: z.number().min(0),
+      content: z.string().max(500),
+      unitType: unitTypeEnum,
+      rationale: z.string().max(300),
+      relationToPrev: relationTypeEnum,
+      relationToNext: relationTypeEnum,
+    })
+  ).max(5),
+});
+
+export const DerivationPlacementSchema = z.object({
+  insertIntoCurrentPath: z.object({
+    recommended: z.boolean(),
+    insertAfterIndex: z.number().nullable(),
+    reason: z.string().max(200),
+  }),
+  otherNavigators: z.array(
+    z.object({
+      navigatorId: z.string(),
+      recommended: z.boolean(),
+      insertAfterIndex: z.number().nullable(),
+      reason: z.string().max(200),
+    })
+  ).max(5),
+  suggestedContextId: z.string().nullable(),
+  suggestedContextName: z.string().max(100).nullable(),
+});
+
 // ─── Story 5.11: Scope Jump Detection ────────────────────────────────────────
 
 export const ScopeJumpSchema = z.object({

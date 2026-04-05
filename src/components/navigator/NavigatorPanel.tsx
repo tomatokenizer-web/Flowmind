@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap } from "lucide-react";
+import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap, ScanSearch } from "lucide-react";
 import { FlowReader } from "./FlowReader";
+import { PathPreviewDialog, type PathProposal } from "./PathPreviewDialog";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -26,6 +27,8 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
   const [activeNavId, setActiveNavId] = React.useState<string | null>(null);
   const [activeStep, setActiveStep] = React.useState(0);
   const [flowReaderNav, setFlowReaderNav] = React.useState<{ id: string; path: string[]; step: number } | null>(null);
+  const [proposals, setProposals] = React.useState<PathProposal[] | null>(null);
+  const [analyzingGaps, setAnalyzingGaps] = React.useState<string | null>(null);
   const utils = api.useUtils();
 
   const { data: navigators = [] } = api.navigator.list.useQuery({ projectId });
@@ -110,6 +113,51 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
     },
     onError: (err) => {
       toast.error(err.message || "Failed to generate paths");
+    },
+  });
+
+  const proposeAndGenerate = api.navigator.proposeAndGenerate.useMutation({
+    onSuccess: (result) => {
+      setProposals(result.proposals);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to propose paths");
+    },
+  });
+
+  const acceptProposals = api.navigator.acceptProposals.useMutation({
+    onSuccess: (result) => {
+      void utils.navigator.list.invalidate({ projectId });
+      setProposals(null);
+      toast.success(`${result.created.length} path${result.created.length !== 1 ? "s" : ""} created`);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to create paths");
+    },
+  });
+
+  const detectBridgeGaps = api.ai.detectBridgeGaps.useMutation({
+    onSuccess: (result) => {
+      if (result.bridges.length === 0) {
+        toast.success("No gaps detected — path flow looks good!");
+      }
+    },
+    onError: () => {
+      toast.error("Failed to analyze path gaps");
+      setAnalyzingGaps(null);
+    },
+  });
+
+  const acceptBridgeUnits = api.ai.acceptBridgeUnits.useMutation({
+    onSuccess: (result) => {
+      void utils.navigator.list.invalidate({ projectId });
+      void utils.unit.list.invalidate();
+      void utils.unit.listByIds.invalidate();
+      setAnalyzingGaps(null);
+      toast.success(`${result.createdUnits.length} bridge unit${result.createdUnits.length !== 1 ? "s" : ""} created`);
+    },
+    onError: () => {
+      toast.error("Failed to create bridge units");
     },
   });
 
@@ -283,9 +331,78 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
               </div>
             )}
 
+            {/* Bridge gap suggestions */}
+            {activeNavId === nav.id && analyzingGaps === nav.id && detectBridgeGaps.data && detectBridgeGaps.data.bridges.length > 0 && (
+              <div className="border-t border-border px-3 py-2 space-y-2">
+                <p className="text-xs font-medium text-accent-primary">
+                  Bridge Suggestions ({detectBridgeGaps.data.bridges.length})
+                </p>
+                {detectBridgeGaps.data.bridges.map((bridge, bi) => (
+                  <div key={bi} className="rounded-lg border border-border bg-bg-surface p-2.5 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-text-tertiary">After step {bridge.afterStepIndex + 1}</span>
+                      <span className="text-[10px] font-medium text-text-tertiary capitalize px-1 py-0.5 rounded bg-bg-secondary">
+                        {bridge.unitType}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-primary">{bridge.content}</p>
+                    <p className="text-[10px] text-text-tertiary italic">{bridge.rationale}</p>
+                  </div>
+                ))}
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={acceptBridgeUnits.isPending}
+                    onClick={() => {
+                      acceptBridgeUnits.mutate({
+                        navigatorId: nav.id,
+                        projectId,
+                        bridges: detectBridgeGaps.data!.bridges.map((b) => ({
+                          afterStepIndex: b.afterStepIndex,
+                          content: b.content,
+                          unitType: b.unitType,
+                          relationToPrev: b.relationToPrev,
+                          relationToNext: b.relationToNext,
+                        })),
+                      });
+                    }}
+                    className="text-[10px] font-medium text-accent-primary hover:bg-accent-primary/10 px-2 py-1 rounded transition-colors"
+                  >
+                    {acceptBridgeUnits.isPending ? "Creating..." : "Accept all bridges"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnalyzingGaps(null)}
+                    className="text-[10px] text-text-tertiary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-hover transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Actions row (visible when expanded) */}
             {activeNavId === nav.id && (
               <div className="border-t border-border px-2 py-1.5 flex items-center gap-1">
+                {/* Analyze gaps button */}
+                {(nav.path?.length ?? 0) >= 2 && (
+                  <button
+                    type="button"
+                    disabled={detectBridgeGaps.isPending}
+                    onClick={() => {
+                      setAnalyzingGaps(nav.id);
+                      detectBridgeGaps.mutate({ navigatorId: nav.id });
+                    }}
+                    className="text-[10px] text-accent-primary hover:bg-accent-primary/10 transition-colors px-1.5 py-0.5 rounded flex items-center gap-1"
+                  >
+                    {detectBridgeGaps.isPending && analyzingGaps === nav.id ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : (
+                      <ScanSearch className="h-2.5 w-2.5" />
+                    )}
+                    Analyze gaps
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => deleteNav.mutate({ id: nav.id })}
@@ -329,40 +446,25 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
           </div>
         )}
 
-        {/* AI Auto-Generate paths */}
+        {/* AI Auto-Generate paths (with preview) */}
         <button
           type="button"
-          disabled={analyzeAndGenerate.isPending}
-          onClick={() => analyzeAndGenerate.mutate({ projectId })}
+          disabled={proposeAndGenerate.isPending}
+          onClick={() => proposeAndGenerate.mutate({ projectId })}
           className={cn(
             "flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors",
-            analyzeAndGenerate.isPending
+            proposeAndGenerate.isPending
               ? "border-accent-primary/30 text-accent-primary/60 cursor-not-allowed"
               : "border-accent-primary/40 text-accent-primary hover:border-accent-primary hover:bg-accent-primary/5",
           )}
         >
-          {analyzeAndGenerate.isPending ? (
+          {proposeAndGenerate.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Sparkles className="h-3.5 w-3.5" />
           )}
-          {analyzeAndGenerate.isPending ? "Generating paths…" : "AI: Auto-generate paths"}
+          {proposeAndGenerate.isPending ? "Analyzing & proposing paths…" : "AI: Propose navigation paths"}
         </button>
-
-        {/* Show generation results */}
-        {analyzeAndGenerate.data && (
-          <div className="rounded-lg border border-accent-primary/20 bg-accent-primary/5 p-2 text-xs text-text-secondary space-y-1">
-            <p className="font-medium text-accent-primary">
-              {analyzeAndGenerate.data.generated.length} paths generated
-            </p>
-            {analyzeAndGenerate.data.generated.map((g) => (
-              <div key={g.id} className="flex items-center justify-between">
-                <span className="truncate">{g.name}</span>
-                <span className="shrink-0 text-text-tertiary">{g.steps} steps</span>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Flow Reader overlay */}
         {flowReaderNav && flowReaderNav.path.length > 0 && (
@@ -373,6 +475,27 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
             projectId={projectId}
             onClose={() => setFlowReaderNav(null)}
             onUnitSelect={(unitId) => openPanel(unitId)}
+            onPathUpdated={() => void utils.navigator.list.invalidate({ projectId })}
+          />
+        )}
+
+        {/* Path Preview Dialog */}
+        {proposals && (
+          <PathPreviewDialog
+            proposals={proposals}
+            isAccepting={acceptProposals.isPending}
+            onAccept={(accepted) => {
+              acceptProposals.mutate({
+                proposals: accepted.map((p) => ({
+                  name: p.name,
+                  description: p.description,
+                  purpose: p.purpose,
+                  contextId: p.contextId,
+                  path: p.path,
+                })),
+              });
+            }}
+            onClose={() => setProposals(null)}
           />
         )}
       </div>

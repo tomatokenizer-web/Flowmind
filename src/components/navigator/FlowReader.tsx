@@ -15,6 +15,7 @@ import {
   Compass,
   BookOpen,
   GitFork,
+  Sparkles,
 } from "lucide-react";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
@@ -40,6 +41,15 @@ interface FlowReaderProps {
   onClose: () => void;
   /** Called when a unit is selected (e.g. to sync sidebar panel) */
   onUnitSelect?: (unitId: string) => void;
+  /** Called when navigator path is updated (e.g. after bridge insertion) */
+  onPathUpdated?: () => void;
+}
+
+interface PlacementSuggestion {
+  insertIntoCurrentPath: { recommended: boolean; insertAfterIndex: number | null; reason: string };
+  otherNavigators: Array<{ navigatorId: string; recommended: boolean; insertAfterIndex: number | null; reason: string }>;
+  suggestedContextId: string | null;
+  suggestedContextName: string | null;
 }
 
 // ─── Slide direction helper ──────────────────────────────────────────
@@ -92,6 +102,7 @@ export function FlowReader({
   projectId,
   onClose,
   onUnitSelect,
+  onPathUpdated,
 }: FlowReaderProps) {
   const [step, setStep] = React.useState(initialStep);
   const [[direction], setDirection] = React.useState([0]);
@@ -99,6 +110,8 @@ export function FlowReader({
   const [newContent, setNewContent] = React.useState("");
   const [newType, setNewType] = React.useState<string>("idea");
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [placementSuggestion, setPlacementSuggestion] = React.useState<PlacementSuggestion | null>(null);
+  const [lastDerivedUnitId, setLastDerivedUnitId] = React.useState<string | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const currentUnitId = path[step];
@@ -152,6 +165,22 @@ export function FlowReader({
   const addToNavigator = api.navigator.addUnit.useMutation({
     onSuccess: () => {
       void utils.navigator.list.invalidate();
+    },
+  });
+
+  const suggestPlacement = api.ai.suggestDerivationPlacement.useMutation({
+    onSuccess: (result) => {
+      setPlacementSuggestion(result);
+    },
+  });
+
+  const applyPlacement = api.ai.applyDerivationPlacement.useMutation({
+    onSuccess: () => {
+      void utils.navigator.list.invalidate();
+      setPlacementSuggestion(null);
+      setLastDerivedUnitId(null);
+      onPathUpdated?.();
+      toast.success("Derivation placed in path");
     },
   });
 
@@ -247,11 +276,20 @@ export function FlowReader({
       strength: 0.8,
     });
 
+    setLastDerivedUnitId(created.id);
+
+    // Request AI placement suggestions instead of blindly appending
     if (navigatorId) {
-      await addToNavigator.mutateAsync({
+      suggestPlacement.mutate({
+        derivedUnitId: created.id,
+        originUnitId: currentUnitId,
         navigatorId,
-        unitId: created.id,
       });
+    } else {
+      // No navigator context — just append if possible
+      if (navigatorId) {
+        await addToNavigator.mutateAsync({ navigatorId, unitId: created.id });
+      }
     }
   };
 
@@ -655,6 +693,95 @@ export function FlowReader({
           />
         ))}
       </div>
+
+      {/* ── Derivation Placement Suggestion ────────────────────── */}
+      <AnimatePresence>
+        {placementSuggestion && lastDerivedUnitId && (
+          <motion.div
+            initial={{ y: 60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 60, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="border-t border-accent-primary/30 bg-accent-primary/5 px-6 py-3"
+          >
+            <div className="mx-auto max-w-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-accent-primary flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Placement suggestion for derived unit
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Skip placement — just append to end of current navigator
+                    if (navigatorId && lastDerivedUnitId) {
+                      void addToNavigator.mutateAsync({ navigatorId, unitId: lastDerivedUnitId });
+                    }
+                    setPlacementSuggestion(null);
+                    setLastDerivedUnitId(null);
+                  }}
+                  className="text-[10px] text-text-tertiary hover:text-text-primary transition-colors"
+                >
+                  Skip (append to end)
+                </button>
+              </div>
+
+              {/* Current path placement */}
+              {placementSuggestion.insertIntoCurrentPath.recommended && (
+                <div className="flex items-center justify-between rounded-lg border border-border bg-bg-surface px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-text-primary">
+                      Insert after step {(placementSuggestion.insertIntoCurrentPath.insertAfterIndex ?? 0) + 1} in current path
+                    </p>
+                    <p className="text-[10px] text-text-tertiary">{placementSuggestion.insertIntoCurrentPath.reason}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={applyPlacement.isPending}
+                    onClick={() => {
+                      if (!lastDerivedUnitId) return;
+                      const placements = [];
+                      if (navigatorId && placementSuggestion.insertIntoCurrentPath.insertAfterIndex != null) {
+                        placements.push({
+                          navigatorId,
+                          insertAfterIndex: placementSuggestion.insertIntoCurrentPath.insertAfterIndex,
+                        });
+                      }
+                      applyPlacement.mutate({
+                        derivedUnitId: lastDerivedUnitId,
+                        placements,
+                        contextId: placementSuggestion.suggestedContextId ?? undefined,
+                      });
+                    }}
+                    className="shrink-0 ml-2 text-xs font-medium text-accent-primary hover:bg-accent-primary/10 px-2.5 py-1 rounded transition-colors"
+                  >
+                    {applyPlacement.isPending ? "Placing..." : "Apply"}
+                  </button>
+                </div>
+              )}
+
+              {/* Other navigators */}
+              {placementSuggestion.otherNavigators.filter((n) => n.recommended).map((nav) => (
+                <div key={nav.navigatorId} className="flex items-center justify-between rounded-lg border border-border bg-bg-surface px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-text-primary">
+                      Also add to another navigator (after step {(nav.insertAfterIndex ?? 0) + 1})
+                    </p>
+                    <p className="text-[10px] text-text-tertiary">{nav.reason}</p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Context suggestion */}
+              {placementSuggestion.suggestedContextName && (
+                <p className="text-[10px] text-text-tertiary">
+                  Suggested context: <span className="font-medium text-text-secondary">{placementSuggestion.suggestedContextName}</span>
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Keyboard hint ───────────────────────────────────────── */}
       <div className="flex items-center justify-center gap-4 pb-3 text-xs text-text-tertiary">

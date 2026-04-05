@@ -25,6 +25,9 @@ import type {
 import {
   ExplorationDirectionsSchema,
   RefinementSchema,
+  DerivationSuggestionsSchema,
+  BridgeSuggestionsSchema,
+  DerivationPlacementSchema,
 } from "@/server/ai/schemas";
 
 // ─── Zod Schemas ──────────────────────────────────────────────────────────
@@ -654,6 +657,115 @@ Suggest 2-3 specific exploration directions that would help develop this thought
           ],
         };
         return { directions: fallbacks[unit.unitType] ?? fallbacks.default };
+      }
+    }),
+
+  /**
+   * Suggest derivation units that could be created from an existing unit.
+   * Returns up to 4 AI-generated suggestions with content, type, and relation.
+   */
+  suggestDerivations: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      contextId: z.string().uuid().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findUnique({
+        where: { id: input.unitId },
+        select: { content: true, unitType: true },
+      });
+      if (!unit) return { derivations: [] };
+
+      // Gather sibling context for richer suggestions
+      let contextSnippet = "";
+      if (input.contextId) {
+        const siblings = await ctx.db.unit.findMany({
+          where: {
+            unitContexts: { some: { contextId: input.contextId } },
+            id: { not: input.unitId },
+          },
+          select: { content: true, unitType: true },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        });
+        if (siblings.length > 0) {
+          contextSnippet = `\n\nOther units in the same context:\n${siblings.map((s) => `- [${s.unitType}] ${s.content.slice(0, 120)}`).join("\n")}`;
+        }
+      }
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const result = await provider.generateStructured<{
+          derivations: {
+            content: string;
+            unitType: string;
+            relationToOrigin: string;
+            rationale: string;
+          }[];
+        }>(
+          `You are a thinking assistant. Given the following thought unit (type: ${unit.unitType}):
+"${unit.content.slice(0, 500)}"${contextSnippet}
+
+Suggest 3-4 specific new thought units the user could derive from this one to deepen their thinking. Each suggestion should:
+- Be a concrete, self-contained thought (not a vague prompt)
+- Have a specific unit type (claim, question, evidence, counterargument, observation, idea, definition, assumption, action)
+- Have a clear relationship to the original (supports, contradicts, derives_from, expands, questions, etc.)
+- Help the user explore different angles, challenge assumptions, or build on the idea
+
+Prioritize diversity: suggest different types and relationships, not just more of the same.`,
+          {
+            temperature: 0.7,
+            maxTokens: 800,
+            zodSchema: DerivationSuggestionsSchema,
+            schema: {
+              name: "DerivationSuggestions",
+              description: "AI-suggested derivation units from a source unit",
+              properties: {
+                derivations: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      content: { type: "string", description: "The full content of the suggested derived unit" },
+                      unitType: { type: "string", enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"] },
+                      relationToOrigin: { type: "string", enum: ["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"] },
+                      rationale: { type: "string", description: "Brief explanation of why this derivation is useful" },
+                    },
+                    required: ["content", "unitType", "relationToOrigin", "rationale"],
+                  },
+                },
+              },
+              required: ["derivations"],
+            },
+          },
+        );
+        return result;
+      } catch {
+        // Fallback heuristic suggestions when AI is unavailable
+        const fallbacks: Record<string, { content: string; unitType: string; relationToOrigin: string; rationale: string }[]> = {
+          claim: [
+            { content: "What evidence supports this claim?", unitType: "question", relationToOrigin: "questions", rationale: "Every claim needs supporting evidence" },
+            { content: "Consider the opposite perspective", unitType: "counterargument", relationToOrigin: "contradicts", rationale: "Strengthens reasoning by examining counterarguments" },
+            { content: "What assumptions does this claim rest on?", unitType: "question", relationToOrigin: "questions", rationale: "Uncovering hidden assumptions improves clarity" },
+          ],
+          question: [
+            { content: "A possible answer based on current evidence", unitType: "claim", relationToOrigin: "derives_from", rationale: "Questions deserve attempted answers" },
+            { content: "What would we need to know to answer this?", unitType: "question", relationToOrigin: "expands", rationale: "Breaking down complex questions into smaller ones" },
+            { content: "An observation related to this question", unitType: "observation", relationToOrigin: "references", rationale: "Observations can ground abstract questions" },
+          ],
+          evidence: [
+            { content: "What claim does this evidence support?", unitType: "question", relationToOrigin: "questions", rationale: "Evidence should be connected to claims" },
+            { content: "Is there counter-evidence to consider?", unitType: "question", relationToOrigin: "questions", rationale: "Strong arguments consider counter-evidence" },
+          ],
+          default: [
+            { content: "What follows from this?", unitType: "question", relationToOrigin: "expands", rationale: "Explore implications" },
+            { content: "How does this connect to other ideas?", unitType: "question", relationToOrigin: "questions", rationale: "Build connections" },
+            { content: "What assumptions are being made here?", unitType: "question", relationToOrigin: "questions", rationale: "Surface hidden assumptions" },
+          ],
+        };
+        return { derivations: fallbacks[unit.unitType] ?? fallbacks.default ?? [] };
       }
     }),
 
@@ -1712,5 +1824,383 @@ Rules:
         contextName: newContext.name,
         unitsAdded: units.length,
       };
+    }),
+
+  // ─── Navigation Path: Bridge Gap Detection ─────────────────────────
+
+  /**
+   * Detect conceptual gaps in a navigation path and suggest bridge units.
+   */
+  detectBridgeGaps: rateLimitedProcedure
+    .input(z.object({ navigatorId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const nav = await ctx.db.navigator.findFirst({
+        where: { id: input.navigatorId, context: { project: { userId: ctx.session.user.id! } } },
+      });
+      if (!nav || nav.path.length < 2) {
+        return { bridges: [] };
+      }
+
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: nav.path } },
+        select: { id: true, content: true, unitType: true },
+      });
+      const unitMap = new Map(units.map((u) => [u.id, u]));
+
+      // Build ordered step descriptions
+      const stepDescriptions = nav.path.map((id, i) => {
+        const u = unitMap.get(id);
+        return `${i}. [${u?.unitType ?? "unknown"}] ${u?.content.slice(0, 120) ?? "Unknown unit"}`;
+      }).join("\n");
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const result = await provider.generateStructured<{
+          bridges: Array<{
+            afterStepIndex: number;
+            content: string;
+            unitType: string;
+            rationale: string;
+            relationToPrev: string;
+            relationToNext: string;
+          }>;
+        }>(
+          `You are analyzing a reading path for conceptual coherence. Here are the steps:
+
+${stepDescriptions}
+
+Identify 0-3 gaps where the conceptual flow breaks between adjacent steps. For each gap, suggest a bridge unit that would make the transition smoother. Only suggest bridges where there's a genuine logical disconnect — not every transition needs one.
+
+For each bridge, specify:
+- afterStepIndex: the step index after which to insert (0-based)
+- content: the full text of the suggested bridge unit
+- unitType: the appropriate type (claim, question, evidence, etc.)
+- rationale: why this bridge is needed
+- relationToPrev: relation type to the unit before (supports, expands, derives_from, etc.)
+- relationToNext: relation type to the unit after`,
+          {
+            temperature: 0.5,
+            maxTokens: 1024,
+            zodSchema: BridgeSuggestionsSchema,
+            schema: {
+              name: "BridgeSuggestions",
+              description: "Suggested bridge units for path gaps",
+              properties: {
+                bridges: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      afterStepIndex: { type: "number" },
+                      content: { type: "string" },
+                      unitType: { type: "string", enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"] },
+                      rationale: { type: "string" },
+                      relationToPrev: { type: "string", enum: ["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"] },
+                      relationToNext: { type: "string", enum: ["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"] },
+                    },
+                    required: ["afterStepIndex", "content", "unitType", "rationale", "relationToPrev", "relationToNext"],
+                  },
+                },
+              },
+              required: ["bridges"],
+            },
+          },
+        );
+        return result;
+      } catch {
+        return { bridges: [] };
+      }
+    }),
+
+  /**
+   * Accept bridge unit suggestions: create units, relations, and insert into navigator path.
+   */
+  acceptBridgeUnits: protectedProcedure
+    .input(z.object({
+      navigatorId: z.string().uuid(),
+      projectId: z.string().uuid(),
+      bridges: z.array(z.object({
+        afterStepIndex: z.number().int().min(0),
+        content: z.string().min(1),
+        unitType: z.string(),
+        relationToPrev: z.string(),
+        relationToNext: z.string(),
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const nav = await ctx.db.navigator.findFirst({
+        where: { id: input.navigatorId, context: { project: { userId: ctx.session.user.id! } } },
+      });
+      if (!nav) throw new TRPCError({ code: "NOT_FOUND", message: "Navigator not found" });
+
+      const userId = ctx.session.user.id!;
+      const newPath = [...nav.path];
+      const createdUnits: string[] = [];
+
+      // Sort bridges by afterStepIndex descending so insertions don't shift earlier indices
+      const sorted = [...input.bridges].sort((a, b) => b.afterStepIndex - a.afterStepIndex);
+
+      for (const bridge of sorted) {
+        const newUnit = await ctx.db.unit.create({
+          data: {
+            content: bridge.content,
+            unitType: bridge.unitType as never,
+            lifecycle: "draft",
+            originType: "ai_generated",
+            sourceSpan: { bridgeFor: input.navigatorId },
+            projectId: input.projectId,
+            userId,
+          },
+        });
+        createdUnits.push(newUnit.id);
+
+        // Create relations to adjacent units
+        const prevUnitId = newPath[bridge.afterStepIndex];
+        const nextUnitId = newPath[bridge.afterStepIndex + 1];
+
+        if (prevUnitId) {
+          await ctx.db.relation.create({
+            data: {
+              sourceUnitId: prevUnitId,
+              targetUnitId: newUnit.id,
+              type: bridge.relationToPrev,
+              strength: 0.7,
+              direction: "one_way",
+            },
+          });
+        }
+        if (nextUnitId) {
+          await ctx.db.relation.create({
+            data: {
+              sourceUnitId: newUnit.id,
+              targetUnitId: nextUnitId,
+              type: bridge.relationToNext,
+              strength: 0.7,
+              direction: "one_way",
+            },
+          });
+        }
+
+        // Insert into path at the correct position
+        newPath.splice(bridge.afterStepIndex + 1, 0, newUnit.id);
+      }
+
+      // Update navigator with new path
+      await ctx.db.navigator.update({
+        where: { id: input.navigatorId },
+        data: { path: newPath },
+      });
+
+      return { createdUnits, updatedPath: newPath };
+    }),
+
+  // ─── Navigation Path: Derivation Placement ─────────────────────────
+
+  /**
+   * After a derivation is created in FlowReader, suggest where to place it:
+   * in the current path, other navigators, and which context.
+   */
+  suggestDerivationPlacement: rateLimitedProcedure
+    .input(z.object({
+      derivedUnitId: z.string().uuid(),
+      originUnitId: z.string().uuid(),
+      navigatorId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Load derived unit, origin unit, current navigator, and other navigators
+      const [derivedUnit, originUnit, currentNav, otherNavs] = await Promise.all([
+        ctx.db.unit.findFirst({
+          where: { id: input.derivedUnitId, userId },
+          select: { id: true, content: true, unitType: true },
+        }),
+        ctx.db.unit.findFirst({
+          where: { id: input.originUnitId, userId },
+          select: { id: true, content: true, unitType: true },
+        }),
+        ctx.db.navigator.findFirst({
+          where: { id: input.navigatorId, context: { project: { userId } } },
+        }),
+        ctx.db.navigator.findMany({
+          where: {
+            context: { project: { userId } },
+            id: { not: input.navigatorId },
+            path: { has: input.originUnitId },
+          },
+          select: { id: true, name: true, path: true },
+        }),
+      ]);
+
+      if (!derivedUnit || !originUnit || !currentNav) {
+        // Fallback: insert after origin in current navigator
+        const originIdx = currentNav?.path.indexOf(input.originUnitId) ?? -1;
+        return {
+          insertIntoCurrentPath: {
+            recommended: true,
+            insertAfterIndex: originIdx >= 0 ? originIdx : null,
+            reason: "Place derived unit right after its origin",
+          },
+          otherNavigators: [],
+          suggestedContextId: null,
+          suggestedContextName: null,
+        };
+      }
+
+      // Build path description for current navigator
+      const pathUnits = await ctx.db.unit.findMany({
+        where: { id: { in: currentNav.path } },
+        select: { id: true, content: true, unitType: true },
+      });
+      const pathMap = new Map(pathUnits.map((u) => [u.id, u]));
+      const pathDescription = currentNav.path.map((id, i) => {
+        const u = pathMap.get(id);
+        return `${i}. [${u?.unitType ?? "?"}] ${u?.content.slice(0, 80) ?? "?"}`;
+      }).join("\n");
+
+      const otherNavDescriptions = otherNavs.map((n) =>
+        `Navigator "${n.name}" (${n.path.length} steps, origin at index ${n.path.indexOf(input.originUnitId)})`
+      ).join("\n");
+
+      // Load contexts the origin unit belongs to
+      const originContexts = await ctx.db.unitContext.findMany({
+        where: { unitId: input.originUnitId },
+        select: { context: { select: { id: true, name: true } } },
+      });
+      const contextOptions = originContexts.map((uc) => `- ${uc.context.name} (${uc.context.id})`).join("\n");
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const result = await provider.generateStructured<{
+          insertIntoCurrentPath: { recommended: boolean; insertAfterIndex: number | null; reason: string };
+          otherNavigators: Array<{ navigatorId: string; recommended: boolean; insertAfterIndex: number | null; reason: string }>;
+          suggestedContextId: string | null;
+          suggestedContextName: string | null;
+        }>(
+          `A user derived a new thought unit while reading a navigation path.
+
+Derived unit: [${derivedUnit.unitType}] "${derivedUnit.content.slice(0, 200)}"
+Origin unit: [${originUnit.unitType}] "${originUnit.content.slice(0, 200)}"
+
+Current path (${currentNav.name}):
+${pathDescription}
+
+${otherNavs.length > 0 ? `Other navigators containing the origin:\n${otherNavDescriptions}` : "No other navigators contain the origin unit."}
+
+${originContexts.length > 0 ? `Contexts the origin belongs to:\n${contextOptions}` : ""}
+
+Decide:
+1. Should the derived unit be inserted into the current path? If yes, after which step index? Consider whether it fits the path's narrative flow.
+2. For each other navigator listed, should it be included? After which step?
+3. Which context should the derived unit be added to? (provide the ID from the list, or null if it should stay in the same context as the origin)`,
+          {
+            temperature: 0.3,
+            maxTokens: 512,
+            zodSchema: DerivationPlacementSchema,
+            schema: {
+              name: "DerivationPlacement",
+              description: "Placement suggestions for a derived unit",
+              properties: {
+                insertIntoCurrentPath: {
+                  type: "object",
+                  properties: {
+                    recommended: { type: "boolean" },
+                    insertAfterIndex: { type: "number", nullable: true },
+                    reason: { type: "string" },
+                  },
+                  required: ["recommended", "insertAfterIndex", "reason"],
+                },
+                otherNavigators: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      navigatorId: { type: "string" },
+                      recommended: { type: "boolean" },
+                      insertAfterIndex: { type: "number", nullable: true },
+                      reason: { type: "string" },
+                    },
+                    required: ["navigatorId", "recommended", "insertAfterIndex", "reason"],
+                  },
+                },
+                suggestedContextId: { type: "string", nullable: true },
+                suggestedContextName: { type: "string", nullable: true },
+              },
+              required: ["insertIntoCurrentPath", "otherNavigators", "suggestedContextId", "suggestedContextName"],
+            },
+          },
+        );
+        return result;
+      } catch {
+        // Heuristic fallback: insert right after origin in current path
+        const originIdx = currentNav.path.indexOf(input.originUnitId);
+        return {
+          insertIntoCurrentPath: {
+            recommended: true,
+            insertAfterIndex: originIdx >= 0 ? originIdx : null,
+            reason: "Place derived unit right after its origin",
+          },
+          otherNavigators: otherNavs.map((n) => ({
+            navigatorId: n.id,
+            recommended: false,
+            insertAfterIndex: null,
+            reason: "AI unavailable — manual review recommended",
+          })),
+          suggestedContextId: originContexts[0]?.context.id ?? null,
+          suggestedContextName: originContexts[0]?.context.name ?? null,
+        };
+      }
+    }),
+
+  /**
+   * Apply derivation placement: insert derived unit into navigators and assign context.
+   */
+  applyDerivationPlacement: protectedProcedure
+    .input(z.object({
+      derivedUnitId: z.string().uuid(),
+      placements: z.array(z.object({
+        navigatorId: z.string().uuid(),
+        insertAfterIndex: z.number().int().min(0),
+      })),
+      contextId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+      const updated: string[] = [];
+
+      for (const placement of input.placements) {
+        const nav = await ctx.db.navigator.findFirst({
+          where: { id: placement.navigatorId, context: { project: { userId } } },
+        });
+        if (!nav) continue;
+
+        const newPath = [...nav.path];
+        // Insert after the specified index
+        newPath.splice(placement.insertAfterIndex + 1, 0, input.derivedUnitId);
+
+        await ctx.db.navigator.update({
+          where: { id: placement.navigatorId },
+          data: { path: newPath },
+        });
+        updated.push(nav.id);
+      }
+
+      // Assign to context if specified
+      if (input.contextId) {
+        await ctx.db.unitContext.create({
+          data: {
+            unitId: input.derivedUnitId,
+            contextId: input.contextId,
+          },
+        }).catch(() => {
+          // Ignore duplicate — unit may already be in this context
+        });
+      }
+
+      return { updatedNavigators: updated };
     }),
 });

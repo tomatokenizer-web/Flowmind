@@ -23,6 +23,7 @@ import { ApproveRejectButtons } from "./approve-reject-buttons";
 import { UnitSplitDialog } from "./UnitSplitDialog";
 import { LinkToDialog } from "./LinkToDialog";
 import type { SplitReattributionProposal } from "~/server/ai";
+import { DerivationSuggestions } from "./DerivationSuggestions";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ export function UnitCard({
   const lifecycleTransition = api.unit.lifecycleTransition.useMutation({
     onSuccess: () => void utils.unit.list.invalidate(),
   });
+  const createRelation = api.relation.create.useMutation();
 
   // Handle split confirmation - creates two new units and archives the original
   const handleSplitConfirm = React.useCallback(
@@ -565,6 +567,42 @@ export function UnitCard({
                   : "No relations yet"}
               </p>
             </div>
+
+            {/* AI Derivation Suggestions */}
+            <DerivationSuggestions
+              unitId={unit.id}
+              contextId={activeContextId}
+              projectId={projectId}
+              onCreateUnit={(content, unitType, relation) => {
+                if (!projectId) return;
+                createUnit.mutate(
+                  {
+                    content,
+                    unitType,
+                    lifecycle: "draft",
+                    originType: "ai_refined",
+                    sourceSpan: { derivedFrom: unit.id },
+                    projectId,
+                  },
+                  {
+                    onSuccess: (newUnit) => {
+                      if (newUnit?.id) {
+                        void utils.relation.invalidate();
+                        void createRelation.mutate({
+                          sourceUnitId: unit.id,
+                          targetUnitId: newUnit.id,
+                          type: relation,
+                          strength: 0.7,
+                          direction: "one_way",
+                          purpose: ["derivation"],
+                        });
+                      }
+                      toast.success("Derived unit created");
+                    },
+                  },
+                );
+              }}
+            />
           </>
         )}
       </div>

@@ -496,12 +496,13 @@ model AssemblyItem {
 }
 
 model Navigator {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  purpose   String?  @db.VarChar(30)
-  contextId String   @map("context_id") @db.Uuid
-  path      String[] @default([]) @db.Uuid
-  context   Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  purpose     String?  @db.VarChar(30)
+  contextId   String   @map("context_id") @db.Uuid
+  path        String[] @default([]) @db.Uuid
+  context     Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
 
   @@index([contextId])
   @@map("navigators")
