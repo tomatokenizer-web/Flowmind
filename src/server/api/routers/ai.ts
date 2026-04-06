@@ -1674,14 +1674,22 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`,
         if (!jsonMatch) {
           return { deleted: deleted.count, created: 0, analyzed: units.length };
         }
-        const result = JSON.parse(jsonMatch[0]) as {
-          relations: Array<{ sourceIndex: number; targetIndex: number; type: string; strength: number }>;
-        };
 
-        const relations = Array.isArray(result.relations) ? result.relations : [];
-        const toCreate = relations
+        const RelationsResponseSchema = z.object({
+          relations: z.array(z.object({
+            sourceIndex: z.number(),
+            targetIndex: z.number(),
+            type: z.string(),
+            strength: z.number(),
+          })),
+        });
+        const parsed = RelationsResponseSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (!parsed.success) {
+          return { deleted: deleted.count, created: 0, analyzed: units.length };
+        }
+
+        const toCreate = parsed.data.relations
           .filter((r) => {
-            if (typeof r.sourceIndex !== "number" || typeof r.targetIndex !== "number") return false;
             if (r.sourceIndex < 0 || r.sourceIndex >= units.length) return false;
             if (r.targetIndex < 0 || r.targetIndex >= units.length) return false;
             if (r.sourceIndex === r.targetIndex) return false;
@@ -1691,13 +1699,13 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`,
             sourceUnitId: units[r.sourceIndex]!.id,
             targetUnitId: units[r.targetIndex]!.id,
             type: r.type,
-            strength: Math.round(r.strength * 100) / 100,
+            strength: Math.round(Math.min(1, Math.max(0, r.strength)) * 100) / 100,
             direction: "one_way" as const,
           }));
 
         let createdCount = 0;
         if (toCreate.length > 0) {
-          const batch = await ctx.db.relation.createMany({ data: toCreate });
+          const batch = await ctx.db.relation.createMany({ data: toCreate, skipDuplicates: true });
           createdCount = batch.count;
         }
 
@@ -1775,17 +1783,32 @@ Rules:
           maxTokens: 1024,
         });
 
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        const jsonMatch = response.match(/\{[\s\S]*"mergeSuggestions"[\s\S]*\}/);
         if (!jsonMatch) {
           return { mergeSuggestions: [], splitSuggestions: [] };
         }
 
-        const parsed = JSON.parse(jsonMatch[0]) as {
-          mergeSuggestions?: Array<{ indexA: number; indexB: number; reason: string; confidence: number }>;
-          splitSuggestions?: Array<{ index: number; reason: string; suggestedSplitA: string; suggestedSplitB: string; confidence: number }>;
-        };
+        const ContextOpsSchema = z.object({
+          mergeSuggestions: z.array(z.object({
+            indexA: z.number(),
+            indexB: z.number(),
+            reason: z.string(),
+            confidence: z.number(),
+          })).optional().default([]),
+          splitSuggestions: z.array(z.object({
+            index: z.number(),
+            reason: z.string(),
+            suggestedSplitA: z.string(),
+            suggestedSplitB: z.string(),
+            confidence: z.number(),
+          })).optional().default([]),
+        });
+        const validated = ContextOpsSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (!validated.success) {
+          return { mergeSuggestions: [], splitSuggestions: [] };
+        }
 
-        const mergeSuggestions = (parsed.mergeSuggestions ?? [])
+        const mergeSuggestions = validated.data.mergeSuggestions
           .filter((m) => m.indexA >= 0 && m.indexA < contexts.length && m.indexB >= 0 && m.indexB < contexts.length)
           .map((m) => ({
             contextIdA: contexts[m.indexA]!.id,
@@ -1796,7 +1819,7 @@ Rules:
             confidence: Math.min(1, Math.max(0, m.confidence)),
           }));
 
-        const splitSuggestions = (parsed.splitSuggestions ?? [])
+        const splitSuggestions = validated.data.splitSuggestions
           .filter((s) => s.index >= 0 && s.index < contexts.length)
           .map((s) => ({
             contextId: contexts[s.index]!.id,

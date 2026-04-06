@@ -6,18 +6,14 @@ import {
   Unlink,
   Copy,
   AlertTriangle,
-  ArrowUpCircle,
   Clock,
   Trash2,
-  Archive,
   GitMerge,
   Check,
   X,
   GitBranch,
   Layers,
-  ChevronDown,
-  Compass,
-  Loader2,
+  ArrowUpCircle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,6 +24,8 @@ import { toast } from "~/lib/toast";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { usePanelStore } from "~/stores/panel-store";
 import { BranchProjectDialog } from "~/components/project/BranchProjectDialog";
+import { LoadingCards, EmptyState, ContextPicker, ActionButton } from "./shared";
+import { OrphanCard } from "./OrphanCard";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -168,27 +166,6 @@ export function AttentionView({ projectId }: AttentionViewProps) {
   );
 }
 
-// ─── Empty / Loading states ──────────────────────────────────────────
-
-function LoadingCards() {
-  return (
-    <div className="space-y-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="h-24 animate-pulse rounded-xl bg-bg-secondary" />
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 py-16 text-center">
-      <Icon className="h-10 w-10 text-text-tertiary" />
-      <p className="text-sm text-text-tertiary">{message}</p>
-    </div>
-  );
-}
-
 // ─── Incubating List ─────────────────────────────────────────────────
 
 function IncubatingList({
@@ -285,59 +262,6 @@ function IncubatingList({
   );
 }
 
-// ─── Context Picker ──────────────────────────────────────────────────
-
-function ContextPicker({
-  contexts,
-  onSelect,
-  disabled,
-}: {
-  contexts: Array<{ id: string; name: string }>;
-  onSelect: (id: string) => void;
-  disabled: boolean;
-}) {
-  const [open, setOpen] = React.useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        disabled={disabled}
-        className="flex items-center gap-1.5 rounded-lg border border-accent-primary/30 bg-accent-primary/5 px-3 py-1 text-xs font-medium text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-40"
-      >
-        <ArrowUpCircle className="h-3.5 w-3.5" />
-        Promote
-        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-10 mt-1 w-52 rounded-lg border border-border bg-bg-surface p-1.5 shadow-lg">
-          <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
-            Select Context
-          </p>
-          <div className="max-h-48 overflow-y-auto">
-            {contexts.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-text-tertiary text-center">No contexts</p>
-            ) : (
-              contexts.map((ctx) => (
-                <button
-                  key={ctx.id}
-                  type="button"
-                  onClick={() => { onSelect(ctx.id); setOpen(false); }}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-                >
-                  <Layers className="h-3 w-3 text-text-tertiary shrink-0" />
-                  <span className="truncate">{ctx.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Orphan List ─────────────────────────────────────────────────────
 
 function OrphanList({
@@ -413,145 +337,6 @@ function OrphanList({
           isActioning={recoverOrphan.isPending || createContext.isPending}
         />
       ))}
-    </div>
-  );
-}
-
-// ─── Orphan Card (with AI suggestions) ──────────────────────────────
-
-function OrphanCard({
-  unit,
-  projectId,
-  contexts,
-  onUnitClick,
-  onRecover,
-  onCreateContext,
-  isActioning,
-}: {
-  unit: { id: string; content: string; unitType: string; createdAt: Date | string; isolationScore: number };
-  projectId: string;
-  contexts: Array<{ id: string; name: string }>;
-  onUnitClick: (id: string) => void;
-  onRecover: (action: "context" | "incubate" | "archive" | "delete", contextId?: string) => void;
-  onCreateContext: () => void;
-  isActioning: boolean;
-}) {
-  const createdAt = typeof unit.createdAt === "string" ? new Date(unit.createdAt) : unit.createdAt;
-
-  // AI context suggestions
-  const { data: suggestions, isLoading: sugLoading } =
-    api.ai.suggestContextForUnit.useQuery(
-      { unitId: unit.id, projectId },
-      { enabled: !!projectId, retry: false, staleTime: 5 * 60 * 1000 },
-    );
-
-  return (
-    <div className="rounded-xl border border-border bg-bg-primary p-4 hover:shadow-hover transition-shadow">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <UnitTypeBadge unitType={unit.unitType as UnitType} />
-          {unit.isolationScore >= 1 && (
-            <span className="rounded-full bg-accent-warning/10 px-2 py-0.5 text-[10px] font-medium text-accent-warning">
-              fully isolated
-            </span>
-          )}
-        </div>
-        <span className="text-xs text-text-tertiary">
-          {formatDistanceToNow(createdAt, { addSuffix: true })}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={() => onUnitClick(unit.id)}
-        className="text-left w-full mb-3"
-      >
-        <p className="text-sm text-text-primary leading-relaxed line-clamp-3 hover:text-accent-primary transition-colors">
-          {unit.content}
-        </p>
-      </button>
-
-      {/* AI Context Suggestions */}
-      {sugLoading && (
-        <div className="flex items-center gap-1.5 mb-2 text-xs text-text-tertiary">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Finding matching contexts...
-        </div>
-      )}
-      {suggestions && (suggestions.suggestions.length > 0 || suggestions.newContextName) && (
-        <div className="mb-3 rounded-lg border border-accent-primary/20 bg-accent-primary/5 p-2.5 space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-accent-primary">
-            <Compass className="h-3 w-3" />
-            AI Suggested Contexts
-          </div>
-          {suggestions.suggestions.map((s) => (
-            <button
-              key={s.contextId}
-              type="button"
-              disabled={isActioning || s.alreadyLinked}
-              onClick={() => onRecover("context", s.contextId)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
-                s.alreadyLinked
-                  ? "opacity-40 cursor-not-allowed text-text-tertiary"
-                  : "text-text-secondary hover:bg-accent-primary/10 hover:text-accent-primary",
-              )}
-            >
-              <Layers className="h-3 w-3 shrink-0 text-accent-primary" />
-              <span className="flex-1 truncate">{s.contextName}</span>
-              <span className="shrink-0 rounded-full bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-accent-primary">
-                {Math.round(s.confidence * 100)}%
-              </span>
-              {s.alreadyLinked && (
-                <span className="text-[10px] text-text-tertiary">(linked)</span>
-              )}
-            </button>
-          ))}
-          {suggestions.newContextName && (
-            <button
-              type="button"
-              disabled={isActioning}
-              onClick={onCreateContext}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-text-secondary hover:bg-accent-primary/10 hover:text-accent-primary transition-colors"
-            >
-              <Sparkles className="h-3 w-3 shrink-0 text-accent-primary" />
-              <span className="flex-1 truncate">New: {suggestions.newContextName}</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <ContextPicker
-          contexts={contexts}
-          onSelect={(ctxId) => onRecover("context", ctxId)}
-          disabled={isActioning}
-        />
-        <ActionButton
-          icon={<Layers className="h-3.5 w-3.5" />}
-          label="New Context"
-          onClick={onCreateContext}
-          disabled={isActioning}
-        />
-        <ActionButton
-          icon={<Sparkles className="h-3.5 w-3.5" />}
-          label="Incubate"
-          onClick={() => onRecover("incubate")}
-          disabled={isActioning}
-        />
-        <ActionButton
-          icon={<Archive className="h-3.5 w-3.5" />}
-          label="Archive"
-          onClick={() => onRecover("archive")}
-          disabled={isActioning}
-        />
-        <ActionButton
-          icon={<Trash2 className="h-3.5 w-3.5" />}
-          label="Delete"
-          onClick={() => onRecover("delete")}
-          disabled={isActioning}
-          danger
-        />
-      </div>
     </div>
   );
 }
@@ -722,38 +507,5 @@ function DriftList({
         onSuccess={() => void utils.feedback.getDriftUnits.invalidate({ projectId })}
       />
     </div>
-  );
-}
-
-// ─── Shared Action Button ────────────────────────────────────────────
-
-function ActionButton({
-  icon,
-  label,
-  onClick,
-  disabled,
-  danger,
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-40",
-        danger
-          ? "border-border text-text-secondary hover:border-accent-danger hover:text-accent-danger"
-          : "border-border text-text-secondary hover:border-accent-primary hover:text-accent-primary",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
