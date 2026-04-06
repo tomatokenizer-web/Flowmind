@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/sortable";
 import { arrayMove } from "@dnd-kit/sortable";
 import { cn } from "~/lib/utils";
+import { useLayoutStore } from "~/stores/layout-store";
 import { useDragDrop } from "~/hooks/use-drag-drop";
 import { useContextTree } from "~/hooks/use-context-tree";
 import type { FlattenedNode } from "~/hooks/use-context-tree";
@@ -78,6 +79,9 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
     }
   }, [mergeSourceId]);
 
+  const setViewMode = useLayoutStore((s) => s.setViewMode);
+  const viewMode = useLayoutStore((s) => s.viewMode);
+
   // When merge source is set, intercept select to use it as merge target
   const handleSelectWithMerge = useCallback(
     (id: string) => {
@@ -85,9 +89,13 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
         setMergeTargetId(id);
       } else {
         setActiveContext(id);
+        // If in attention/navigate mode, switch back to canvas when a context is selected
+        if (viewMode === "attention" || viewMode === "navigate") {
+          setViewMode("canvas");
+        }
       }
     },
-    [mergeSourceId, setActiveContext],
+    [mergeSourceId, setActiveContext, viewMode, setViewMode],
   );
 
   const handleCloseMerge = useCallback(() => {
