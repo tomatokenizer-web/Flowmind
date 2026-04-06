@@ -1712,6 +1712,108 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`,
       }
     }),
 
+  // ─── Context Operations: suggest merges and splits ──────────────────────
+
+  suggestContextOperations: rateLimitedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      const contexts = await ctx.db.context.findMany({
+        where: { projectId: input.projectId },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          unitContexts: {
+            select: { unit: { select: { content: true, unitType: true } } },
+            take: 5,
+          },
+        },
+        take: 30,
+      });
+
+      if (contexts.length < 2) {
+        return { mergeSuggestions: [], splitSuggestions: [] };
+      }
+
+      const contextDescriptions = contexts.map((c, i) => {
+        const samples = c.unitContexts
+          .map((uc) => `  [${uc.unit.unitType}] ${uc.unit.content.slice(0, 80)}`)
+          .join("\n");
+        return `[${i}] id:${c.id} "${c.name}"${c.description ? ` — ${c.description}` : ""}\n${samples || "  (empty)"}`;
+      }).join("\n\n");
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const prompt = `Analyze these contexts from a knowledge project and suggest which ones should be merged (overlapping themes) or split (too broad/mixed topics).
+
+Contexts:
+${contextDescriptions}
+
+Return ONLY a JSON object with this exact format (no other text):
+{"mergeSuggestions":[{"indexA":0,"indexB":1,"reason":"short reason","confidence":0.8}],"splitSuggestions":[{"index":0,"reason":"short reason","suggestedSplitA":"name A","suggestedSplitB":"name B","confidence":0.7}]}
+
+Rules:
+- Only suggest merges for contexts with genuinely overlapping themes (confidence >= 0.5)
+- Only suggest splits for contexts that clearly cover multiple distinct topics (confidence >= 0.5)
+- Keep reasons under 100 characters
+- It's fine to return empty arrays if no operations are warranted`;
+
+        const response = await provider.generateText(prompt, {
+          temperature: 0.3,
+          maxTokens: 1024,
+        });
+
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          return { mergeSuggestions: [], splitSuggestions: [] };
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          mergeSuggestions?: Array<{ indexA: number; indexB: number; reason: string; confidence: number }>;
+          splitSuggestions?: Array<{ index: number; reason: string; suggestedSplitA: string; suggestedSplitB: string; confidence: number }>;
+        };
+
+        const mergeSuggestions = (parsed.mergeSuggestions ?? [])
+          .filter((m) => m.indexA >= 0 && m.indexA < contexts.length && m.indexB >= 0 && m.indexB < contexts.length)
+          .map((m) => ({
+            contextIdA: contexts[m.indexA]!.id,
+            contextNameA: contexts[m.indexA]!.name,
+            contextIdB: contexts[m.indexB]!.id,
+            contextNameB: contexts[m.indexB]!.name,
+            reason: m.reason,
+            confidence: Math.min(1, Math.max(0, m.confidence)),
+          }));
+
+        const splitSuggestions = (parsed.splitSuggestions ?? [])
+          .filter((s) => s.index >= 0 && s.index < contexts.length)
+          .map((s) => ({
+            contextId: contexts[s.index]!.id,
+            contextName: contexts[s.index]!.name,
+            reason: s.reason,
+            suggestedSplitA: s.suggestedSplitA,
+            suggestedSplitB: s.suggestedSplitB,
+            confidence: Math.min(1, Math.max(0, s.confidence)),
+          }));
+
+        return { mergeSuggestions, splitSuggestions };
+      } catch (error: unknown) {
+        handleAIError(error, "Suggest context operations");
+        return { mergeSuggestions: [], splitSuggestions: [] };
+      }
+    }),
+
   // ─── Context Suggestion: suggest existing contexts for a unit ───────────
 
   suggestContextForUnit: rateLimitedProcedure
