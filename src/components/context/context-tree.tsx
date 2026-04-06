@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useState, useRef, useCallback } from "react";
 import { Layers, Plus } from "lucide-react";
+import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 import { DndContext } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -104,6 +106,24 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
     },
     [moveContext],
   );
+
+  // ─── Reset Relations ──────────────────────────────────────────
+  const resetRelationsMutation = api.ai.resetContextRelations.useMutation({
+    onSuccess: (data) => {
+      if (data) {
+        toast.success("Relations reset", {
+          description: `Deleted ${data.deleted}, created ${data.created} new relations`,
+        });
+      }
+    },
+    onError: () => toast.error("Failed to reset relations"),
+  });
+
+  const handleResetRelations = useCallback((id: string) => {
+    if (window.confirm("Reset all relations between units in this context? Existing relations will be deleted and recreated by AI.")) {
+      resetRelationsMutation.mutate({ contextId: id });
+    }
+  }, [resetRelationsMutation]);
 
   // ─── Reorder helpers ─────────────────────────────────────────────
 
@@ -251,6 +271,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
             onSplit={handleSplit}
             onMerge={handleMergeStart}
             onMove={handleMoveStart}
+            onResetRelations={handleResetRelations}
             onKeyboardReorder={handleKeyboardReorder}
           />
         ))}
@@ -351,6 +372,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
                   onSplit={handleSplit}
                   onMerge={handleMergeStart}
                   onMove={handleMoveStart}
+                  onResetRelations={handleResetRelations}
                   onKeyboardReorder={handleKeyboardReorder}
                 />
               ))}

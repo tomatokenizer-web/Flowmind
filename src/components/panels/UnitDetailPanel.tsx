@@ -13,6 +13,8 @@ import {
   GitCommitHorizontal,
   Network,
   Trash2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -181,6 +183,10 @@ export function UnitDetailPanel({
   const setActiveTab = usePanelStore((s) => s.setActiveTab);
   const openPanel = usePanelStore((s) => s.openPanel);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  const [zoom, setZoom] = React.useState(100);
+  const zoomIn = () => setZoom((z) => Math.min(z + 10, 150));
+  const zoomOut = () => setZoom((z) => Math.max(z - 10, 70));
+  const zoomReset = () => setZoom(100);
 
   return (
     <ComponentErrorBoundary>
@@ -191,6 +197,22 @@ export function UnitDetailPanel({
           {unit ? "Unit Detail" : "Details"}
         </h2>
         <div className="flex items-center gap-1 shrink-0">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-0.5 mr-1 border-r border-border pr-1">
+            <Button variant="ghost" size="icon" onClick={zoomOut} aria-label="Zoom out" className="h-7 w-7" disabled={zoom <= 70}>
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <button
+              onClick={zoomReset}
+              className="text-[10px] font-medium text-text-tertiary hover:text-text-secondary min-w-[32px] text-center"
+              aria-label="Reset zoom"
+            >
+              {zoom}%
+            </button>
+            <Button variant="ghost" size="icon" onClick={zoomIn} aria-label="Zoom in" className="h-7 w-7" disabled={zoom >= 150}>
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           {unit && onDelete && (
             <Button
               variant="ghost"
@@ -256,8 +278,8 @@ export function UnitDetailPanel({
             ))}
           </TabsList>
 
-          <ScrollArea className="flex-1">
-            <div className="p-space-4">
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-space-4" style={{ fontSize: `${zoom}%` }}>
               <TabsContent value="connections" className="mt-0">
                 <ConnectionsTab
                   unitId={unit.id}

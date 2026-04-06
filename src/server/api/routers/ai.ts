@@ -749,6 +749,187 @@ Prioritize diversity: suggest different types and relationships, not just more o
       }
     }),
 
+  /**
+   * Create a derived unit, link it to origin, optionally assign to a context,
+   * and auto-relate with existing units in that context.
+   */
+  createDerivationInContext: rateLimitedProcedure
+    .input(z.object({
+      /** The source unit this derivation comes from */
+      sourceUnitId: z.string().uuid(),
+      /** Content of the new derived unit */
+      content: z.string().min(1).max(2000),
+      /** Unit type for the new unit */
+      unitType: z.enum(["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"]),
+      /** Relation type from source → new unit */
+      relationToOrigin: z.string().min(1),
+      /** Project to create the unit in */
+      projectId: z.string().uuid(),
+      /** Optional: context to assign the new unit to */
+      contextId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      // Verify ownership
+      const sourceUnit = await ctx.db.unit.findFirst({
+        where: { id: input.sourceUnitId, userId },
+        select: { id: true },
+      });
+      if (!sourceUnit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Source unit not found" });
+      }
+
+      // 1. Create the derived unit
+      const newUnit = await ctx.db.unit.create({
+        data: {
+          content: input.content,
+          unitType: input.unitType,
+          lifecycle: "draft",
+          originType: "ai_refined",
+          sourceSpan: { derivedFrom: input.sourceUnitId },
+          projectId: input.projectId,
+          userId,
+        },
+        select: { id: true, content: true, unitType: true },
+      });
+
+      // 2. Create relation from source → derived
+      await ctx.db.relation.create({
+        data: {
+          sourceUnitId: input.sourceUnitId,
+          targetUnitId: newUnit.id,
+          type: input.relationToOrigin,
+          strength: 0.7,
+          direction: "one_way",
+          purpose: ["derivation"],
+        },
+      });
+
+      let autoRelatedCount = 0;
+
+      // 3. If contextId provided, assign to context and auto-relate
+      if (input.contextId) {
+        const context = await ctx.db.context.findFirst({
+          where: { id: input.contextId, project: { userId } },
+          select: { id: true },
+        });
+        if (!context) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+        }
+
+        // Add unit to context
+        await ctx.db.unitContext.create({
+          data: { unitId: newUnit.id, contextId: input.contextId },
+        }).catch(() => {
+          // Ignore duplicate — unit may already be in context
+        });
+
+        // Get other units in this context for auto-relation
+        const contextLinks = await ctx.db.unitContext.findMany({
+          where: { contextId: input.contextId },
+          select: { unitId: true },
+        });
+        const siblingIds = contextLinks
+          .map((l) => l.unitId)
+          .filter((id) => id !== newUnit.id && id !== input.sourceUnitId);
+
+        if (siblingIds.length > 0) {
+          // Get sibling units content for AI analysis
+          const siblings = await ctx.db.unit.findMany({
+            where: { id: { in: siblingIds.slice(0, 15) } },
+            select: { id: true, content: true, unitType: true },
+          });
+
+          if (siblings.length > 0) {
+            // Get existing relations to avoid duplicates
+            const allIds = [newUnit.id, ...siblings.map((s) => s.id)];
+            const existingRels = await ctx.db.relation.findMany({
+              where: {
+                OR: [
+                  { sourceUnitId: { in: allIds }, targetUnitId: { in: allIds } },
+                ],
+              },
+              select: { sourceUnitId: true, targetUnitId: true },
+            });
+            const existingPairs = new Set(
+              existingRels.flatMap((r) => [
+                `${r.sourceUnitId}|${r.targetUnitId}`,
+                `${r.targetUnitId}|${r.sourceUnitId}`,
+              ]),
+            );
+
+            const allUnits = [newUnit, ...siblings];
+            const unitDescriptions = allUnits
+              .map((u, i) => `[${i}] (${u.unitType}) "${u.content.slice(0, 120)}"`)
+              .join("\n");
+
+            try {
+              const { getAIProvider } = await import("@/server/ai/provider");
+              const provider = getAIProvider();
+
+              const raw = await provider.generateText(
+                `Analyze these thought units and find relations FROM unit [0] (the new unit) TO others.
+Focus only on relations involving [0].
+
+Units:
+${unitDescriptions}
+
+Available relation types: supports, contradicts, derives_from, expands, references, exemplifies, defines, questions
+
+Return ONLY JSON: {"relations":[{"sourceIndex":0,"targetIndex":1,"type":"supports","strength":0.7}]}
+Only include relations where sourceIndex=0 or targetIndex=0.`,
+                { temperature: 0.3, maxTokens: 1024 },
+              );
+
+              const jsonMatch = raw.match(/\{[\s\S]*"relations"[\s\S]*\}/);
+              if (jsonMatch) {
+                const VALID_TYPES = new Set([
+                  "supports", "contradicts", "derives_from", "expands",
+                  "references", "exemplifies", "defines", "questions",
+                ]);
+                const parsed = JSON.parse(jsonMatch[0]) as {
+                  relations: Array<{ sourceIndex: number; targetIndex: number; type: string; strength: number }>;
+                };
+                const toCreate = (parsed.relations ?? [])
+                  .filter((r) => {
+                    if (r.sourceIndex < 0 || r.sourceIndex >= allUnits.length) return false;
+                    if (r.targetIndex < 0 || r.targetIndex >= allUnits.length) return false;
+                    if (r.sourceIndex === r.targetIndex) return false;
+                    if (!VALID_TYPES.has(r.type)) return false;
+                    if (r.sourceIndex !== 0 && r.targetIndex !== 0) return false;
+                    const srcId = allUnits[r.sourceIndex]!.id;
+                    const tgtId = allUnits[r.targetIndex]!.id;
+                    return !existingPairs.has(`${srcId}|${tgtId}`);
+                  })
+                  .map((r) => ({
+                    sourceUnitId: allUnits[r.sourceIndex]!.id,
+                    targetUnitId: allUnits[r.targetIndex]!.id,
+                    type: r.type,
+                    strength: Math.round(r.strength * 100) / 100,
+                    direction: "one_way" as const,
+                  }));
+
+                if (toCreate.length > 0) {
+                  const batch = await ctx.db.relation.createMany({ data: toCreate });
+                  autoRelatedCount = batch.count;
+                }
+              }
+            } catch (error) {
+              console.error("Auto-relate in context failed:", error);
+              // Non-fatal: unit was already created and assigned
+            }
+          }
+        }
+      }
+
+      return {
+        unitId: newUnit.id,
+        contextAssigned: !!input.contextId,
+        autoRelatedCount,
+      };
+    }),
+
   refineUnit: rateLimitedProcedure
     .input(z.object({ unitId: z.string().uuid(), content: z.string().min(1) }))
     .mutation(async ({ ctx: _ctx, input }) => {
@@ -1121,7 +1302,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
   searchExternalKnowledge: rateLimitedProcedure
     .input(searchExternalKnowledgeSchema)
     .mutation(async ({ ctx: _ctx, input }): Promise<{
-      suggestions: Array<{ title: string; description: string; relevance: string }>;
+      suggestions: Array<{ title: string; description: string; relevance: string; url?: string }>;
       relatedConcepts: string[];
     }> => {
       const sessionId = resolveSessionId(input.sessionId);
@@ -1138,13 +1319,14 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
               title: zod.string(),
               description: zod.string(),
               relevance: zod.string(),
+              url: zod.string().url().optional(),
             })
           ),
           relatedConcepts: zod.array(zod.string()),
         });
 
         const result = await provider.generateStructured<{
-          suggestions: Array<{ title: string; description: string; relevance: string }>;
+          suggestions: Array<{ title: string; description: string; relevance: string; url?: string }>;
           relatedConcepts: string[];
         }>(
           `You are a knowledgeable research assistant. Given the following query or topic, suggest 3-5 highly relevant resources, topics, or concepts that would deepen understanding of it.
@@ -1152,10 +1334,10 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
 Query: "${input.query.slice(0, 400)}"
 
 Return structured JSON with:
-- suggestions: array of { title, description, relevance } where relevance explains why it's helpful
+- suggestions: array of { title, description, relevance, url? } where relevance explains why it's helpful. If you are confident about the URL (e.g., Wikipedia pages, DOI links, official documentation), include it in the url field. Only provide URLs you are highly confident exist. Do not fabricate URLs.
 - relatedConcepts: 3-6 brief related concept names
 
-Focus on academic, scientific, or well-established knowledge sources. Do not invent URLs or authors.`,
+Focus on academic, scientific, or well-established knowledge sources.`,
           {
             temperature: 0.5,
             maxTokens: 1024,
@@ -1172,6 +1354,7 @@ Focus on academic, scientific, or well-established knowledge sources. Do not inv
                       title: { type: "string", description: "Topic or resource title" },
                       description: { type: "string", description: "Brief description of the resource/topic" },
                       relevance: { type: "string", description: "Why this is relevant to the query" },
+                      url: { type: "string", description: "Optional URL if highly confident it exists (e.g., Wikipedia, DOI, official docs)" },
                     },
                     required: ["title", "description", "relevance"],
                   },
@@ -1343,6 +1526,189 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`;
         };
       } catch (error: unknown) {
         handleAIError(error, "Auto-relate units");
+      }
+    }),
+
+  // ─── Generate context title from constituent units ────────────────────
+
+  generateContextTitle: rateLimitedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, project: { userId } },
+        select: { id: true, name: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+      const contextName = context.name;
+
+      const contextLinks = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unitId: true },
+      });
+      const unitIds = contextLinks.map((u) => u.unitId);
+      if (unitIds.length === 0) {
+        return { title: contextName, updated: false };
+      }
+
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: unitIds } },
+        select: { content: true, unitType: true },
+        take: 30,
+      });
+
+      const unitSummary = units
+        .map((u) => `(${u.unitType}) "${u.content.slice(0, 80)}"`)
+        .join("\n");
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      try {
+        const raw = await provider.generateText(
+          `You are naming a context (a thematic grouping of thought units).
+Based on these ${units.length} units, generate a concise, descriptive title (3-8 words, English).
+The title should capture the overarching theme or topic.
+
+Units:
+${unitSummary}
+
+Return ONLY the title text, nothing else.`,
+          { temperature: 0.4, maxTokens: 50 },
+        );
+
+        const title = raw.trim().replace(/^["']|["']$/g, "").slice(0, 100);
+        if (title) {
+          await ctx.db.context.update({
+            where: { id: input.contextId },
+            data: { name: title },
+          });
+          return { title, updated: true };
+        }
+        return { title: contextName, updated: false };
+      } catch (error: unknown) {
+        handleAIError(error, "Generate context title");
+        return { title: contextName, updated: false };
+      }
+    }),
+
+  // ─── Reset relations for context (delete + re-create with AI) ─────────
+
+  resetContextRelations: rateLimitedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, project: { userId } },
+        select: { id: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+
+      // Get all unit IDs in this context
+      const contextLinks = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unitId: true },
+      });
+      const unitIds = contextLinks.map((u) => u.unitId);
+
+      if (unitIds.length < 2) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Need at least 2 units to reset relations." });
+      }
+
+      // Delete all existing relations between units in this context
+      const deleted = await ctx.db.relation.deleteMany({
+        where: {
+          sourceUnitId: { in: unitIds },
+          targetUnitId: { in: unitIds },
+        },
+      });
+
+      // Now fetch units for autoRelate
+      const units = await ctx.db.unit.findMany({
+        where: { id: { in: unitIds } },
+        select: { id: true, content: true, unitType: true },
+        take: 50,
+      });
+
+      const unitDescriptions = units
+        .map((u, i) => `[${i}] id:${u.id} (${u.unitType}) "${u.content.slice(0, 120)}"`)
+        .join("\n");
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      const VALID_TYPES = new Set([
+        "supports", "contradicts", "derives_from", "expands",
+        "references", "exemplifies", "defines", "questions",
+      ]);
+
+      try {
+        const raw = await provider.generateText(
+          `Analyze ALL the following thought units and identify meaningful relations between them.
+Find as many genuine relations as possible — aim for comprehensive coverage.
+
+Units:
+${unitDescriptions}
+
+Available relation types: supports, contradicts, derives_from, expands, references, exemplifies, defines, questions
+
+Return ONLY a JSON object with this exact format (no other text):
+{"relations":[{"sourceIndex":0,"targetIndex":1,"type":"supports","strength":0.8}]}
+
+Each relation: sourceIndex (int), targetIndex (int), type (one of the types above), strength (0.0-1.0).
+Be thorough — even weak relations (0.3+) are valuable for navigation.`,
+          { temperature: 0.3, maxTokens: 2048 },
+        );
+
+        const jsonMatch = raw.match(/\{[\s\S]*"relations"[\s\S]*\}/);
+        if (!jsonMatch) {
+          return { deleted: deleted.count, created: 0, analyzed: units.length };
+        }
+        const result = JSON.parse(jsonMatch[0]) as {
+          relations: Array<{ sourceIndex: number; targetIndex: number; type: string; strength: number }>;
+        };
+
+        const relations = Array.isArray(result.relations) ? result.relations : [];
+        const toCreate = relations
+          .filter((r) => {
+            if (typeof r.sourceIndex !== "number" || typeof r.targetIndex !== "number") return false;
+            if (r.sourceIndex < 0 || r.sourceIndex >= units.length) return false;
+            if (r.targetIndex < 0 || r.targetIndex >= units.length) return false;
+            if (r.sourceIndex === r.targetIndex) return false;
+            return VALID_TYPES.has(r.type);
+          })
+          .map((r) => ({
+            sourceUnitId: units[r.sourceIndex]!.id,
+            targetUnitId: units[r.targetIndex]!.id,
+            type: r.type,
+            strength: Math.round(r.strength * 100) / 100,
+            direction: "one_way" as const,
+          }));
+
+        let createdCount = 0;
+        if (toCreate.length > 0) {
+          const batch = await ctx.db.relation.createMany({ data: toCreate });
+          createdCount = batch.count;
+        }
+
+        return {
+          deleted: deleted.count,
+          created: createdCount,
+          analyzed: units.length,
+        };
+      } catch (error: unknown) {
+        handleAIError(error, "Reset context relations");
+        return { deleted: deleted.count, created: 0, analyzed: units.length };
       }
     }),
 

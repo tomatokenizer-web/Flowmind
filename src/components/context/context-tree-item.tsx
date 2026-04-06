@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChevronRight, Hash, Pencil, Trash2, Plus, Move, Scissors, Merge } from "lucide-react";
+import { ChevronRight, Hash, Pencil, Trash2, Plus, Move, Scissors, Merge, RefreshCw } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "~/lib/utils";
@@ -32,6 +32,7 @@ interface ContextTreeItemProps {
   onSplit?: (id: string) => void;
   onMerge?: (id: string) => void;
   onMove?: (id: string) => void;
+  onResetRelations?: (id: string) => void;
   onKeyboardReorder?: (id: string, direction: "up" | "down") => void;
 }
 
@@ -52,6 +53,7 @@ export function ContextTreeItem({
   onSplit,
   onMerge,
   onMove,
+  onResetRelations,
   onKeyboardReorder,
 }: ContextTreeItemProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -374,6 +376,12 @@ export function ContextTreeItem({
           <ContextMenuItem onSelect={() => onMerge(node.id)}>
             <Merge className="mr-2 h-4 w-4" />
             Merge With...
+          </ContextMenuItem>
+        )}
+        {onResetRelations && (
+          <ContextMenuItem onSelect={() => onResetRelations(node.id)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Reset Relations (AI)
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />

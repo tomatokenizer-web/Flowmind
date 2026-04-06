@@ -350,10 +350,17 @@ function OrphanList({
   onUnitClick: (id: string) => void;
 }) {
   const utils = api.useUtils();
+
+  const { data: contexts = [] } = api.context.list.useQuery(
+    { projectId },
+    { enabled: !!projectId },
+  );
+
   const recoverOrphan = api.feedback.recoverOrphan.useMutation({
     onSuccess: (result) => {
       void utils.feedback.getOrphanUnits.invalidate({ projectId });
       void utils.incubation.list.invalidate();
+      void utils.context.list.invalidate({ projectId });
       const labels: Record<string, string> = {
         archive: "Archived",
         delete: "Deleted",
@@ -364,6 +371,26 @@ function OrphanList({
     },
     onError: () => toast.error("Action failed"),
   });
+
+  const createContext = api.context.create.useMutation({
+    onSuccess: (newCtx) => {
+      void utils.context.list.invalidate({ projectId });
+      toast.success("Context created", { description: newCtx.name });
+    },
+    onError: () => toast.error("Failed to create context"),
+  });
+
+  const handleCreateContextForOrphan = (unitId: string, unitContent: string) => {
+    const name = unitContent.slice(0, 60).trim() || "New Context";
+    createContext.mutate(
+      { name, projectId },
+      {
+        onSuccess: (newCtx) => {
+          recoverOrphan.mutate({ unitId, action: "context", contextId: newCtx.id });
+        },
+      },
+    );
+  };
 
   if (isLoading) return <LoadingCards />;
   if (orphans.length === 0) return <EmptyState icon={Unlink} message="No orphan units. All units are connected." />;
@@ -399,7 +426,18 @@ function OrphanList({
                 {unit.content}
               </p>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <ContextPicker
+                contexts={contexts}
+                onSelect={(ctxId) => recoverOrphan.mutate({ unitId: unit.id, action: "context", contextId: ctxId })}
+                disabled={recoverOrphan.isPending || createContext.isPending}
+              />
+              <ActionButton
+                icon={<Layers className="h-3.5 w-3.5" />}
+                label="New Context"
+                onClick={() => handleCreateContextForOrphan(unit.id, unit.content)}
+                disabled={recoverOrphan.isPending || createContext.isPending}
+              />
               <ActionButton
                 icon={<Sparkles className="h-3.5 w-3.5" />}
                 label="Incubate"

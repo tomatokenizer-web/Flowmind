@@ -7,6 +7,7 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   Loader2,
   Plus,
   Search,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { toast } from "~/lib/toast";
+import { useAITabCacheStore } from "~/stores/aiTabCacheStore";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -22,6 +24,7 @@ interface KnowledgeSuggestion {
   title: string;
   description: string;
   relevance: string;
+  url?: string;
 }
 
 interface ExternalKnowledgePanelProps {
@@ -53,9 +56,25 @@ function SuggestionCard({
             className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-primary"
             aria-hidden="true"
           />
-          <p className="text-sm font-medium text-text-primary leading-snug">
-            {suggestion.title}
-          </p>
+          <div className="text-sm font-medium leading-snug">
+            <span className="text-text-primary">{suggestion.title}</span>
+            {suggestion.url && (
+              <a
+                href={suggestion.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "ml-1.5 inline-flex items-center gap-0.5 text-xs font-normal",
+                  "text-accent-primary/70 hover:text-accent-primary",
+                  "transition-colors",
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                <span className="underline underline-offset-2">Source</span>
+              </a>
+            )}
+          </div>
         </div>
         <button
           type="button"
@@ -119,6 +138,9 @@ export function ExternalKnowledgePanel({
   className,
 }: ExternalKnowledgePanelProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const aiCache = useAITabCacheStore((s) => s.getCache(unitId));
+  const setKnowledgeResults = useAITabCacheStore((s) => s.setKnowledgeResults);
+
   // Derive a short plain-text query from unit content
   const defaultQuery = React.useMemo(
     () =>
@@ -129,19 +151,32 @@ export function ExternalKnowledgePanel({
     [unitContent],
   );
 
-  const [query, setQuery] = React.useState(defaultQuery);
+  const [query, setQuery] = React.useState(aiCache.knowledgeQuery || defaultQuery);
 
-  // Reset query when unit changes
+  // Reset query when unit changes (only if no cached query)
   React.useEffect(() => {
-    setQuery(
-      unitContent
-        .replace(/<[^>]*>/g, "")
-        .trim()
-        .slice(0, 200),
-    );
+    const cached = useAITabCacheStore.getState().getCache(unitId);
+    if (!cached.knowledgeQuery) {
+      setQuery(
+        unitContent
+          .replace(/<[^>]*>/g, "")
+          .trim()
+          .slice(0, 200),
+      );
+    }
   }, [unitId, unitContent]);
 
+  // Restore open state if there are cached results
+  React.useEffect(() => {
+    if (aiCache.knowledgeResults.length > 0) {
+      setIsOpen(true);
+    }
+  }, [unitId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const searchMutation = api.ai.searchExternalKnowledge.useMutation({
+    onSuccess: (data) => {
+      setKnowledgeResults(unitId, data.suggestions, query);
+    },
     onError: (err) => {
       toast.error("Knowledge search failed", { description: err.message });
     },
@@ -156,7 +191,11 @@ export function ExternalKnowledgePanel({
     if (e.key === "Enter") handleSearch();
   };
 
-  const results = searchMutation.data;
+  // Use mutation data if fresh, otherwise fall back to cached results
+  const results = searchMutation.data ?? (aiCache.knowledgeResults.length > 0 ? {
+    suggestions: aiCache.knowledgeResults,
+    relatedConcepts: [],
+  } : null);
 
   return (
     <div className={cn("rounded-xl border border-border", className)}>

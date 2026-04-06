@@ -49,11 +49,19 @@ export function useContextActions(_projectId: string | undefined) {
 
   // ── Merge ──
 
+  const generateTitleMutation = api.ai.generateContextTitle.useMutation({
+    onSuccess: () => {
+      invalidate();
+    },
+  });
+
   const mergeMutation = api.context.merge.useMutation({
     onSuccess: (data) => {
       invalidate();
       if (data?.id) {
         setActiveContext(data.id);
+        // Auto-generate AI title for the merged context
+        generateTitleMutation.mutate({ contextId: data.id });
       }
     },
   });
