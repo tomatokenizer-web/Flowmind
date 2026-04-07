@@ -11,7 +11,7 @@ import { cn } from "~/lib/utils";
 interface ContextAISuggestionsProps {
   projectId: string;
   onMerge: (sourceId: string, targetId: string) => void;
-  onSplit: (contextId: string) => void;
+  onSplit: (contextId: string, suggestedNameA?: string, suggestedNameB?: string) => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ export function ContextAISuggestions({ projectId, onMerge, onSplit }: ContextAIS
             <button
               key={`split-${i}`}
               type="button"
-              onClick={() => onSplit(s.contextId)}
+              onClick={() => onSplit(s.contextId, s.suggestedSplitA, s.suggestedSplitB)}
               className={cn(
                 "w-full rounded-md border border-border bg-bg-surface p-space-2 text-left",
                 "hover:bg-bg-hover transition-colors duration-fast",

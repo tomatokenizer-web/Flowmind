@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChevronRight, Hash, Pencil, Trash2, Plus, Move, Scissors, Merge, RefreshCw } from "lucide-react";
+import { ChevronRight, Hash, Pencil, Trash2, Plus, Move, Scissors, Merge, RefreshCw, Sparkles } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "~/lib/utils";
@@ -33,6 +33,7 @@ interface ContextTreeItemProps {
   onMerge?: (id: string) => void;
   onMove?: (id: string) => void;
   onResetRelations?: (id: string) => void;
+  onAIRename?: (id: string) => void;
   onKeyboardReorder?: (id: string, direction: "up" | "down") => void;
 }
 
@@ -54,6 +55,7 @@ export function ContextTreeItem({
   onMerge,
   onMove,
   onResetRelations,
+  onAIRename,
   onKeyboardReorder,
 }: ContextTreeItemProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -172,7 +174,6 @@ export function ContextTreeItem({
       <div
         ref={setNodeRef}
         {...attributes}
-        {...listeners}
         role="treeitem"
         tabIndex={0}
         aria-expanded={node.hasChildren ? isExpanded : undefined}
@@ -356,6 +357,12 @@ export function ContextTreeItem({
           <Pencil className="mr-2 h-4 w-4" />
           Rename
         </ContextMenuItem>
+        {onAIRename && (
+          <ContextMenuItem onSelect={() => onAIRename(node.id)}>
+            <Sparkles className="mr-2 h-4 w-4 text-accent-primary" />
+            AI Rename
+          </ContextMenuItem>
+        )}
         <ContextMenuItem onSelect={() => onAddSubContext(node.id)}>
           <Plus className="mr-2 h-4 w-4" />
           Add Sub-Context

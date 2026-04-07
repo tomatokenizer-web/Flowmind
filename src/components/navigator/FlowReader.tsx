@@ -147,6 +147,25 @@ export function FlowReader({
     { enabled: !!currentUnitId && sidebarOpen },
   );
 
+  // ── Load navigator bridges (inline bridge content) ──────────────
+  const { data: navData } = api.navigator.list.useQuery(
+    { projectId },
+    { enabled: !!navigatorId },
+  );
+  const currentNavBridges = React.useMemo(() => {
+    if (!navigatorId || !navData) return [];
+    const nav = navData.find((n) => n.id === navigatorId);
+    if (!nav || !Array.isArray(nav.bridges)) return [];
+    return nav.bridges as Array<{
+      afterStepIndex: number; content: string; unitType: string; rationale?: string;
+    }>;
+  }, [navigatorId, navData]);
+
+  const bridgeAfterCurrentStep = React.useMemo(
+    () => currentNavBridges.find((b) => b.afterStepIndex === step),
+    [currentNavBridges, step],
+  );
+
   // ── Mutations ────────────────────────────────────────────────────
   const createUnit = api.unit.create.useMutation({
     onSuccess: () => {
@@ -548,6 +567,30 @@ export function FlowReader({
                 )}
               </motion.div>
             </AnimatePresence>
+
+            {/* Bridge interstitial after current step */}
+            {bridgeAfterCurrentStep && canNext && (
+              <div className="mt-3 w-full max-w-2xl mx-auto">
+                <div className="rounded-xl border border-dashed border-amber-500/50 bg-amber-500/5 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30">
+                      Bridge
+                    </span>
+                    <span className="text-[10px] text-amber-600/70 dark:text-amber-400/70 capitalize">
+                      {bridgeAfterCurrentStep.unitType}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-text-primary">
+                    {bridgeAfterCurrentStep.content}
+                  </p>
+                  {bridgeAfterCurrentStep.rationale && (
+                    <p className="text-[10px] text-text-tertiary italic">
+                      {bridgeAfterCurrentStep.rationale}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Next button */}
@@ -601,9 +644,9 @@ export function FlowReader({
                             {type.replace(/_/g, " ")} ({units.length})
                           </span>
                         </div>
-                        {units.map((u) => (
+                        {units.map((u, ui) => (
                           <BranchCard
-                            key={u.id}
+                            key={`${type}-${u.id}-${ui}`}
                             content={u.content}
                             unitType={u.unitType}
                             isInPath={pathSet.has(u.id)}

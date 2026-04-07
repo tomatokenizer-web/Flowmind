@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap, ScanSearch } from "lucide-react";
+import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap, ScanSearch, ArrowUpFromLine, Lightbulb } from "lucide-react";
 import { FlowReader } from "./FlowReader";
 import { PathPreviewDialog, type PathProposal } from "./PathPreviewDialog";
 import { api } from "~/trpc/react";
@@ -156,13 +156,32 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
   const acceptBridgeUnits = api.ai.acceptBridgeUnits.useMutation({
     onSuccess: (result) => {
       void utils.navigator.list.invalidate({ projectId });
-      void utils.unit.list.invalidate();
-      void utils.unit.listByIds.invalidate();
-      setAnalyzingGaps(null);
-      toast.success(`${result.createdUnits.length} bridge unit${result.createdUnits.length !== 1 ? "s" : ""} created`);
+      toast.success(`${result.bridgesAdded} bridge${result.bridgesAdded !== 1 ? "s" : ""} added to path`);
     },
     onError: () => {
-      toast.error("Failed to create bridge units");
+      toast.error("Failed to add bridges");
+    },
+  });
+
+  const promoteBridge = api.ai.promoteBridge.useMutation({
+    onSuccess: () => {
+      void utils.navigator.list.invalidate({ projectId });
+      void utils.unit.list.invalidate();
+      void utils.unit.listByIds.invalidate();
+      toast.success("Bridge promoted to real unit");
+    },
+    onError: () => {
+      toast.error("Failed to promote bridge");
+    },
+  });
+
+  const dismissBridge = api.ai.dismissBridge.useMutation({
+    onSuccess: () => {
+      void utils.navigator.list.invalidate({ projectId });
+      toast.success("Bridge dismissed");
+    },
+    onError: () => {
+      toast.error("Failed to dismiss bridge");
     },
   });
 
@@ -336,7 +355,50 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
               </div>
             )}
 
-            {/* Bridge gap suggestions */}
+            {/* Inline bridges stored on navigator */}
+            {activeNavId === nav.id && Array.isArray(nav.bridges) && (nav.bridges as Array<{ afterStepIndex: number; content: string; unitType: string; rationale?: string }>).length > 0 && (
+              <div className="border-t border-border px-3 py-2 space-y-1.5">
+                <p className="text-[10px] font-medium text-text-tertiary uppercase tracking-wide">
+                  Inline Bridges ({(nav.bridges as unknown[]).length})
+                </p>
+                {(nav.bridges as Array<{ afterStepIndex: number; content: string; unitType: string; rationale?: string }>).map((bridge, bi) => (
+                  <div key={bi} className="rounded border border-dashed border-amber-500/40 bg-amber-500/5 p-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400">After step {bridge.afterStepIndex + 1}</span>
+                        <span className="text-[10px] font-medium capitalize px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                          {bridge.unitType}
+                        </span>
+                      </div>
+                      <div className="flex gap-0.5">
+                        <button
+                          type="button"
+                          title="Promote to real unit"
+                          disabled={promoteBridge.isPending}
+                          onClick={() => promoteBridge.mutate({ navigatorId: nav.id, projectId, afterStepIndex: bridge.afterStepIndex })}
+                          className="p-0.5 rounded text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                        >
+                          <ArrowUpFromLine className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Dismiss bridge"
+                          disabled={dismissBridge.isPending}
+                          onClick={() => dismissBridge.mutate({ navigatorId: nav.id, afterStepIndex: bridge.afterStepIndex })}
+                          className="p-0.5 rounded text-text-tertiary hover:text-accent-danger transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-text-primary line-clamp-2">{bridge.content}</p>
+                    {bridge.rationale && <p className="text-[10px] text-text-tertiary italic">{bridge.rationale}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Bridge gap analysis results (pending acceptance) */}
             {activeNavId === nav.id && analyzingGaps === nav.id && detectBridgeGaps.data && detectBridgeGaps.data.bridges.length > 0 && (
               <div className="border-t border-border px-3 py-2 space-y-2">
                 <p className="text-xs font-medium text-accent-primary">
@@ -361,19 +423,20 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
                     onClick={() => {
                       acceptBridgeUnits.mutate({
                         navigatorId: nav.id,
-                        projectId,
                         bridges: detectBridgeGaps.data!.bridges.map((b) => ({
                           afterStepIndex: b.afterStepIndex,
                           content: b.content,
                           unitType: b.unitType,
+                          rationale: b.rationale,
                           relationToPrev: b.relationToPrev,
                           relationToNext: b.relationToNext,
                         })),
                       });
+                      setAnalyzingGaps(null);
                     }}
                     className="text-[10px] font-medium text-accent-primary hover:bg-accent-primary/10 px-2 py-1 rounded transition-colors"
                   >
-                    {acceptBridgeUnits.isPending ? "Creating..." : "Accept all bridges"}
+                    {acceptBridgeUnits.isPending ? "Adding..." : "Accept all as inline bridges"}
                   </button>
                   <button
                     type="button"
@@ -383,6 +446,32 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
                     Dismiss
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Completeness suggestions */}
+            {activeNavId === nav.id && analyzingGaps === nav.id && detectBridgeGaps.data && "completeness" in detectBridgeGaps.data && ((detectBridgeGaps.data as { completeness?: Array<{ suggestion: string; unitType: string; priority: string }> }).completeness ?? []).length > 0 && (
+              <div className="border-t border-border px-3 py-2 space-y-1.5">
+                <p className="text-xs font-medium text-text-secondary flex items-center gap-1">
+                  <Lightbulb className="h-3 w-3" />
+                  Completeness Suggestions
+                </p>
+                {((detectBridgeGaps.data as { completeness?: Array<{ suggestion: string; unitType: string; priority: string }> }).completeness ?? []).map((cs: { suggestion: string; unitType: string; priority: string }, ci: number) => (
+                  <div key={ci} className="rounded border border-border bg-bg-surface p-2 flex items-start gap-2">
+                    <span className={cn(
+                      "shrink-0 mt-0.5 rounded px-1 py-0.5 text-[9px] font-bold uppercase",
+                      cs.priority === "high" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                        : cs.priority === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                    )}>
+                      {cs.priority}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-primary">{cs.suggestion}</p>
+                      <span className="text-[10px] text-text-tertiary capitalize">{cs.unitType}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

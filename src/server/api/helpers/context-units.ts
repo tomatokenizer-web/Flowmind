@@ -15,7 +15,10 @@ export async function getContextUnits(
   if (!contextId) return [];
   const units = await db.unit.findMany({
     where: {
-      perspectives: { some: { contextId } },
+      OR: [
+        { unitContexts: { some: { contextId } } },
+        { perspectives: { some: { contextId } } },
+      ],
     },
     select: { id: true, content: true, unitType: true },
     take: limit,

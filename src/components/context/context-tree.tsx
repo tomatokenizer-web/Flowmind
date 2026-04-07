@@ -34,6 +34,7 @@ interface ContextTreeProps {
 // ─── Component ──────────────────────────────────────────────────────
 
 export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
+  const utils = api.useUtils();
   const {
     tree,
     flatNodes,
@@ -55,8 +56,15 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
 
   // Split/merge dialog state
   const [splitTargetId, setSplitTargetId] = useState<string | null>(null);
+  const [splitSuggestedNames, setSplitSuggestedNames] = useState<{ a?: string; b?: string }>({});
   const [mergeSourceId, setMergeSourceId] = useState<string | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+
+  // Snapshot merge dialog props so it survives context deletion after merge
+  const [mergeDialogProps, setMergeDialogProps] = useState<{
+    contextIdA: string; contextNameA: string;
+    contextIdB: string; contextNameB: string;
+  } | null>(null);
 
   // Move dialog state
   const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
@@ -87,6 +95,15 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
   const handleSelectWithMerge = useCallback(
     (id: string) => {
       if (mergeSourceId && mergeSourceId !== id) {
+        // Snapshot names before merge deletes them
+        const source = flatNodes.find((n) => n.id === mergeSourceId);
+        const target = flatNodes.find((n) => n.id === id);
+        if (source && target) {
+          setMergeDialogProps({
+            contextIdA: source.id, contextNameA: source.name,
+            contextIdB: target.id, contextNameB: target.name,
+          });
+        }
         setMergeTargetId(id);
       } else {
         setActiveContext(id);
@@ -96,12 +113,13 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
         }
       }
     },
-    [mergeSourceId, setActiveContext, viewMode, setViewMode],
+    [mergeSourceId, flatNodes, setActiveContext, viewMode, setViewMode],
   );
 
   const handleCloseMerge = useCallback(() => {
     setMergeSourceId(null);
     setMergeTargetId(null);
+    setMergeDialogProps(null);
   }, []);
 
   const handleMoveStart = useCallback((id: string) => {
@@ -133,6 +151,24 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
       resetRelationsMutation.mutate({ contextId: id });
     }
   }, [resetRelationsMutation]);
+
+  // ─── AI Rename ────────────────────────────────────────────────
+  const aiRenameMutation = api.ai.generateContextTitle.useMutation({
+    onSuccess: (data) => {
+      if (data?.title && data.updated) {
+        void utils.context.list.invalidate();
+        toast.success("Context renamed", { description: data.title });
+      } else {
+        toast.error("AI could not generate a title");
+      }
+    },
+    onError: () => toast.error("Failed to generate AI title"),
+  });
+
+  const handleAIRename = useCallback((id: string) => {
+    aiRenameMutation.mutate({ contextId: id, save: true });
+    toast.info("Generating AI title...");
+  }, [aiRenameMutation]);
 
   // ─── Reorder helpers ─────────────────────────────────────────────
 
@@ -281,6 +317,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
             onMerge={handleMergeStart}
             onMove={handleMoveStart}
             onResetRelations={handleResetRelations}
+            onAIRename={handleAIRename}
             onKeyboardReorder={handleKeyboardReorder}
           />
         ))}
@@ -382,6 +419,7 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
                   onMerge={handleMergeStart}
                   onMove={handleMoveStart}
                   onResetRelations={handleResetRelations}
+            onAIRename={handleAIRename}
                   onKeyboardReorder={handleKeyboardReorder}
                 />
               ))}
@@ -405,8 +443,22 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
       {projectId && !collapsed && (
         <ContextAISuggestions
           projectId={projectId}
-          onMerge={(a, b) => { setMergeSourceId(a); setMergeTargetId(b); }}
-          onSplit={(id) => setSplitTargetId(id)}
+          onMerge={(a, b) => {
+            const source = flatNodes.find((n) => n.id === a);
+            const target = flatNodes.find((n) => n.id === b);
+            if (source && target) {
+              setMergeDialogProps({
+                contextIdA: source.id, contextNameA: source.name,
+                contextIdB: target.id, contextNameB: target.name,
+              });
+            }
+            setMergeSourceId(a);
+            setMergeTargetId(b);
+          }}
+          onSplit={(id, nameA, nameB) => {
+            setSplitTargetId(id);
+            setSplitSuggestedNames({ a: nameA, b: nameB });
+          }}
         />
       )}
 
@@ -431,22 +483,24 @@ export function ContextTree({ projectId, collapsed }: ContextTreeProps) {
       {splitTarget && projectId && (
         <ContextSplitDialog
           open={!!splitTargetId}
-          onOpenChange={(v) => { if (!v) setSplitTargetId(null); }}
+          onOpenChange={(v) => { if (!v) { setSplitTargetId(null); setSplitSuggestedNames({}); } }}
           contextId={splitTarget.id}
           contextName={splitTarget.name}
           projectId={projectId}
+          suggestedNameA={splitSuggestedNames.a}
+          suggestedNameB={splitSuggestedNames.b}
         />
       )}
 
-      {/* Merge Dialog */}
-      {mergeSource && mergeTarget && projectId && (
+      {/* Merge Dialog — uses snapshotted props so it survives context deletion */}
+      {mergeDialogProps && projectId && (
         <ContextMergeDialog
-          open={!!mergeTargetId}
+          open={!!mergeDialogProps}
           onOpenChange={(v) => { if (!v) handleCloseMerge(); }}
-          contextIdA={mergeSource.id}
-          contextNameA={mergeSource.name}
-          contextIdB={mergeTarget.id}
-          contextNameB={mergeTarget.name}
+          contextIdA={mergeDialogProps.contextIdA}
+          contextNameA={mergeDialogProps.contextNameA}
+          contextIdB={mergeDialogProps.contextIdB}
+          contextNameB={mergeDialogProps.contextNameB}
           projectId={projectId}
         />
       )}

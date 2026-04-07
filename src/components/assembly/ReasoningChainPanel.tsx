@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, GitBranch, Plus, Trash2, ArrowDown } from "lucide-react";
+import { ChevronDown, GitBranch, Plus, Trash2, ArrowDown, Sparkles, Loader2 } from "lucide-react";
 import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 
@@ -279,6 +280,7 @@ interface ReasoningChainPanelProps {
 }
 
 export function ReasoningChainPanel({ contextId }: ReasoningChainPanelProps) {
+  const utils = api.useUtils();
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeChainId, setActiveChainId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -287,6 +289,21 @@ export function ReasoningChainPanel({ contextId }: ReasoningChainPanelProps) {
     { contextId },
     { enabled: isOpen },
   );
+
+  const aiGenerateMutation = api.ai.generateReasoningChains.useMutation({
+    onSuccess: (data) => {
+      void utils.reasoningChain.list.invalidate({ contextId });
+      if (data.chains.length > 0) {
+        const desc = data.bridgeUnitsCreated > 0
+          ? `Created ${data.bridgeUnitsCreated} bridge unit${data.bridgeUnitsCreated > 1 ? "s" : ""} to fill logical gaps`
+          : undefined;
+        toast.success(`Generated ${data.chains.length} reasoning chain${data.chains.length > 1 ? "s" : ""}`, { description: desc });
+      } else {
+        toast.info("No reasoning chains found in this context");
+      }
+    },
+    onError: () => toast.error("Failed to generate reasoning chains"),
+  });
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
@@ -358,15 +375,30 @@ export function ReasoningChainPanel({ contextId }: ReasoningChainPanelProps) {
                 </p>
               )}
 
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => setCreating(true)}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                New chain
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 justify-center"
+                  onClick={() => setCreating(true)}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  New chain
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 justify-center gap-1"
+                  onClick={() => aiGenerateMutation.mutate({ contextId })}
+                  disabled={aiGenerateMutation.isPending}
+                >
+                  {aiGenerateMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {aiGenerateMutation.isPending ? "Generating..." : "AI Generate"}
+                </Button>
+              </div>
             </div>
           )}
         </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Scissors } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Scissors, Sparkles, Loader2 } from "lucide-react";
+import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import {
   Dialog,
@@ -32,6 +33,8 @@ interface ContextSplitDialogProps {
   contextId: string;
   contextName: string;
   projectId: string;
+  suggestedNameA?: string;
+  suggestedNameB?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────────────
@@ -42,12 +45,14 @@ export function ContextSplitDialog({
   contextId,
   contextName,
   projectId,
+  suggestedNameA,
+  suggestedNameB,
 }: ContextSplitDialogProps) {
   const { splitContext, isSplitting, useUnitsForContext } = useContextActions(projectId);
   const { data: unitContexts, isLoading } = useUnitsForContext(open ? contextId : null);
 
-  const [nameA, setNameA] = useState("");
-  const [nameB, setNameB] = useState("");
+  const [nameA, setNameA] = useState(suggestedNameA ?? "");
+  const [nameB, setNameB] = useState(suggestedNameB ?? "");
   const [assignments, setAssignments] = useState<Map<string, Assignment>>(new Map());
 
   const units: UnitItem[] = useMemo(
@@ -112,9 +117,47 @@ export function ContextSplitDialog({
     resetForm();
   };
 
+  // Sync suggested names when dialog opens
+  useEffect(() => {
+    if (open) {
+      setNameA(suggestedNameA ?? "");
+      setNameB(suggestedNameB ?? "");
+      setAssignments(new Map());
+    }
+  }, [open, suggestedNameA, suggestedNameB]);
+
+  // AI-suggested unit allocation
+  const suggestSplitMutation = api.ai.suggestSplitAllocation.useMutation();
+  const [isAllocating, setIsAllocating] = useState(false);
+
+  const handleAISuggestAllocation = async () => {
+    if (units.length === 0) return;
+    setIsAllocating(true);
+    try {
+      const result = await suggestSplitMutation.mutateAsync({
+        contextId,
+        nameA: nameA.trim() || "A",
+        nameB: nameB.trim() || "B",
+      });
+      if (result?.allocations) {
+        const newAssignments = new Map<string, Assignment>();
+        for (const alloc of result.allocations) {
+          if (alloc.group === "A" || alloc.group === "B") {
+            newAssignments.set(alloc.unitId, alloc.group);
+          }
+        }
+        setAssignments(newAssignments);
+      }
+    } catch {
+      // Silent fail — user can still assign manually
+    } finally {
+      setIsAllocating(false);
+    }
+  };
+
   const resetForm = () => {
-    setNameA("");
-    setNameB("");
+    setNameA(suggestedNameA ?? "");
+    setNameB(suggestedNameB ?? "");
     setAssignments(new Map());
   };
 
@@ -185,9 +228,25 @@ export function ContextSplitDialog({
 
         {/* Unit assignment */}
         <div className="pt-2">
-          <p className="mb-2 text-xs font-medium text-text-secondary">
-            Assign units ({units.length})
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-medium text-text-secondary">
+              Assign units ({units.length})
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAISuggestAllocation}
+              disabled={isAllocating || units.length === 0}
+              className="h-6 gap-1 text-xs text-accent-primary"
+            >
+              {isAllocating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {isAllocating ? "Allocating..." : "AI Suggest"}
+            </Button>
+          </div>
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (

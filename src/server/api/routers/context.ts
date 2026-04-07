@@ -50,7 +50,7 @@ const splitContextSchema = z.object({
 const mergeContextSchema = z.object({
   contextIdA: z.string().uuid(),
   contextIdB: z.string().uuid(),
-  mergedName: z.string().min(1).max(100),
+  mergedName: z.string().min(1).max(200),
   conflictResolutions: z.array(z.object({
     unitId: z.string().uuid(),
     keepFrom: z.enum(["A", "B"]),

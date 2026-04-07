@@ -502,6 +502,7 @@ model Navigator {
   purpose     String?  @db.VarChar(30)
   contextId   String   @map("context_id") @db.Uuid
   path        String[] @default([]) @db.Uuid
+  bridges     Json     @default("[]")
   context     Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
 
   @@index([contextId])

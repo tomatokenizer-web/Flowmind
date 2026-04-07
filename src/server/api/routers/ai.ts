@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import type { UnitType } from "@prisma/client";
+import type { UnitType, Prisma } from "@prisma/client";
 import { createAIService, generateSessionId, createSafetyGuard, enforceRateLimit } from "@/server/ai";
 import { TRPCError } from "@trpc/server";
 import { getContextUnits } from "@/server/api/helpers/context-units";
@@ -1534,6 +1534,7 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`;
   generateContextTitle: rateLimitedProcedure
     .input(z.object({
       contextId: z.string().uuid(),
+      save: z.boolean().optional().default(true),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id!;
@@ -1584,11 +1585,13 @@ Return ONLY the title text, nothing else.`,
 
         const title = raw.trim().replace(/^["']|["']$/g, "").slice(0, 100);
         if (title) {
-          await ctx.db.context.update({
-            where: { id: input.contextId },
-            data: { name: title },
-          });
-          return { title, updated: true };
+          if (input.save) {
+            await ctx.db.context.update({
+              where: { id: input.contextId },
+              data: { name: title },
+            });
+          }
+          return { title, updated: input.save };
         }
         return { title: contextName, updated: false };
       } catch (error: unknown) {
@@ -1834,6 +1837,85 @@ Rules:
       } catch (error: unknown) {
         handleAIError(error, "Suggest context operations");
         return { mergeSuggestions: [], splitSuggestions: [] };
+      }
+    }),
+
+  // ─── Suggest unit allocation for context split ──────────────────────────
+
+  suggestSplitAllocation: rateLimitedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+      nameA: z.string().min(1).max(200),
+      nameB: z.string().min(1).max(200),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, project: { userId } },
+        select: { id: true, name: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+
+      const unitLinks = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unit: { select: { id: true, content: true, unitType: true } } },
+        take: 50,
+      });
+
+      if (unitLinks.length === 0) {
+        return { allocations: [] };
+      }
+
+      const units = unitLinks.map((ul, i) => ({
+        index: i,
+        id: ul.unit.id,
+        summary: `(${ul.unit.unitType}) "${ul.unit.content.slice(0, 100)}"`,
+      }));
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      try {
+        const response = await provider.generateText(
+          `You are splitting the context "${context.name}" into two sub-contexts:
+- Group A: "${input.nameA}"
+- Group B: "${input.nameB}"
+
+Assign each unit to group A, B, or "parent" (keep in original).
+
+Units:
+${units.map((u) => `[${u.index}] ${u.summary}`).join("\n")}
+
+Return ONLY a JSON array (no other text):
+[{"index":0,"group":"A"},{"index":1,"group":"B"},{"index":2,"group":"parent"}]`,
+          { temperature: 0.3, maxTokens: 2000 },
+        );
+
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) return { allocations: [] };
+
+        const AllocationSchema = z.array(z.object({
+          index: z.number(),
+          group: z.enum(["A", "B", "parent"]),
+        }));
+
+        const parsed = AllocationSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (!parsed.success) return { allocations: [] };
+
+        const allocations = parsed.data
+          .filter((a) => a.index >= 0 && a.index < units.length)
+          .map((a) => ({
+            unitId: units[a.index]!.id,
+            group: a.group,
+          }));
+
+        return { allocations };
+      } catch (error: unknown) {
+        handleAIError(error, "Suggest split allocation");
+        return { allocations: [] };
       }
     }),
 
@@ -2337,27 +2419,41 @@ Rules:
             relationToPrev: string;
             relationToNext: string;
           }>;
+          completeness?: Array<{
+            suggestion: string;
+            unitType: string;
+            priority: "high" | "medium" | "low";
+          }>;
         }>(
-          `You are analyzing a reading path for conceptual coherence. Here are the steps:
+          `You are analyzing a reading path for conceptual coherence and completeness. Here are the steps:
 
 ${stepDescriptions}
 
-Identify 0-3 gaps where the conceptual flow breaks between adjacent steps. For each gap, suggest a bridge unit that would make the transition smoother. Only suggest bridges where there's a genuine logical disconnect — not every transition needs one.
+Do TWO things:
+
+1. **Bridge gaps** (0-3): Identify gaps where the conceptual flow breaks between adjacent steps. For each gap, suggest a bridge unit that would make the transition smoother. Only suggest bridges where there's a genuine logical disconnect — not every transition needs one.
 
 For each bridge, specify:
 - afterStepIndex: the step index after which to insert (0-based)
-- content: the full text of the suggested bridge unit
+- content: the full text of the suggested bridge unit (max 2000 chars)
 - unitType: the appropriate type (claim, question, evidence, etc.)
 - rationale: why this bridge is needed
 - relationToPrev: relation type to the unit before (supports, expands, derives_from, etc.)
-- relationToNext: relation type to the unit after`,
+- relationToNext: relation type to the unit after
+
+2. **Completeness suggestions** (0-5): Identify what's MISSING from this path to make the argument/narrative more complete. These are suggestions for NEW real units the user should consider creating. Think about: missing evidence, unanswered questions, unstated assumptions, absent counterarguments.
+
+For each completeness suggestion, specify:
+- suggestion: description of the unit that should be created (max 500 chars)
+- unitType: the recommended type for this unit
+- priority: high (critical gap), medium (would strengthen), low (nice to have)`,
           {
             temperature: 0.5,
-            maxTokens: 1024,
+            maxTokens: 1500,
             zodSchema: BridgeSuggestionsSchema,
             schema: {
               name: "BridgeSuggestions",
-              description: "Suggested bridge units for path gaps",
+              description: "Bridge units and completeness suggestions",
               properties: {
                 bridges: {
                   type: "array",
@@ -2374,29 +2470,42 @@ For each bridge, specify:
                     required: ["afterStepIndex", "content", "unitType", "rationale", "relationToPrev", "relationToNext"],
                   },
                 },
+                completeness: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      suggestion: { type: "string" },
+                      unitType: { type: "string", enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"] },
+                      priority: { type: "string", enum: ["high", "medium", "low"] },
+                    },
+                    required: ["suggestion", "unitType", "priority"],
+                  },
+                },
               },
               required: ["bridges"],
             },
           },
         );
-        return { ...result, aiAnalyzed: true };
+        return { ...result, completeness: result.completeness ?? [], aiAnalyzed: true };
       } catch (error) {
         console.error("detectBridgeGaps AI call failed:", error);
-        return { bridges: [], aiAnalyzed: false };
+        return { bridges: [], completeness: [], aiAnalyzed: false };
       }
     }),
 
   /**
-   * Accept bridge unit suggestions: create units, relations, and insert into navigator path.
+   * Accept bridge suggestions: store as inline bridges on the navigator (NOT real units).
+   * Bridge data lives in navigator.bridges JSON — path remains UUID-only.
    */
   acceptBridgeUnits: protectedProcedure
     .input(z.object({
       navigatorId: z.string().uuid(),
-      projectId: z.string().uuid(),
       bridges: z.array(z.object({
         afterStepIndex: z.number().int().min(0),
-        content: z.string().min(1),
+        content: z.string().min(1).max(2000),
         unitType: z.string(),
+        rationale: z.string().max(500).optional(),
         relationToPrev: z.string(),
         relationToNext: z.string(),
       })),
@@ -2407,65 +2516,143 @@ For each bridge, specify:
       });
       if (!nav) throw new TRPCError({ code: "NOT_FOUND", message: "Navigator not found" });
 
-      const userId = ctx.session.user.id!;
-      const newPath = [...nav.path];
-      const createdUnits: string[] = [];
+      // Merge new bridges with existing ones, avoiding duplicate afterStepIndex
+      const existing = (Array.isArray(nav.bridges) ? nav.bridges : []) as Array<Record<string, unknown>>;
+      const existingIndexes = new Set(existing.map((b) => b.afterStepIndex));
 
-      // Sort bridges by afterStepIndex descending so insertions don't shift earlier indices
-      const sorted = [...input.bridges].sort((a, b) => b.afterStepIndex - a.afterStepIndex);
+      const newBridges = input.bridges
+        .filter((b) => !existingIndexes.has(b.afterStepIndex))
+        .map((b) => ({
+          afterStepIndex: b.afterStepIndex,
+          content: b.content,
+          unitType: b.unitType,
+          rationale: b.rationale ?? "",
+          relationToPrev: b.relationToPrev,
+          relationToNext: b.relationToNext,
+        }));
 
-      for (const bridge of sorted) {
-        const newUnit = await ctx.db.unit.create({
-          data: {
-            content: bridge.content,
-            unitType: bridge.unitType as never,
-            lifecycle: "draft",
-            originType: "ai_generated",
-            sourceSpan: { bridgeFor: input.navigatorId },
-            projectId: input.projectId,
-            userId,
-          },
-        });
-        createdUnits.push(newUnit.id);
+      const allBridges = [...existing, ...newBridges]
+        .sort((a, b) => (a.afterStepIndex as number) - (b.afterStepIndex as number));
 
-        // Create relations to adjacent units
-        const prevUnitId = newPath[bridge.afterStepIndex];
-        const nextUnitId = newPath[bridge.afterStepIndex + 1];
-
-        if (prevUnitId) {
-          await ctx.db.relation.create({
-            data: {
-              sourceUnitId: prevUnitId,
-              targetUnitId: newUnit.id,
-              type: bridge.relationToPrev,
-              strength: 0.7,
-              direction: "one_way",
-            },
-          });
-        }
-        if (nextUnitId) {
-          await ctx.db.relation.create({
-            data: {
-              sourceUnitId: newUnit.id,
-              targetUnitId: nextUnitId,
-              type: bridge.relationToNext,
-              strength: 0.7,
-              direction: "one_way",
-            },
-          });
-        }
-
-        // Insert into path at the correct position
-        newPath.splice(bridge.afterStepIndex + 1, 0, newUnit.id);
-      }
-
-      // Update navigator with new path
       await ctx.db.navigator.update({
         where: { id: input.navigatorId },
-        data: { path: newPath },
+        data: { bridges: JSON.parse(JSON.stringify(allBridges)) as Prisma.InputJsonValue },
       });
 
-      return { createdUnits, updatedPath: newPath };
+      return { bridgesAdded: newBridges.length, totalBridges: allBridges.length };
+    }),
+
+  /**
+   * Promote an inline bridge to a real unit — creates the unit, relations,
+   * inserts it into the navigator path, and removes it from bridges JSON.
+   */
+  promoteBridge: protectedProcedure
+    .input(z.object({
+      navigatorId: z.string().uuid(),
+      projectId: z.string().uuid(),
+      afterStepIndex: z.number().int().min(0),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const nav = await ctx.db.navigator.findFirst({
+        where: { id: input.navigatorId, context: { project: { userId: ctx.session.user.id! } } },
+      });
+      if (!nav) throw new TRPCError({ code: "NOT_FOUND", message: "Navigator not found" });
+
+      const bridges = (Array.isArray(nav.bridges) ? nav.bridges : []) as Array<{
+        afterStepIndex: number; content: string; unitType: string;
+        relationToPrev: string; relationToNext: string;
+      }>;
+
+      const bridge = bridges.find((b) => b.afterStepIndex === input.afterStepIndex);
+      if (!bridge) throw new TRPCError({ code: "NOT_FOUND", message: "Bridge not found at that index" });
+
+      const userId = ctx.session.user.id!;
+
+      // Create the real unit
+      const newUnit = await ctx.db.unit.create({
+        data: {
+          content: bridge.content,
+          unitType: bridge.unitType as never,
+          lifecycle: "draft",
+          originType: "ai_generated",
+          projectId: input.projectId,
+          userId,
+        },
+      });
+
+      // Create relations to adjacent path units
+      const newPath = [...nav.path];
+      const prevUnitId = newPath[bridge.afterStepIndex];
+      const nextUnitId = newPath[bridge.afterStepIndex + 1];
+
+      const relationCreates = [];
+      if (prevUnitId) {
+        relationCreates.push(ctx.db.relation.create({
+          data: {
+            sourceUnitId: prevUnitId, targetUnitId: newUnit.id,
+            type: bridge.relationToPrev, strength: 0.7, direction: "one_way",
+          },
+        }));
+      }
+      if (nextUnitId) {
+        relationCreates.push(ctx.db.relation.create({
+          data: {
+            sourceUnitId: newUnit.id, targetUnitId: nextUnitId,
+            type: bridge.relationToNext, strength: 0.7, direction: "one_way",
+          },
+        }));
+      }
+      await Promise.all(relationCreates);
+
+      // Insert unit into path and remove bridge from JSON
+      newPath.splice(bridge.afterStepIndex + 1, 0, newUnit.id);
+
+      // Reindex remaining bridges: those after the promoted one shift +1
+      const remainingBridges = bridges
+        .filter((b) => b.afterStepIndex !== input.afterStepIndex)
+        .map((b) => ({
+          ...b,
+          afterStepIndex: b.afterStepIndex > input.afterStepIndex
+            ? b.afterStepIndex + 1
+            : b.afterStepIndex,
+        }));
+
+      await ctx.db.navigator.update({
+        where: { id: input.navigatorId },
+        data: { path: newPath, bridges: JSON.parse(JSON.stringify(remainingBridges)) as Prisma.InputJsonValue },
+      });
+
+      // Link to context
+      await ctx.db.unitContext.create({
+        data: { unitId: newUnit.id, contextId: nav.contextId },
+      }).catch(() => { /* duplicate ok */ });
+
+      return { unitId: newUnit.id, updatedPath: newPath };
+    }),
+
+  /**
+   * Remove an inline bridge from a navigator without creating a real unit.
+   */
+  dismissBridge: protectedProcedure
+    .input(z.object({
+      navigatorId: z.string().uuid(),
+      afterStepIndex: z.number().int().min(0),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const nav = await ctx.db.navigator.findFirst({
+        where: { id: input.navigatorId, context: { project: { userId: ctx.session.user.id! } } },
+      });
+      if (!nav) throw new TRPCError({ code: "NOT_FOUND", message: "Navigator not found" });
+
+      const bridges = (Array.isArray(nav.bridges) ? nav.bridges : []) as Array<Record<string, unknown>>;
+      const filtered = bridges.filter((b) => b.afterStepIndex !== input.afterStepIndex);
+
+      await ctx.db.navigator.update({
+        where: { id: input.navigatorId },
+        data: { bridges: JSON.parse(JSON.stringify(filtered)) as Prisma.InputJsonValue },
+      });
+
+      return { remaining: filtered.length };
     }),
 
   // ─── Navigation Path: Derivation Placement ─────────────────────────
@@ -2674,5 +2861,167 @@ Decide:
       }
 
       return { updatedNavigators: updated };
+    }),
+
+  // ─── AI-generate reasoning chains for a context ─────────────────────────
+
+  generateReasoningChains: rateLimitedProcedure
+    .input(z.object({
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, project: { userId } },
+        select: { id: true, name: true, projectId: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+      }
+
+      // Get units in this context
+      const unitLinks = await ctx.db.unitContext.findMany({
+        where: { contextId: input.contextId },
+        select: { unit: { select: { id: true, content: true, unitType: true } } },
+        take: 40,
+      });
+
+      if (unitLinks.length < 2) {
+        return { chains: [], bridgeUnitsCreated: 0 };
+      }
+
+      const units = unitLinks.map((ul, i) => ({
+        index: i,
+        id: ul.unit.id,
+        type: ul.unit.unitType,
+        content: ul.unit.content.slice(0, 150),
+      }));
+
+      // Also fetch existing relations for richer analysis
+      const unitIds = units.map((u) => u.id);
+      const relations = await ctx.db.relation.findMany({
+        where: {
+          sourceUnitId: { in: unitIds },
+          targetUnitId: { in: unitIds },
+        },
+        select: { sourceUnitId: true, targetUnitId: true, type: true },
+        take: 100,
+      });
+
+      const relDesc = relations.length > 0
+        ? `\n\nExisting relations:\n${relations.map((r) => `${r.sourceUnitId.slice(0, 8)} -[${r.type}]-> ${r.targetUnitId.slice(0, 8)}`).join("\n")}`
+        : "";
+
+      const { getAIProvider } = await import("@/server/ai/provider");
+      const provider = getAIProvider();
+
+      try {
+        const response = await provider.generateText(
+          `You are analyzing thought units in the context "${context.name}" to build reasoning chains.
+
+A reasoning chain is a logical argument: premises → inferences → conclusions.
+Between existing units, there may be logical gaps. When the reasoning jump between two consecutive steps is too large or unnatural, create a BRIDGE unit to fill the gap.
+
+Units:
+${units.map((u) => `[${u.index}] (${u.type}) "${u.content}"`).join("\n")}${relDesc}
+
+Find 1-3 reasoning chains. For each chain:
+- Give it a descriptive name (3-8 words) and a goal/thesis
+- Assign existing units by index with role: "premise", "inference", or "conclusion"
+- Where there's a logical gap between steps, insert a bridge step with:
+  - "bridge": true
+  - "content": the bridging thought (1-2 sentences)
+  - "unitType": one of claim, observation, inference, assumption, evidence
+  - "role": the role this bridge plays in the chain
+
+Return ONLY a JSON array (no other text):
+[{"name":"chain name","goal":"thesis","steps":[
+  {"index":0,"role":"premise"},
+  {"bridge":true,"content":"bridging thought here","unitType":"claim","role":"inference"},
+  {"index":2,"role":"conclusion"}
+]}]`,
+          { temperature: 0.4, maxTokens: 3000 },
+        );
+
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) return { chains: [], bridgeUnitsCreated: 0 };
+
+        const StepSchema = z.union([
+          z.object({
+            index: z.number(),
+            role: z.enum(["premise", "inference", "conclusion"]),
+            bridge: z.literal(false).optional(),
+          }),
+          z.object({
+            bridge: z.literal(true),
+            content: z.string(),
+            unitType: z.string(),
+            role: z.enum(["premise", "inference", "conclusion"]),
+          }),
+        ]);
+
+        const ChainSchema = z.array(z.object({
+          name: z.string(),
+          goal: z.string(),
+          steps: z.array(StepSchema),
+        }));
+
+        const parsed = ChainSchema.safeParse(JSON.parse(jsonMatch[0]));
+        if (!parsed.success) return { chains: [], bridgeUnitsCreated: 0 };
+
+        // Create reasoning chains, materializing bridge units
+        const created = [];
+        let bridgeCount = 0;
+
+        for (const chain of parsed.data) {
+          const resolvedSteps: Array<{ unitId: string; role: string; order: number }> = [];
+          let order = 0;
+
+          for (const step of chain.steps) {
+            if ("bridge" in step && step.bridge === true) {
+              // Create a new bridge unit
+              const bridgeUnit = await ctx.db.unit.create({
+                data: {
+                  content: step.content.slice(0, 2000),
+                  unitType: step.unitType as "claim" | "observation" | "assumption" | "evidence" | "idea",
+                  userId,
+                  projectId: context.projectId,
+                  originType: "ai_generated",
+                  lifecycle: "confirmed",
+                },
+              });
+              // Link bridge unit to context
+              await ctx.db.unitContext.create({
+                data: { unitId: bridgeUnit.id, contextId: input.contextId },
+              });
+              resolvedSteps.push({ unitId: bridgeUnit.id, role: step.role, order });
+              bridgeCount++;
+            } else if ("index" in step) {
+              if (step.index >= 0 && step.index < units.length) {
+                resolvedSteps.push({ unitId: units[step.index]!.id, role: step.role, order });
+              }
+            }
+            order++;
+          }
+
+          if (resolvedSteps.length < 2) continue;
+
+          const record = await ctx.db.reasoningChain.create({
+            data: {
+              name: chain.name.slice(0, 200),
+              goal: chain.goal.slice(0, 1000),
+              contextId: input.contextId,
+              steps: resolvedSteps,
+            },
+          });
+          created.push(record);
+        }
+
+        return { chains: created, bridgeUnitsCreated: bridgeCount };
+      } catch (error: unknown) {
+        handleAIError(error, "Generate reasoning chains");
+        return { chains: [], bridgeUnitsCreated: 0 };
+      }
     }),
 });

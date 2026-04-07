@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, Prisma } from "@prisma/client";
 import { createContextRepository } from "@/server/repositories/contextRepository";
 import { TRPCError } from "@trpc/server";
 
@@ -290,12 +290,17 @@ export function createContextService(db: PrismaClient) {
           tx.unitContext.findMany({ where: { contextId: input.contextIdB } }),
         ]);
 
+        // Batch-create unit links (deduplicated)
         const addedUnits = new Set<string>();
+        const unitContextData: Array<{ unitId: string; contextId: string }> = [];
         for (const uc of [...unitsA, ...unitsB]) {
           if (!addedUnits.has(uc.unitId)) {
             addedUnits.add(uc.unitId);
-            await tx.unitContext.create({ data: { unitId: uc.unitId, contextId: merged.id } });
+            unitContextData.push({ unitId: uc.unitId, contextId: merged.id });
           }
+        }
+        if (unitContextData.length > 0) {
+          await tx.unitContext.createMany({ data: unitContextData, skipDuplicates: true });
         }
 
         // Copy perspectives, resolving conflicts
@@ -310,26 +315,17 @@ export function createContextService(db: PrismaClient) {
 
         const perspMapB = new Map(perspB.map((p) => [p.unitId, p]));
         const copiedUnits = new Set<string>();
+        const perspectiveData: Prisma.UnitPerspectiveCreateManyInput[] = [];
 
         // Process A perspectives
         for (const p of perspA) {
           const bConflict = perspMapB.get(p.unitId);
           const keepFrom = resolutionMap.get(p.unitId);
-
-          if (bConflict && keepFrom === "B") continue; // skip A, will copy B
-
-          await tx.unitPerspective.create({
-            data: {
-              unitId: p.unitId,
-              contextId: merged.id,
-              type: p.type,
-              stance: p.stance,
-              importance: p.importance,
-              note: p.note,
-              canvasX: p.canvasX,
-              canvasY: p.canvasY,
-              canvasZoom: p.canvasZoom,
-            },
+          if (bConflict && keepFrom === "B") continue;
+          perspectiveData.push({
+            unitId: p.unitId, contextId: merged.id,
+            type: p.type, stance: p.stance, importance: p.importance,
+            note: p.note, canvasX: p.canvasX, canvasY: p.canvasY, canvasZoom: p.canvasZoom,
           });
           copiedUnits.add(p.unitId);
         }
@@ -337,20 +333,15 @@ export function createContextService(db: PrismaClient) {
         // Process B perspectives (only those not already copied)
         for (const p of perspB) {
           if (copiedUnits.has(p.unitId)) continue;
-
-          await tx.unitPerspective.create({
-            data: {
-              unitId: p.unitId,
-              contextId: merged.id,
-              type: p.type,
-              stance: p.stance,
-              importance: p.importance,
-              note: p.note,
-              canvasX: p.canvasX,
-              canvasY: p.canvasY,
-              canvasZoom: p.canvasZoom,
-            },
+          perspectiveData.push({
+            unitId: p.unitId, contextId: merged.id,
+            type: p.type, stance: p.stance, importance: p.importance,
+            note: p.note, canvasX: p.canvasX, canvasY: p.canvasY, canvasZoom: p.canvasZoom,
           });
+        }
+
+        if (perspectiveData.length > 0) {
+          await tx.unitPerspective.createMany({ data: perspectiveData, skipDuplicates: true });
         }
 
         // Move children of both contexts to merged
@@ -368,7 +359,7 @@ export function createContextService(db: PrismaClient) {
         await tx.context.delete({ where: { id: input.contextIdB } });
 
         return txRepo.findById(merged.id);
-      });
+      }, { timeout: 30000 });
     },
   };
 }

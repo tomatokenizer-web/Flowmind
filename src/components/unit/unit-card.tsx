@@ -231,8 +231,8 @@ export function UnitCard({
         TYPE_BORDER_COLORS[unit.unitType],
 
         // Lifecycle states
-        isDraft && "border-dashed opacity-80 bg-lifecycle-draft-bg",
-        isPending && "border-l-lifecycle-pending-border bg-lifecycle-pending-bg/30",
+        isDraft && "border-dashed",
+        isPending && "border-l-lifecycle-pending-border",
 
         // Selected state (from prop or global selection store)
         (selected || isSelected) && "ring-2 ring-accent-primary",

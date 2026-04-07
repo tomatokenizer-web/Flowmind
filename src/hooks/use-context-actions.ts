@@ -49,19 +49,11 @@ export function useContextActions(_projectId: string | undefined) {
 
   // ── Merge ──
 
-  const generateTitleMutation = api.ai.generateContextTitle.useMutation({
-    onSuccess: () => {
-      invalidate();
-    },
-  });
-
   const mergeMutation = api.context.merge.useMutation({
     onSuccess: (data) => {
       invalidate();
       if (data?.id) {
         setActiveContext(data.id);
-        // Auto-generate AI title for the merged context
-        generateTitleMutation.mutate({ contextId: data.id });
       }
     },
   });
@@ -71,6 +63,17 @@ export function useContextActions(_projectId: string | undefined) {
       return mergeMutation.mutateAsync(input);
     },
     [mergeMutation],
+  );
+
+  // ── AI title suggestion (dry run — does not save) ──
+
+  const suggestTitleMutation = api.ai.generateContextTitle.useMutation();
+
+  const suggestTitle = useCallback(
+    async (contextId: string) => {
+      return suggestTitleMutation.mutateAsync({ contextId, save: false });
+    },
+    [suggestTitleMutation],
   );
 
   // ── Units for context (used by split dialog) ──
@@ -99,6 +102,9 @@ export function useContextActions(_projectId: string | undefined) {
     mergeContexts,
     isMerging: mergeMutation.isPending,
     mergeError: mergeMutation.error,
+
+    suggestTitle,
+    isSuggestingTitle: suggestTitleMutation.isPending,
 
     useUnitsForContext,
     useMergeConflicts,

@@ -259,6 +259,13 @@ export const BridgeSuggestionsSchema = z.object({
       relationToNext: relationTypeEnum,
     })
   ).max(5),
+  completeness: z.array(
+    z.object({
+      suggestion: z.string().max(500),
+      unitType: unitTypeEnum,
+      priority: z.enum(["high", "medium", "low"]),
+    })
+  ).max(5).optional(),
 });
 
 export const DerivationPlacementSchema = z.object({
