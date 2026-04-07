@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
+import { createLifecycleService, InvalidTransitionError } from "@/server/services/lifecycleService";
 import { TRPCError } from "@trpc/server";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────
@@ -48,6 +49,53 @@ const aiTrustLevelEnum = z.enum(["user_authored", "verified", "inferred", "uncer
 
 const energyLevelEnum = z.enum(["high", "neutral", "low"]);
 
+// ─── v3.14 New Enums ──────────────────────────────────────────────
+
+const lifecycleStateEnum = z.enum(["draft", "confirmed", "deferred", "archived"]);
+
+const unitKindEnum = z.enum(["thought", "resource", "shadow"]);
+
+const voiceEnum = z.enum([
+  "original", "ai_assisted", "ai_refined", "ai_sourced", "external", "imported",
+]);
+
+const typeConfidenceEnum = z.enum(["high", "medium", "low"]);
+
+const epistemicActEnum = z.enum([
+  "assert", "hypothesize", "predict",
+  "ask", "challenge",
+  "endorse", "critique", "concede", "refute",
+  "define", "distinguish", "classify",
+  "decompose", "synthesize", "generalize", "specialize",
+  "reframe", "analogize",
+  "retract", "revise",
+]);
+
+const epistemicOriginEnum = z.enum([
+  "first_person_experience", "first_person_inference",
+  "received_testimony", "institutional_record",
+  "consensus_knowledge", "formal_derivation",
+]);
+
+const applicabilityScopeEnum = z.enum([
+  "universal", "domain_universal", "context_conditional",
+  "instance_specific", "personal",
+]);
+
+const temporalValidityEnum = z.enum([
+  "atemporal", "durable", "current", "time_bounded", "historical", "recurrent",
+]);
+
+const revisabilityEnum = z.enum([
+  "immutable", "evidence_revisable", "authority_revisable",
+  "convention_revisable", "personally_revisable",
+]);
+
+const warrantCommunityEnum = z.enum([
+  "universal_competent", "disciplinary_expert", "institutional",
+  "community_relative", "personal_authority",
+]);
+
 const createUnitSchema = z.object({
   content: z.string().min(1, "Content is required").max(50000),
   projectId: z.string().uuid(),
@@ -71,6 +119,25 @@ const createUnitSchema = z.object({
   parentInputId: z.string().optional(),
   conversationId: z.string().optional(),
   meta: z.record(z.unknown()).optional(),
+  // v3.14 fields
+  unitKind: unitKindEnum.optional(),
+  sourceText: z.string().max(50000).optional(),
+  lifecycleState: lifecycleStateEnum.optional(),
+  voice: voiceEnum.optional(),
+  authoredBy: z.string().max(200).optional(),
+  primaryType: unitTypeEnum.optional(),
+  secondaryTypes: z.array(unitTypeEnum).optional(),
+  typeConfidence: typeConfidenceEnum.optional(),
+  primaryEpistemicAct: epistemicActEnum.optional(),
+  secondaryEpistemicActs: z.array(epistemicActEnum).optional(),
+  epistemicOrigin: epistemicOriginEnum.optional(),
+  applicabilityScope: applicabilityScopeEnum.optional(),
+  temporalValidity: temporalValidityEnum.optional(),
+  revisability: revisabilityEnum.optional(),
+  warrantCommunity: warrantCommunityEnum.optional(),
+  stalenessAfter: z.string().max(100).optional(),
+  falsificationCondition: z.string().max(2000).optional(),
+  recurrencePeriod: z.string().max(100).optional(),
 });
 
 const updateUnitSchema = z.object({
@@ -93,12 +160,37 @@ const updateUnitSchema = z.object({
   locked: z.boolean().optional(),
   actionRequired: z.boolean().optional(),
   meta: z.record(z.unknown()).optional(),
+  // v3.14 fields
+  unitKind: unitKindEnum.optional(),
+  sourceText: z.string().max(50000).optional(),
+  lifecycleState: lifecycleStateEnum.optional(),
+  voice: voiceEnum.optional(),
+  authoredBy: z.string().max(200).optional(),
+  primaryType: unitTypeEnum.optional(),
+  secondaryTypes: z.array(unitTypeEnum).optional(),
+  typeConfidence: typeConfidenceEnum.optional(),
+  primaryEpistemicAct: epistemicActEnum.optional(),
+  secondaryEpistemicActs: z.array(epistemicActEnum).optional(),
+  epistemicOrigin: epistemicOriginEnum.optional(),
+  applicabilityScope: applicabilityScopeEnum.optional(),
+  temporalValidity: temporalValidityEnum.optional(),
+  revisability: revisabilityEnum.optional(),
+  warrantCommunity: warrantCommunityEnum.optional(),
+  stalenessAfter: z.string().max(100).optional(),
+  falsificationCondition: z.string().max(2000).optional(),
+  recurrencePeriod: z.string().max(100).optional(),
+  aiReviewPending: z.boolean().optional(),
+  localOnly: z.boolean().optional(),
+  evergreenUnit: z.boolean().optional(),
+  controversialFlag: z.boolean().optional(),
 });
 
 const listUnitsSchema = z.object({
   projectId: z.string().uuid().optional(),
   lifecycle: lifecycleEnum.optional(),
+  lifecycleState: lifecycleStateEnum.optional(),
   unitType: unitTypeEnum.optional(),
+  unitKind: unitKindEnum.optional(),
   contextId: z.string().uuid().optional(),
   search: z.string().max(500).optional(),
   cursor: z.string().uuid().optional(),
@@ -249,6 +341,65 @@ export const unitRouter = createTRPCRouter({
         input.targetState,
         ctx.session.user.id!,
       );
+    }),
+
+  // v3.14 4-state lifecycle transition (uses lifecycleState field)
+  lifecycleTransitionV2: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        targetState: lifecycleStateEnum,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+
+      const lifecycleService = createLifecycleService(ctx.db);
+      try {
+        const result = await lifecycleService.transition(
+          input.id,
+          input.targetState,
+          ctx.session.user.id!,
+        );
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+        }
+        return result;
+      } catch (error) {
+        if (error instanceof InvalidTransitionError) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    }),
+
+  // v3.14 available transitions query
+  availableTransitions: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { lifecycleState: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+      const lifecycleService = createLifecycleService(ctx.db);
+      const currentState = unit.lifecycleState ?? "draft";
+      return {
+        currentState,
+        availableTargets: lifecycleService.getAvailableTransitions(currentState),
+      };
     }),
 
   reorder: protectedProcedure

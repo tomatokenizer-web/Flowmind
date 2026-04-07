@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, RelationLayer, RelationSubtype, NsDirection, RelationCreatedBy } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { eventBus } from "@/server/events/eventBus";
 
@@ -14,6 +14,13 @@ export interface CreateRelationInput {
   purpose?: string[];
   isCustom?: boolean;
   customName?: string;
+  // v3.14 D-05 fields
+  layer?: RelationLayer;
+  subtype?: RelationSubtype;
+  fromType?: string;
+  nsDirection?: NsDirection;
+  relationCreatedBy?: RelationCreatedBy;
+  confidence?: string;
 }
 
 export interface UpdateRelationInput {
@@ -21,6 +28,13 @@ export interface UpdateRelationInput {
   type?: string;
   direction?: "one_way" | "bidirectional";
   purpose?: string[];
+  // v3.14 D-05 fields
+  layer?: RelationLayer;
+  subtype?: RelationSubtype;
+  fromType?: string;
+  nsDirection?: NsDirection;
+  relationCreatedBy?: RelationCreatedBy;
+  confidence?: string;
 }
 
 // ─── Service ────────────────────────────────────────────────────────
@@ -62,6 +76,13 @@ export function createRelationService(db: PrismaClient) {
           isCustom: input.isCustom ?? false,
           customName: input.customName ?? null,
           isLoopback,
+          // v3.14 D-05 fields
+          layer: input.layer ?? undefined,
+          subtype: input.subtype ?? undefined,
+          fromType: input.fromType ?? undefined,
+          nsDirection: input.nsDirection ?? undefined,
+          relationCreatedBy: input.relationCreatedBy ?? undefined,
+          confidence: input.confidence ?? undefined,
         },
         include: {
           sourceUnit: {

@@ -30,6 +30,8 @@ import { exportHistoryRouter } from "@/server/api/routers/export-history";
 
 import { reasoningChainRouter } from "@/server/api/routers/reasoning-chain";
 import { formalizeRouter } from "@/server/api/routers/formalize";
+import { inquiryRouter } from "@/server/api/routers/inquiry";
+import { proposalRouter } from "@/server/api/routers/proposal";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -63,6 +65,8 @@ export const appRouter = createTRPCRouter({
 
   reasoningChain: reasoningChainRouter,
   formalize: formalizeRouter,
+  inquiry: inquiryRouter,
+  proposal: proposalRouter,
 });
 
 export type AppRouter = typeof appRouter;

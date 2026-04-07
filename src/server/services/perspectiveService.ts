@@ -1,4 +1,7 @@
-import type { PrismaClient, Stance, UnitType } from "@prisma/client";
+import type {
+  PrismaClient, Stance, UnitType,
+  CertaintyLevel, ScaleSource, ContextDependency, ContextRole, RoleSource,
+} from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 
 export interface UpsertPerspectiveInput {
@@ -8,6 +11,13 @@ export interface UpsertPerspectiveInput {
   stance?: Stance;
   importance?: number;
   note?: string;
+  // D-01 Perspective Layer fields
+  certaintyLevel?: CertaintyLevel;
+  cognitiveScale?: number;
+  scaleSource?: ScaleSource;
+  contextDependency?: ContextDependency;
+  contextRole?: ContextRole;
+  roleSource?: RoleSource;
 }
 
 export function createPerspectiveService(db: PrismaClient) {
@@ -24,6 +34,14 @@ export function createPerspectiveService(db: PrismaClient) {
     async upsert(input: UpsertPerspectiveInput) {
       validateImportance(input.importance);
 
+      // Validate cognitiveScale range (D-01: 0.0–10.0)
+      if (input.cognitiveScale !== undefined && (input.cognitiveScale < 0 || input.cognitiveScale > 10)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cognitive scale must be between 0.0 and 10.0",
+        });
+      }
+
       return db.unitPerspective.upsert({
         where: {
           unitId_contextId: {
@@ -38,6 +56,12 @@ export function createPerspectiveService(db: PrismaClient) {
           stance: input.stance ?? "neutral",
           importance: input.importance ?? 0.5,
           note: input.note ?? null,
+          certaintyLevel: input.certaintyLevel ?? undefined,
+          cognitiveScale: input.cognitiveScale ?? undefined,
+          scaleSource: input.scaleSource ?? undefined,
+          contextDependency: input.contextDependency ?? undefined,
+          contextRole: input.contextRole ?? undefined,
+          roleSource: input.roleSource ?? undefined,
         },
         update: {
           ...(input.type !== undefined ? { type: input.type } : {}),
@@ -46,6 +70,12 @@ export function createPerspectiveService(db: PrismaClient) {
             ? { importance: input.importance }
             : {}),
           ...(input.note !== undefined ? { note: input.note } : {}),
+          ...(input.certaintyLevel !== undefined ? { certaintyLevel: input.certaintyLevel } : {}),
+          ...(input.cognitiveScale !== undefined ? { cognitiveScale: input.cognitiveScale } : {}),
+          ...(input.scaleSource !== undefined ? { scaleSource: input.scaleSource } : {}),
+          ...(input.contextDependency !== undefined ? { contextDependency: input.contextDependency } : {}),
+          ...(input.contextRole !== undefined ? { contextRole: input.contextRole } : {}),
+          ...(input.roleSource !== undefined ? { roleSource: input.roleSource } : {}),
         },
       });
     },

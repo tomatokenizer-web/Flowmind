@@ -10,6 +10,16 @@ import { createThoughtRankService } from "@/server/services/thoughtRankService";
 
 const directionEnum = z.enum(["one_way", "bidirectional"]);
 
+// v3.14 D-05: 2-tier relation enums
+const relationLayerEnum = z.enum([
+  "structural", "evidential", "dialogical", "generative",
+  "temporal", "compositional", "analytical", "meta",
+]);
+
+const nsDirectionEnum = z.enum(["nucleus_to_satellite", "satellite_to_nucleus", "multinuclear"]);
+
+const relationCreatedByEnum = z.enum(["user_created", "ai_suggested_confirmed", "ai_auto"]);
+
 const createRelationSchema = z.object({
   sourceUnitId: z.string().uuid(),
   targetUnitId: z.string().uuid(),
@@ -18,6 +28,13 @@ const createRelationSchema = z.object({
   strength: z.number().min(0).max(1).default(0.5),
   direction: directionEnum.default("one_way"),
   purpose: z.array(z.string()).default([]),
+  // v3.14 D-05 fields
+  layer: relationLayerEnum.optional(),
+  subtype: z.string().optional(),
+  fromType: z.string().max(50).optional(),
+  nsDirection: nsDirectionEnum.optional(),
+  relationCreatedBy: relationCreatedByEnum.optional(),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
 });
 
 const updateRelationSchema = z.object({
@@ -26,6 +43,13 @@ const updateRelationSchema = z.object({
   type: z.string().optional(),
   direction: directionEnum.optional(),
   purpose: z.array(z.string()).optional(),
+  // v3.14 D-05 fields
+  layer: relationLayerEnum.optional(),
+  subtype: z.string().optional(),
+  fromType: z.string().max(50).optional(),
+  nsDirection: nsDirectionEnum.optional(),
+  relationCreatedBy: relationCreatedByEnum.optional(),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
 });
 
 const idSchema = z.object({
@@ -72,7 +96,7 @@ export const relationRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Target unit not found" });
       }
       const service = createRelationService(ctx.db);
-      const relation = await service.create(input, ctx.session.user.id!);
+      const relation = await service.create(input as Parameters<typeof service.create>[0], ctx.session.user.id!);
 
       // Run cycle detection if relation belongs to a context (via perspective)
       if (input.perspectiveId) {
@@ -109,7 +133,7 @@ export const relationRouter = createTRPCRouter({
       }
       const { id, ...data } = input;
       const service = createRelationService(ctx.db);
-      return service.update(id, data, ctx.session.user.id!);
+      return service.update(id, data as Parameters<typeof service.update>[1], ctx.session.user.id!);
     }),
 
   delete: protectedProcedure

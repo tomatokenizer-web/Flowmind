@@ -5,18 +5,19 @@ import { createPerspectiveService } from "@/server/services/perspectiveService";
 // ─── Zod Schemas ───────────────────────────────────────────────────
 
 const unitTypeEnum = z.enum([
-  "claim",
-  "question",
-  "evidence",
-  "counterargument",
-  "observation",
-  "idea",
-  "definition",
-  "assumption",
-  "action",
+  "claim", "question", "evidence", "counterargument",
+  "observation", "idea", "definition", "assumption", "action",
+  "interpretation", "example", "decision",
 ]);
 
 const stanceEnum = z.enum(["support", "oppose", "neutral", "exploring"]);
+
+// D-01 Perspective Layer enums
+const certaintyLevelEnum = z.enum(["confirmed_cert", "probable", "uncertain", "speculative"]);
+const scaleSourceEnum = z.enum(["graph_derived", "user_override"]);
+const contextDependencyEnum = z.enum(["free", "anchored", "passage"]);
+const contextRoleEnum = z.enum(["seed", "anchor", "bridge", "peripheral", "evergreen_role"]);
+const roleSourceEnum = z.enum(["ai_computed", "user_confirmed", "user_set"]);
 
 const upsertPerspectiveSchema = z.object({
   unitId: z.string().uuid(),
@@ -25,6 +26,13 @@ const upsertPerspectiveSchema = z.object({
   stance: stanceEnum.optional(),
   importance: z.number().min(0).max(1).optional(),
   note: z.string().max(2000).optional(),
+  // D-01 fields
+  certaintyLevel: certaintyLevelEnum.optional(),
+  cognitiveScale: z.number().min(0).max(10).optional(),
+  scaleSource: scaleSourceEnum.optional(),
+  contextDependency: contextDependencyEnum.optional(),
+  contextRole: contextRoleEnum.optional(),
+  roleSource: roleSourceEnum.optional(),
 });
 
 const unitContextPairSchema = z.object({
