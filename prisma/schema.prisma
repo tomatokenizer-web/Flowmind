@@ -247,6 +247,150 @@ enum LifecycleState {
   archived
 }
 
+// ─── Phase 0: New field enums (Metadata-Reference v3.14) ──────────
+
+enum UnitKind {
+  thought
+  resource
+  shadow
+}
+
+enum Voice {
+  original
+  ai_assisted
+  ai_refined
+  ai_sourced
+  external
+  imported
+}
+
+enum TypeConfidence {
+  high
+  medium
+  low
+}
+
+enum EpistemicOrigin {
+  first_person_experience
+  first_person_inference
+  received_testimony
+  institutional_record
+  consensus_knowledge
+  formal_derivation
+}
+
+enum ApplicabilityScope {
+  universal
+  domain_universal
+  context_conditional
+  instance_specific
+  personal
+}
+
+enum TemporalValidity {
+  atemporal
+  durable
+  current
+  time_bounded
+  historical
+  recurrent
+}
+
+enum Revisability {
+  immutable
+  evidence_revisable
+  authority_revisable
+  convention_revisable
+  personally_revisable
+}
+
+enum WarrantCommunity {
+  universal_competent
+  disciplinary_expert
+  institutional
+  community_relative
+  personal_authority
+}
+
+enum CertaintyLevel {
+  confirmed_cert   @map("confirmed")
+  probable
+  uncertain
+  speculative
+}
+
+enum ContextDependency {
+  free
+  anchored
+  passage
+}
+
+enum ContextRole {
+  seed
+  anchor
+  bridge
+  peripheral
+  evergreen_role  @map("evergreen")
+}
+
+enum RoleSource {
+  ai_computed
+  user_confirmed
+  user_set
+}
+
+enum ScaleSource {
+  graph_derived
+  user_override
+}
+
+enum AssemblyRole {
+  thesis
+  support_role    @map("support")
+  evidence_role   @map("evidence")
+  counterpoint
+  bridge_role     @map("bridge")
+  background_role @map("background")
+  conclusion
+}
+
+enum NsDirection {
+  nucleus_to_satellite
+  satellite_to_nucleus
+  multinuclear
+}
+
+enum RelationCreatedBy {
+  user_created    @map("user")
+  ai_suggested_confirmed
+  ai_auto
+}
+
+enum InquiryStatus {
+  exploring
+  active
+  paused
+  completed
+  abandoned
+}
+
+enum InquiryFormation {
+  top_down
+  organic
+}
+
+enum PursuitStatus {
+  active_pursuit  @map("active")
+  paused_pursuit  @map("paused")
+  completed_pursuit @map("completed")
+  archived_pursuit @map("archived")
+}
+
+enum WorkType {
+  assembly_work   @map("assembly")
+  document_work   @map("document")
+}
+
 // ─── Models ────────────────────────────────────────────────────────
 
 model User {
@@ -335,6 +479,7 @@ model Project {
   units               Unit[]
   tags                Tag[]
   webhooks            Webhook[]
+  pursuits            Pursuit[]
 
   @@index([userId])
   @@map("projects")
@@ -349,6 +494,8 @@ model DomainTemplate {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   projects  Project[]
+  pursuits  Pursuit[]
+  inquiries Inquiry[]
 
   @@map("domain_templates")
 }
@@ -359,14 +506,16 @@ model Unit {
   userId            String                 @map("user_id")
   projectId         String                 @map("project_id") @db.Uuid
 
-  // A-1: Cognitive Classification
+  // ── EXISTING fields (kept for backward compat, Phase 1 will migrate) ──
+
+  // A-1: Cognitive Classification (LEGACY — v3.14 moves certainty/stance to Perspective)
   unitType          UnitType               @default(claim) @map("unit_type")
   certainty         Certainty?
   completeness      Completeness?
   abstractionLevel  AbstractionLevel?      @map("abstraction_level")
   stance            Stance?
 
-  // A-3: Status
+  // A-3: Status (LEGACY — v3.14 lifecycle is 4-state, quality removed)
   lifecycle         Lifecycle              @default(draft)
   quality           Quality                @default(raw)
   actionRequired    Boolean                @default(false) @map("action_required")
@@ -384,7 +533,7 @@ model Unit {
   temporalContext   String?                @map("temporal_context")
   recurrence        String?
 
-  // A-5: Provenance
+  // A-5: Provenance (LEGACY — v3.14 uses voice instead of originType)
   originType        OriginType             @default(direct_write) @map("origin_type")
   sourceUrl         String?                @map("source_url")
   sourceTitle       String?                @map("source_title")
@@ -395,7 +544,7 @@ model Unit {
   parentInputId     String?                @map("parent_input_id")
   sourceSpan        Json?                  @map("source_span")
 
-  // A-6: Evidence Character
+  // A-6: Evidence Character (LEGACY — removed in v3.14)
   evidenceDomain    EvidenceDomain?        @map("evidence_domain")
   scope             Scope?
 
@@ -412,6 +561,50 @@ model Unit {
   energyLevel       EnergyLevel?           @map("energy_level")
   meta              Json?
 
+  // ── NEW v3.14 fields (Phase 0 additive) ───────────────────────────
+
+  // Identity
+  unitKind          UnitKind               @default(thought) @map("unit_kind")
+  sourceText        String?                @map("source_text")      // Original wording, never edited
+  embeddingModel    String?                @map("embedding_model")  // D-11: model tracking
+  embeddingGeneratedAt DateTime?           @map("embedding_generated_at")
+
+  // Propositional Character (v3.14: 3 attrs on Unit)
+  primaryType       UnitType?              @map("primary_type")      // Will replace unitType in Phase 1
+  secondaryTypes    UnitType[]             @default([]) @map("secondary_types")
+  typeConfidence    TypeConfidence?         @map("type_confidence")
+
+  // Epistemic Act
+  primaryEpistemicAct     EpistemicAct?    @map("primary_epistemic_act")
+  secondaryEpistemicActs  EpistemicAct[]   @default([]) @map("secondary_epistemic_acts")
+
+  // Knowledge Context
+  epistemicOrigin       EpistemicOrigin?   @map("epistemic_origin")
+  applicabilityScope    ApplicabilityScope? @map("applicability_scope")
+  temporalValidity      TemporalValidity?  @map("temporal_validity")
+  revisability          Revisability?
+  warrantCommunity      WarrantCommunity?  @map("warrant_community")
+  stalenessAfter        String?            @map("staleness_after")
+  falsificationCondition String?           @map("falsification_condition")
+  recurrencePeriod      String?            @map("recurrence_period")
+
+  // Status (v3.14)
+  lifecycleState    LifecycleState?        @map("lifecycle_state")   // Will replace lifecycle in Phase 1
+  aiReviewPending   Boolean                @default(false) @map("ai_review_pending")
+  localOnly         Boolean                @default(false) @map("local_only")
+  evergreenUnit     Boolean                @default(false) @map("evergreen")
+  controversialFlag Boolean                @default(false) @map("controversial_flag")
+
+  // Provenance (v3.14)
+  voice             Voice?                 // Replaces originType in Phase 1
+  authoredBy        String?                @map("authored_by")
+
+  // AI Analysis (v3.14: reduced to 5)
+  readabilityScore  Float?                 @map("readability_score")
+  language          String?                @db.VarChar(10)
+  similarUnits      Json?                  @map("similar_units")    // Cache: [{unit_id, similarity_score}]
+  subElements       Json?                  @map("sub_elements")     // [{text, type}]
+
   // Relations
   user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   project           Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -424,26 +617,43 @@ model Unit {
   unitContexts      UnitContext[]
   contextVisits     ContextVisit[]
   unitTags          UnitTag[]
+  compassStates     CompassState[]
 
   @@index([userId])
   @@index([projectId])
   @@index([lifecycle])
   @@index([unitType])
   @@index([createdAt])
+  @@index([unitKind])
+  @@index([lifecycleState])
+  @@index([primaryType])
+  @@index([primaryEpistemicAct])
   @@map("units")
 }
 
 model UnitPerspective {
-  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId     String     @map("unit_id") @db.Uuid
-  contextId  String     @map("context_id") @db.Uuid
-  type       UnitType?
-  stance     Stance     @default(neutral)
-  importance Float      @default(0.5)
-  note       String?
-  canvasX    Float?     @map("canvas_x")
-  canvasY    Float?     @map("canvas_y")
-  canvasZoom Float?     @map("canvas_zoom")
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            String            @map("unit_id") @db.Uuid
+  contextId         String            @map("context_id") @db.Uuid
+
+  // Existing fields (kept)
+  type              UnitType?
+  stance            Stance            @default(neutral)
+  importance        Float             @default(0.5)
+  note              String?
+  canvasX           Float?            @map("canvas_x")
+  canvasY           Float?            @map("canvas_y")
+  canvasZoom        Float?            @map("canvas_zoom")
+
+  // NEW v3.14 Perspective Layer fields (D-01 expansion)
+  certaintyLevel    CertaintyLevel?   @map("certainty_level")      // Moved from Unit (v3.11)
+  cognitiveScale    Float?            @map("cognitive_scale")       // 0.0-10.0, graph-derived per-Context
+  scaleSource       ScaleSource?      @map("scale_source")
+  contextDependency ContextDependency? @map("context_dependency")
+  contextRole       ContextRole?      @map("context_role")
+  roleSource        RoleSource?       @map("role_source")
+
+  // Relations
   relations  Relation[]
   context    Context    @relation(fields: [contextId], references: [id], onDelete: Cascade)
   unit       Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
@@ -466,6 +676,16 @@ model Relation {
   customName    String?          @map("custom_name")
   isLoopback    Boolean          @default(false) @map("is_loopback")
   createdAt     DateTime         @default(now()) @map("created_at")
+
+  // NEW v3.14 fields (D-05 expansion)
+  layer           RelationLayer?           // 2-tier: layer determines group
+  subtype         RelationSubtype?         // Nullable typed subtype within layer
+  fromType        String?          @map("from_type") @db.VarChar(50)  // D-03: which type aspect relation originates from
+  nsDirection     NsDirection?     @map("ns_direction")               // Nucleus-Satellite direction
+  relationCreatedBy RelationCreatedBy? @map("relation_created_by")    // Who created this
+  confidence      String?          @db.VarChar(10)                     // high/medium/low
+
+  // Relations
   perspective   UnitPerspective? @relation(fields: [perspectiveId], references: [id])
   sourceUnit    Unit             @relation("SourceUnit", fields: [sourceUnitId], references: [id], onDelete: Cascade)
   targetUnit    Unit             @relation("TargetUnit", fields: [targetUnitId], references: [id], onDelete: Cascade)
@@ -473,16 +693,21 @@ model Relation {
   @@index([sourceUnitId])
   @@index([targetUnitId])
   @@index([type])
+  @@index([layer])
   @@index([sourceUnitId, targetUnitId, type])
   @@map("relations")
 }
 
 model SystemRelationType {
-  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String @unique @db.VarChar(50)
-  category    String @db.VarChar(50)
-  description String
-  sortOrder   Int    @map("sort_order")
+  id              String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String  @unique @db.VarChar(50)
+  category        String  @db.VarChar(50)
+  description     String
+  sortOrder       Int     @map("sort_order")
+  // NEW v3.14 fields
+  layer           Int?                                    // Layer number (1-8)
+  defaultNs       String? @map("default_ns") @db.VarChar(30) // Default NsDirection
+  uiTier          Int?    @map("ui_tier")                 // 1=always visible, 2=accessible, 3=expert
 
   @@map("system_relation_types")
 }
@@ -517,9 +742,16 @@ model Context {
   sortOrder      Int               @default(0) @map("sort_order")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  // NEW v3.14: Inquiry + Pursuit FKs (D-09, nullable)
+  inquiryId      String?           @map("inquiry_id") @db.Uuid
+  pursuitId      String?           @map("pursuit_id") @db.Uuid
+
   parent         Context?          @relation("ContextHierarchy", fields: [parentId], references: [id])
   children       Context[]         @relation("ContextHierarchy")
   project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inquiry        Inquiry?          @relation("InquiryContexts", fields: [inquiryId], references: [id])
+  pursuit        Pursuit?          @relation("PursuitContexts", fields: [pursuitId], references: [id])
   navigators       Navigator[]
   perspectives     UnitPerspective[]
   unitContexts     UnitContext[]
@@ -531,6 +763,8 @@ model Context {
   @@unique([name, parentId, projectId])
   @@index([projectId])
   @@index([parentId])
+  @@index([inquiryId])
+  @@index([pursuitId])
   @@map("contexts")
 }
 
@@ -741,6 +975,146 @@ model SafetyGuardSession {
   @@index([userId])
   @@index([lastActivityAt])
   @@map("safety_guard_sessions")
+}
+
+// ═══ Phase 0: New Models (v3.14 spec) ═══════════════════════════════
+
+// ─── Pursuit (D-13: Project > Pursuit > Context hierarchy) ──────────
+
+model Pursuit {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  description     String?
+  projectId       String        @map("project_id") @db.Uuid
+  templateId      String?       @map("template_id") @db.Uuid
+  status          PursuitStatus @default(active_pursuit)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  template        DomainTemplate? @relation(fields: [templateId], references: [id])
+  inquiries       Inquiry[]
+  contexts        Context[]     @relation("PursuitContexts")
+
+  @@index([projectId])
+  @@map("pursuits")
+}
+
+// ─── Inquiry (D-09: mid-level, domain template + compass) ───────────
+
+model Inquiry {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title               String
+  pursuitId           String           @map("pursuit_id") @db.Uuid
+  templateId          String?          @map("template_id") @db.Uuid
+  secondaryTemplates  String[]         @default([]) @map("secondary_templates") @db.Uuid
+  formation           InquiryFormation @default(organic)
+  status              InquiryStatus    @default(exploring)
+  startingQuestions   Json?            @map("starting_questions")  // String[]
+  compass             Json?                                        // CompassState JSON
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  pursuit             Pursuit          @relation(fields: [pursuitId], references: [id], onDelete: Cascade)
+  template            DomainTemplate?  @relation(fields: [templateId], references: [id])
+  contexts            Context[]        @relation("InquiryContexts")
+  pivotEvents         PivotEvent[]
+
+  @@index([pursuitId])
+  @@map("inquiries")
+}
+
+// ─── Pivot Event (Inquiry goal changes) ─────────────────────────────
+
+model PivotEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inquiryId   String   @map("inquiry_id") @db.Uuid
+  reason      String
+  fromGoal    String?  @map("from_goal")
+  toGoal      String?  @map("to_goal")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  inquiry     Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([inquiryId])
+  @@map("pivot_events")
+}
+
+// ─── Compass State (D-08b: per unit×context compass signals) ────────
+
+model CompassState {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId               String   @map("unit_id") @db.Uuid
+  contextId            String   @map("context_id") @db.Uuid
+  actionRequired       Boolean  @default(false) @map("action_required")
+  tensionFlags         Json?    @map("tension_flags")        // [{target_unit_id, tension_type, description, severity}]
+  gapDetection         Json?    @map("gap_detection")         // [{missing_type, description, severity}]
+  suggestedNextTypes   Json?    @map("suggested_next_types")  // [{type, rationale, confidence}]
+  navigationWeight     Float?   @map("navigation_weight")     // Session cache
+  computedAt           DateTime @default(now()) @map("computed_at")
+
+  unit                 Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, contextId])
+  @@index([unitId])
+  @@index([contextId])
+  @@map("compass_states")
+}
+
+// ─── Recontextualization Log (D-15: audit) ──────────────────────────
+
+model RecontextualizationLog {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              String   @map("unit_id") @db.Uuid
+  sourceContextId     String   @map("source_context_id") @db.Uuid
+  sourceRole          String?  @map("source_role") @db.VarChar(50)
+  sourceFrame         String?  @map("source_frame") @db.VarChar(100)
+  targetContextId     String   @map("target_context_id") @db.Uuid
+  targetRole          String?  @map("target_role") @db.VarChar(50)
+  targetFrame         String?  @map("target_frame") @db.VarChar(100)
+  transformationType  String?  @map("transformation_type") @db.VarChar(50)
+  interpretationNote  String?  @map("interpretation_note")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@index([unitId])
+  @@index([sourceContextId])
+  @@index([targetContextId])
+  @@map("recontextualization_logs")
+}
+
+// ─── Embedding Model Registry (D-11) ────────────────────────────────
+
+model EmbeddingModelRegistry {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  provider    String   @db.VarChar(50)             // "openai", "anthropic", etc.
+  dimension   Int                                    // Vector dimension (1536, 1024, etc.)
+  scope       String   @default("general") @db.VarChar(30) // Plain string, not enum (migration-safe)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("embedding_model_registry")
+}
+
+// ─── Proposal (M.2: unified AI write path, 8 kinds) ────────────────
+
+model Proposal {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind          String   @db.VarChar(30)    // reframe, counter, maturation, rule_action, import_merge, compounding, type_suggest, relation_suggest
+  targetUnitId  String?  @map("target_unit_id") @db.Uuid
+  contextId     String?  @map("context_id") @db.Uuid
+  userId        String   @map("user_id")
+  status        String   @default("pending") @db.VarChar(20) // pending, accepted, rejected, expired
+  payload       Json                                          // Kind-specific data
+  rationale     String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+
+  @@index([targetUnitId])
+  @@index([contextId])
+  @@index([userId, status])
+  @@index([kind, status])
+  @@map("proposals")
 }
 
 // ─── Export History (Story 7.7) ──────────────────────────────────────
