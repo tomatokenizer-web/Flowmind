@@ -21,6 +21,9 @@ const TYPE_BADGE_STYLES: Record<UnitType, { bg: string; text: string }> = {
   definition:      { bg: "bg-unit-definition-bg",      text: "text-unit-definition-accent" },
   assumption:      { bg: "bg-unit-assumption-bg",      text: "text-unit-assumption-accent" },
   action:          { bg: "bg-unit-action-bg",          text: "text-unit-action-accent" },
+  interpretation:  { bg: "bg-purple-100",              text: "text-purple-800" },
+  example:         { bg: "bg-sky-100",                 text: "text-sky-800" },
+  decision:        { bg: "bg-orange-100",              text: "text-orange-800" },
 };
 
 /** Formatted display labels */
@@ -34,6 +37,9 @@ const TYPE_LABELS: Record<UnitType, string> = {
   definition: "Definition",
   assumption: "Assumption",
   action: "Action",
+  interpretation: "Interpretation",
+  example: "Example",
+  decision: "Decision",
 };
 
 function getIcon(unitType: UnitType) {

@@ -9,6 +9,7 @@ import { TRPCError } from "@trpc/server";
 const unitTypeEnum = z.enum([
   "claim", "question", "evidence", "counterargument",
   "observation", "idea", "definition", "assumption", "action",
+  "interpretation", "example", "decision",
 ]);
 
 const originTypeEnum = z.enum([

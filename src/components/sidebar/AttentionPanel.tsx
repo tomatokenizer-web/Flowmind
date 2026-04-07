@@ -34,6 +34,7 @@ import {
 } from "~/components/ui/popover";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { BranchProjectDialog } from "~/components/project/BranchProjectDialog";
+import type { UnitType } from "@prisma/client";
 
 // ─── Props ────────────────────────────────────────────────────────────
 
@@ -295,16 +296,7 @@ function AttentionSection({
 type IncubationUnit = {
   id: string;
   content: string;
-  unitType:
-    | "claim"
-    | "question"
-    | "evidence"
-    | "counterargument"
-    | "observation"
-    | "idea"
-    | "definition"
-    | "assumption"
-    | "action";
+  unitType: UnitType;
   createdAt: Date;
   projectId: string;
 };

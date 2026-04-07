@@ -20,6 +20,9 @@ export const UNIT_TYPE_COLORS: Record<UnitType, UnitTypeColors> = {
   definition:       { bg: "#E0F2F1", accent: "#00695C" },
   assumption:       { bg: "#ECEFF1", accent: "#546E7A" },
   action:           { bg: "#E8EAF6", accent: "#283593" },
+  interpretation:   { bg: "#F3E5F5", accent: "#6A1B9A" },
+  example:          { bg: "#E1F5FE", accent: "#01579B" },
+  decision:         { bg: "#FBE9E7", accent: "#BF360C" },
 };
 
 // ─── Lucide Icon Names ─────────────────────────────────────────────
@@ -35,6 +38,9 @@ export const UNIT_TYPE_ICONS: Record<UnitType, string> = {
   definition:       "BookOpen",
   assumption:       "AlertTriangle",
   action:           "Zap",
+  interpretation:   "Glasses",
+  example:          "ClipboardList",
+  decision:         "Scale",
 };
 
 // ─── Descriptions ──────────────────────────────────────────────────
@@ -49,6 +55,9 @@ export const UNIT_TYPE_DESCRIPTIONS: Record<UnitType, string> = {
   definition:       "A clarification of meaning for a term or concept",
   assumption:       "An unstated premise or belief taken as given",
   action:           "A concrete step, task, or decision to execute",
+  interpretation:   "An explanatory reading or meaning assigned to evidence or observations",
+  example:          "A concrete case that illustrates a principle or claim",
+  decision:         "A resolved choice or judgment among alternatives",
 };
 
 // ─── Naturally-Follows Relationships ───────────────────────────────
@@ -64,6 +73,9 @@ export const UNIT_TYPE_NATURALLY_FOLLOWS: Record<UnitType, UnitType[]> = {
   definition:       ["claim", "observation", "question"],
   assumption:       ["question", "evidence", "counterargument"],
   action:           ["observation", "question", "evidence"],
+  interpretation:   ["evidence", "claim", "question", "observation"],
+  example:          ["claim", "definition", "observation"],
+  decision:         ["action", "claim", "evidence", "question"],
 };
 
 // ─── Full Base Type Definition ─────────────────────────────────────
@@ -87,6 +99,9 @@ export const BASE_UNIT_TYPES: BaseUnitType[] = [
   { id: "definition",      label: "Definition",      description: UNIT_TYPE_DESCRIPTIONS.definition,      icon: UNIT_TYPE_ICONS.definition,      colors: UNIT_TYPE_COLORS.definition,      naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.definition },
   { id: "assumption",      label: "Assumption",      description: UNIT_TYPE_DESCRIPTIONS.assumption,      icon: UNIT_TYPE_ICONS.assumption,      colors: UNIT_TYPE_COLORS.assumption,      naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.assumption },
   { id: "action",          label: "Action",          description: UNIT_TYPE_DESCRIPTIONS.action,          icon: UNIT_TYPE_ICONS.action,          colors: UNIT_TYPE_COLORS.action,          naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.action },
+  { id: "interpretation",  label: "Interpretation",  description: UNIT_TYPE_DESCRIPTIONS.interpretation,  icon: UNIT_TYPE_ICONS.interpretation,  colors: UNIT_TYPE_COLORS.interpretation,  naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.interpretation },
+  { id: "example",         label: "Example",         description: UNIT_TYPE_DESCRIPTIONS.example,         icon: UNIT_TYPE_ICONS.example,         colors: UNIT_TYPE_COLORS.example,         naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.example },
+  { id: "decision",        label: "Decision",        description: UNIT_TYPE_DESCRIPTIONS.decision,        icon: UNIT_TYPE_ICONS.decision,        colors: UNIT_TYPE_COLORS.decision,        naturallyFollows: UNIT_TYPE_NATURALLY_FOLLOWS.decision },
 ];
 
 /** Lookup a base type by its id */

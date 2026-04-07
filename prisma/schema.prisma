@@ -22,6 +22,9 @@ enum UnitType {
   definition
   assumption
   action
+  interpretation       // DEC-004 §G.1 restored
+  example              // DEC-004 §G.1 restored
+  decision             // DEC-004 §G.1 restored
 }
 
 enum OriginType {
@@ -128,6 +131,122 @@ enum VersionOriginType {
   import
 }
 
+// ─── Phase 0 §0.8 Enums (DEC-004 + v3.14) ─────────────────────────
+
+enum RelationLayer {
+  structural
+  evidential
+  dialogical
+  generative
+  temporal
+  compositional
+  analytical
+  meta
+}
+
+enum RelationSubtype {
+  // Layer 1: Argumentative (5)
+  supports
+  contradicts
+  qualifies
+  rebuts
+  concedes
+  // Layer 2: Epistemic Derivation (4, derives_from removed v3.11)
+  generalizes
+  specializes
+  operationalizes
+  exemplifies
+  // Layer 3: Rhetorical / RST (14)
+  elaboration
+  cause
+  condition
+  contrast
+  sequence
+  purpose
+  background
+  evaluation
+  summary
+  restatement
+  means
+  concession_rst       @map("concession")
+  solutionhood
+  enablement
+  // Layer 4: Semantic / Conceptual (6)
+  is_type_of
+  is_part_of
+  is_instance_of
+  contains
+  preconditions
+  results_in
+  // Layer 5: Temporal / Narrative (6, echoes removed v3.11)
+  precedes
+  follows
+  co_occurs
+  interrupts
+  enables_next
+  continues
+  // Layer 6: Associative / Heuristic (6)
+  related_to
+  inspires
+  reminds
+  parallels
+  analogizes
+  triggers
+  // Layer 7: Meta / Structural (7)
+  references
+  comments_on
+  questions_meta       @map("questions")
+  answers
+  revises
+  supersedes
+  branches_from
+  // Layer 8: Action / Execution (7)
+  requires
+  blocks
+  depends_on
+  implements
+  validates
+  delegates
+  matures_into
+}
+
+enum EpistemicAct {
+  // Assertive
+  assert
+  hypothesize
+  predict
+  // Inquiry
+  ask
+  challenge
+  // Evaluative
+  endorse
+  critique
+  concede
+  refute
+  // Definitional
+  define
+  distinguish
+  classify
+  // Structural
+  decompose
+  synthesize
+  generalize
+  specialize
+  // Reframing
+  reframe
+  analogize
+  // Metacognitive
+  retract
+  revise
+}
+
+enum LifecycleState {
+  draft
+  confirmed
+  deferred
+  archived
+}
+
 // ─── Models ────────────────────────────────────────────────────────
 
 model User {
@@ -152,6 +271,7 @@ model User {
   customRelationTypes    CustomRelationType[]
   webhooks               Webhook[]
   exportHistory          ExportHistory[]
+  aiUsageLogs            AIUsageLog[]
 
   @@map("users")
 }
@@ -656,6 +776,37 @@ model ReasoningChain {
 
   @@index([contextId])
   @@map("reasoning_chains")
+}
+
+// ─── Feature Flags (DEC-004 §H.5) ──────────────────────────────────
+
+model FeatureFlag {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String                              // e.g. "epistemic_acts_full", "rhetorical_shape_ui"
+  enabled     Boolean  @default(true)             // DEC-004 §L: Full default
+  scope       String   @default("global")         // "global" | "user" | "project" — plain string per §H.1
+  scopeId     String?  @db.Uuid                   // userId or projectId if scope != global
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([key, scope, scopeId])
+  @@map("feature_flags")
+}
+
+// ─── AI Usage Log (DEC-004 §C.3 + DEC-002 §8) ─────────────────────
+
+model AIUsageLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id")
+  action    String                                // free-form: "suggest_type", "refine", "deep_dive", etc.
+  costUnits Int      @default(1) @map("cost_units")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_usage_logs")
 }
 
 // ─── Webhooks (Story 10.2) ──────────────────────────────────────────

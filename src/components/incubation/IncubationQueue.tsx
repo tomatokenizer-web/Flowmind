@@ -22,6 +22,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
+import type { UnitType } from "@prisma/client";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { EmptyState } from "~/components/shared/empty-state";
 
@@ -169,7 +170,7 @@ interface IncubationItemProps {
   unit: {
     id: string;
     content: string;
-    unitType: "claim" | "question" | "evidence" | "counterargument" | "observation" | "idea" | "definition" | "assumption" | "action";
+    unitType: UnitType;
     createdAt: Date;
   };
   contexts: Array<{ id: string; name: string; parentId: string | null }>;

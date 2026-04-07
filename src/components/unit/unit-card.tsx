@@ -79,6 +79,9 @@ const TYPE_BORDER_COLORS: Record<UnitType, string> = {
   definition:      "border-l-unit-definition-accent",
   assumption:      "border-l-unit-assumption-accent",
   action:          "border-l-unit-action-accent",
+  interpretation:  "border-l-purple-600",
+  example:         "border-l-sky-600",
+  decision:        "border-l-orange-600",
 };
 
 // ─── Stance Badge ────────────────────────────────────────────────────
