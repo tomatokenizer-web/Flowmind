@@ -114,6 +114,13 @@ function createMockPrisma() {
     project: {
       findFirst: vi.fn().mockResolvedValue({ id: TEST_PROJECT_ID }),
     },
+    navigator: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    assemblyItem: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   } as unknown as PrismaClient;
 }
 
@@ -300,6 +307,7 @@ describe("unit router", () => {
           include: {
             perspectives: { include: { relations: true } },
             versions: { orderBy: { version: "desc" }, take: 5 },
+            resources: { include: { resource: true }, orderBy: { sortOrder: "asc" } },
           },
         }),
       );
@@ -333,7 +341,7 @@ describe("unit router", () => {
       expect(result.items).toBeDefined();
       expect(mockDb.unit.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { projectId: TEST_PROJECT_ID },
+          where: expect.objectContaining({ projectId: TEST_PROJECT_ID }),
           orderBy: { createdAt: "desc" },
           take: 21, // limit + 1 for cursor detection
         }),
@@ -350,7 +358,7 @@ describe("unit router", () => {
 
       expect(mockDb.unit.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { projectId: TEST_PROJECT_ID, lifecycle: "draft" },
+          where: expect.objectContaining({ projectId: TEST_PROJECT_ID, lifecycle: "draft" }),
         }),
       );
     });
@@ -365,7 +373,7 @@ describe("unit router", () => {
 
       expect(mockDb.unit.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { projectId: TEST_PROJECT_ID, unitType: "question" },
+          where: expect.objectContaining({ projectId: TEST_PROJECT_ID, unitType: "question" }),
         }),
       );
     });
@@ -381,10 +389,10 @@ describe("unit router", () => {
 
       expect(mockDb.unit.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
+          where: expect.objectContaining({
             projectId: TEST_PROJECT_ID,
-            perspectives: { some: { contextId: ctxId } },
-          },
+            unitContexts: { some: { contextId: ctxId } },
+          }),
         }),
       );
     });

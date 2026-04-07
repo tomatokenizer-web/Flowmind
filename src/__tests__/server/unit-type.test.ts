@@ -108,7 +108,7 @@ function createTestCaller(db: PrismaClient) {
 describe("unit type system", () => {
   describe("BASE_UNIT_TYPES", () => {
     it("defines exactly 9 base types", () => {
-      expect(BASE_UNIT_TYPES).toHaveLength(9);
+      expect(BASE_UNIT_TYPES).toHaveLength(12);
     });
 
     it("includes all required type ids", () => {
@@ -116,6 +116,7 @@ describe("unit type system", () => {
       expect(ids).toEqual([
         "claim", "question", "evidence", "counterargument",
         "observation", "idea", "definition", "assumption", "action",
+        "interpretation", "example", "decision",
       ]);
     });
 
@@ -149,7 +150,7 @@ describe("unit type system", () => {
 
   describe("UNIT_TYPE_ICONS", () => {
     it("uses Lucide icon names for all types", () => {
-      expect(Object.keys(UNIT_TYPE_ICONS)).toHaveLength(9);
+      expect(Object.keys(UNIT_TYPE_ICONS)).toHaveLength(12);
       for (const icon of Object.values(UNIT_TYPE_ICONS)) {
         // Lucide icons use PascalCase
         expect(icon).toMatch(/^[A-Z][a-zA-Z]+$/);
@@ -173,7 +174,7 @@ describe("unit type system", () => {
 
   describe("BASE_UNIT_TYPE_IDS", () => {
     it("contains all 9 type ids", () => {
-      expect(BASE_UNIT_TYPE_IDS).toHaveLength(9);
+      expect(BASE_UNIT_TYPE_IDS).toHaveLength(12);
       expect(BASE_UNIT_TYPE_IDS).toContain("claim");
       expect(BASE_UNIT_TYPE_IDS).toContain("action");
     });
@@ -387,7 +388,7 @@ describe("unitType router", () => {
   describe("unitType.listBaseTypes", () => {
     it("returns all 9 base types", async () => {
       const result = await caller.unitType.listBaseTypes();
-      expect(result).toHaveLength(9);
+      expect(result).toHaveLength(12);
       expect(result[0]!.id).toBe("claim");
       expect(result[0]!.colors).toBeDefined();
       expect(result[0]!.icon).toBeDefined();

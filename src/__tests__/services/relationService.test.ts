@@ -127,32 +127,34 @@ describe("relationService", () => {
       ).rejects.toThrow(TRPCError);
     });
 
-    it("throws BAD_REQUEST when source unit is in draft lifecycle", async () => {
+    it("allows creating relation when source unit is in draft lifecycle", async () => {
       const { service, mockDb } = buildService();
       (mockDb.unit.findUnique as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(makeUnit(SOURCE_UNIT_ID, "draft"))
         .mockResolvedValueOnce(makeUnit(TARGET_UNIT_ID));
 
-      await expect(
-        service.create(
-          { sourceUnitId: SOURCE_UNIT_ID, targetUnitId: TARGET_UNIT_ID, type: "supports" },
-          USER_ID,
-        ),
-      ).rejects.toThrow(TRPCError);
+      const result = await service.create(
+        { sourceUnitId: SOURCE_UNIT_ID, targetUnitId: TARGET_UNIT_ID, type: "supports" },
+        USER_ID,
+      );
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe(RELATION_ID);
     });
 
-    it("throws BAD_REQUEST when target unit is in draft lifecycle", async () => {
+    it("allows creating relation when target unit is in draft lifecycle", async () => {
       const { service, mockDb } = buildService();
       (mockDb.unit.findUnique as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(makeUnit(SOURCE_UNIT_ID))
         .mockResolvedValueOnce(makeUnit(TARGET_UNIT_ID, "draft"));
 
-      await expect(
-        service.create(
-          { sourceUnitId: SOURCE_UNIT_ID, targetUnitId: TARGET_UNIT_ID, type: "supports" },
-          USER_ID,
-        ),
-      ).rejects.toThrow(TRPCError);
+      const result = await service.create(
+        { sourceUnitId: SOURCE_UNIT_ID, targetUnitId: TARGET_UNIT_ID, type: "supports" },
+        USER_ID,
+      );
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe(RELATION_ID);
     });
 
     it("sets isLoopback=true when source and target are the same unit", async () => {

@@ -88,7 +88,15 @@ import { createUnitRepository } from "@/server/repositories/unitRepository";
 function buildService() {
   const mockRepo = createMockRepo();
   (createUnitRepository as ReturnType<typeof vi.fn>).mockReturnValue(mockRepo);
-  const db = {} as PrismaClient;
+  const db = {
+    navigator: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    assemblyItem: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  } as unknown as PrismaClient;
   const service = createUnitService(db);
   return { service, mockRepo };
 }
@@ -355,7 +363,7 @@ describe("unitService", () => {
       expect(mockRepo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            perspectives: { some: { contextId: ctxId } },
+            unitContexts: { some: { contextId: ctxId } },
           }),
         }),
       );

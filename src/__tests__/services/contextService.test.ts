@@ -270,7 +270,7 @@ describe("contextService", () => {
 
       const results = await service.listContexts(PROJECT_ID);
 
-      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, undefined);
+      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, undefined, undefined);
       expect(results).toHaveLength(1);
     });
 
@@ -279,7 +279,7 @@ describe("contextService", () => {
 
       await service.listContexts(PROJECT_ID, CONTEXT_ID);
 
-      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, CONTEXT_ID);
+      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, CONTEXT_ID, undefined);
     });
 
     it("filters for root-level contexts when parentId=null", async () => {
@@ -287,7 +287,7 @@ describe("contextService", () => {
 
       await service.listContexts(PROJECT_ID, null);
 
-      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, null);
+      expect(mockRepo.findMany).toHaveBeenCalledWith(PROJECT_ID, null, undefined);
     });
   });
 
