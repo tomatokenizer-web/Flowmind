@@ -14,6 +14,16 @@ export interface UpdateContextInput {
   description?: string;
 }
 
+export type ContextMaturity = "seedling" | "developing" | "mature" | "crystallized";
+export type TopologyState = "isolated" | "linear" | "clustered" | "mesh";
+
+export function computeContextMaturity(unitCount: number): ContextMaturity {
+  if (unitCount > 25) return "crystallized";
+  if (unitCount >= 11) return "mature";
+  if (unitCount >= 4) return "developing";
+  return "seedling";
+}
+
 export function createContextService(db: PrismaClient) {
   const repo = createContextRepository(db);
 
@@ -82,15 +92,111 @@ export function createContextService(db: PrismaClient) {
     },
 
     async addUnit(unitId: string, contextId: string) {
-      return repo.addUnit(unitId, contextId);
+      const result = await repo.addUnit(unitId, contextId);
+      await this.recomputeMaturity(contextId);
+      return result;
     },
 
     async removeUnit(unitId: string, contextId: string) {
-      return repo.removeUnit(unitId, contextId);
+      const result = await repo.removeUnit(unitId, contextId);
+      await this.recomputeMaturity(contextId);
+      return result;
     },
 
     async getUnitsForContext(contextId: string) {
       return repo.getUnitsForContext(contextId);
+    },
+
+    /**
+     * Recomputes and persists the maturity level of a context based on its unit count.
+     * Maturity is stored in the `snapshot` field as a prefixed label.
+     * Thresholds: seedling (<4), developing (4-10), mature (11-25), crystallized (>25)
+     */
+    async recomputeMaturity(contextId: string): Promise<ContextMaturity> {
+      const unitCount = await db.unitContext.count({ where: { contextId } });
+      const maturity = computeContextMaturity(unitCount);
+      await db.context.update({
+        where: { id: contextId },
+        data: { snapshot: maturity },
+      });
+      return maturity;
+    },
+
+    /**
+     * Computes the tension score for a context: ratio of `contradicts` relations
+     * to total relations among units in this context.
+     * Returns 0 if there are no relations.
+     */
+    async computeTensionScore(contextId: string): Promise<number> {
+      const unitIds = await db.unitContext
+        .findMany({ where: { contextId }, select: { unitId: true } })
+        .then((rows) => rows.map((r) => r.unitId));
+
+      if (unitIds.length === 0) return 0;
+
+      const [totalCount, contradictsCount] = await Promise.all([
+        db.relation.count({
+          where: {
+            sourceUnitId: { in: unitIds },
+            targetUnitId: { in: unitIds },
+          },
+        }),
+        db.relation.count({
+          where: {
+            sourceUnitId: { in: unitIds },
+            targetUnitId: { in: unitIds },
+            type: "contradicts",
+          },
+        }),
+      ]);
+
+      if (totalCount === 0) return 0;
+      return contradictsCount / totalCount;
+    },
+
+    /**
+     * Computes the topology state of a context based on relation patterns.
+     * Simplified version (Phase 3 will have full implementation).
+     * - "isolated": fewer than 3 relations total
+     * - "linear": most units have ≤ 2 connections
+     * - "clustered": some units have > 4 connections
+     * - "mesh": average connections per unit > 3
+     */
+    async computeTopologyState(contextId: string): Promise<TopologyState> {
+      const unitIds = await db.unitContext
+        .findMany({ where: { contextId }, select: { unitId: true } })
+        .then((rows) => rows.map((r) => r.unitId));
+
+      if (unitIds.length === 0) return "isolated";
+
+      const relations = await db.relation.findMany({
+        where: {
+          sourceUnitId: { in: unitIds },
+          targetUnitId: { in: unitIds },
+        },
+        select: { sourceUnitId: true, targetUnitId: true },
+      });
+
+      if (relations.length < 3) return "isolated";
+
+      // Count connections per unit (undirected)
+      const connectionCount = new Map<string, number>();
+      for (const unitId of unitIds) {
+        connectionCount.set(unitId, 0);
+      }
+      for (const rel of relations) {
+        connectionCount.set(rel.sourceUnitId, (connectionCount.get(rel.sourceUnitId) ?? 0) + 1);
+        connectionCount.set(rel.targetUnitId, (connectionCount.get(rel.targetUnitId) ?? 0) + 1);
+      }
+
+      const counts = Array.from(connectionCount.values());
+      const totalConnections = counts.reduce((sum, c) => sum + c, 0);
+      const avgConnections = totalConnections / unitIds.length;
+      const hasHighDegree = counts.some((c) => c > 4);
+
+      if (hasHighDegree) return "clustered";
+      if (avgConnections > 3) return "mesh";
+      return "linear";
     },
 
     /**
@@ -256,6 +362,91 @@ export function createContextService(db: PrismaClient) {
 
         // Units not assigned to either remain in parent (AC#2) — no action needed
 
+        // Preserve relations for units that land in the same sub-context.
+        // Relations between A-only units → re-point perspectiveId to new sub-context A perspective.
+        // Relations between B-only units → re-point perspectiveId to new sub-context B perspective.
+        // Cross-relations (A↔B) stay linked to parent perspectives (no change needed).
+        const setA = new Set(input.subContextA.unitIds);
+        const setB = new Set(input.subContextB.unitIds);
+
+        // Fetch parent perspectives for units going into A or B
+        const parentPerspectives = await tx.unitPerspective.findMany({
+          where: {
+            contextId: input.contextId,
+            unitId: { in: [...input.subContextA.unitIds, ...input.subContextB.unitIds] },
+          },
+        });
+        const parentPerspIdsForA = parentPerspectives
+          .filter((p) => setA.has(p.unitId))
+          .map((p) => p.id);
+        const parentPerspIdsForB = parentPerspectives
+          .filter((p) => setB.has(p.unitId))
+          .map((p) => p.id);
+
+        // Fetch new sub-context perspectives (copy from parent for each sub-context)
+        await tx.unitPerspective.createMany({
+          data: parentPerspectives
+            .filter((p) => setA.has(p.unitId))
+            .map((p) => ({
+              unitId: p.unitId, contextId: contextA.id,
+              type: p.type, stance: p.stance, importance: p.importance,
+              note: p.note, canvasX: p.canvasX, canvasY: p.canvasY, canvasZoom: p.canvasZoom,
+            })),
+          skipDuplicates: true,
+        });
+        await tx.unitPerspective.createMany({
+          data: parentPerspectives
+            .filter((p) => setB.has(p.unitId))
+            .map((p) => ({
+              unitId: p.unitId, contextId: contextB.id,
+              type: p.type, stance: p.stance, importance: p.importance,
+              note: p.note, canvasX: p.canvasX, canvasY: p.canvasY, canvasZoom: p.canvasZoom,
+            })),
+          skipDuplicates: true,
+        });
+
+        // Load the newly created sub-context perspectives to get their IDs
+        const [newPerspA, newPerspB] = await Promise.all([
+          tx.unitPerspective.findMany({ where: { contextId: contextA.id } }),
+          tx.unitPerspective.findMany({ where: { contextId: contextB.id } }),
+        ]);
+        const newPerspIdByUnitA = new Map(newPerspA.map((p) => [p.unitId, p.id]));
+        const newPerspIdByUnitB = new Map(newPerspB.map((p) => [p.unitId, p.id]));
+
+        // Remap relations whose perspectiveId belongs to A-only or B-only parent perspectives
+        const allParentPerspIds = [...parentPerspIdsForA, ...parentPerspIdsForB];
+        if (allParentPerspIds.length > 0) {
+          const relationsToRemap = await tx.relation.findMany({
+            where: { perspectiveId: { in: allParentPerspIds } },
+          });
+
+          for (const rel of relationsToRemap) {
+            const srcInA = setA.has(rel.sourceUnitId);
+            const srcInB = setB.has(rel.sourceUnitId);
+            const tgtInA = setA.has(rel.targetUnitId);
+            const tgtInB = setB.has(rel.targetUnitId);
+
+            if ((srcInA || tgtInA) && !srcInB && !tgtInB) {
+              // Both endpoints in A — re-point to new sub-context A perspective
+              const newPerspId =
+                newPerspIdByUnitA.get(rel.sourceUnitId) ??
+                newPerspIdByUnitA.get(rel.targetUnitId);
+              if (newPerspId) {
+                await tx.relation.update({ where: { id: rel.id }, data: { perspectiveId: newPerspId } });
+              }
+            } else if ((srcInB || tgtInB) && !srcInA && !tgtInA) {
+              // Both endpoints in B — re-point to new sub-context B perspective
+              const newPerspId =
+                newPerspIdByUnitB.get(rel.sourceUnitId) ??
+                newPerspIdByUnitB.get(rel.targetUnitId);
+              if (newPerspId) {
+                await tx.relation.update({ where: { id: rel.id }, data: { perspectiveId: newPerspId } });
+              }
+            }
+            // Cross A↔B relations: perspectiveId keeps pointing to parent context perspective
+          }
+        }
+
         return { contextA, contextB };
       });
     },
@@ -342,6 +533,38 @@ export function createContextService(db: PrismaClient) {
 
         if (perspectiveData.length > 0) {
           await tx.unitPerspective.createMany({ data: perspectiveData, skipDuplicates: true });
+        }
+
+        // Preserve relations: remap perspectiveId from old A/B perspectives → new merged perspectives.
+        // Build a map from old perspective ID → new merged perspective ID (keyed by unitId).
+        const newMergedPersp = await tx.unitPerspective.findMany({
+          where: { contextId: merged.id },
+        });
+        const newMergedPerspByUnit = new Map(newMergedPersp.map((p) => [p.unitId, p.id]));
+
+        const oldPerspIds = [...perspA, ...perspB].map((p) => p.id);
+        // Build old perspective ID → unitId lookup
+        const oldPerspUnitMap = new Map<string, string>(
+          [...perspA, ...perspB].map((p) => [p.id, p.unitId]),
+        );
+
+        if (oldPerspIds.length > 0) {
+          const relationsToRemap = await tx.relation.findMany({
+            where: { perspectiveId: { in: oldPerspIds } },
+          });
+
+          for (const rel of relationsToRemap) {
+            if (!rel.perspectiveId) continue;
+            const unitId = oldPerspUnitMap.get(rel.perspectiveId);
+            if (!unitId) continue;
+            const newPerspId = newMergedPerspByUnit.get(unitId);
+            if (newPerspId) {
+              await tx.relation.update({
+                where: { id: rel.id },
+                data: { perspectiveId: newPerspId },
+              });
+            }
+          }
         }
 
         // Move children of both contexts to merged

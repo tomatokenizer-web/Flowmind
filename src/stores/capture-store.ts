@@ -30,6 +30,10 @@ interface CaptureState {
   showAudioRecorder: boolean;
   /** Error message to display to user */
   errorMessage: string | null;
+  /** Batch capture mode */
+  batchMode: boolean;
+  /** Texts queued for batch processing */
+  batchTexts: string[];
 
   open: () => void;
   close: () => void;
@@ -44,6 +48,10 @@ interface CaptureState {
   openWithAudio: () => void;
   hideAudioRecorder: () => void;
   setErrorMessage: (msg: string | null) => void;
+  toggleBatchMode: () => void;
+  addBatchText: (text: string) => void;
+  removeBatchText: (index: number) => void;
+  clearBatch: () => void;
 }
 
 export const useCaptureStore = create<CaptureState>((set) => ({
@@ -54,6 +62,8 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   decompositionData: null,
   showAudioRecorder: false,
   errorMessage: null,
+  batchMode: false,
+  batchTexts: [],
 
   open: () => set({ isOpen: true, phase: "input", showAudioRecorder: false, errorMessage: null }),
   close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null }),
@@ -74,4 +84,8 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   openWithAudio: () => set({ isOpen: true, phase: "input", showAudioRecorder: true, errorMessage: null }),
   hideAudioRecorder: () => set({ showAudioRecorder: false }),
   setErrorMessage: (msg) => set({ errorMessage: msg }),
+  toggleBatchMode: () => set((s) => ({ batchMode: !s.batchMode })),
+  addBatchText: (text) => set((s) => ({ batchTexts: [...s.batchTexts, text] })),
+  removeBatchText: (index) => set((s) => ({ batchTexts: s.batchTexts.filter((_, i) => i !== index) })),
+  clearBatch: () => set({ batchTexts: [], batchMode: false }),
 }));

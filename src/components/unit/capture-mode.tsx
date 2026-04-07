@@ -212,6 +212,9 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
   );
 
   const wordCount = pendingText.trim() ? pendingText.trim().split(/\s+/).length : 0;
+  const charCount = pendingText.length;
+  const paragraphCount = pendingText.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  const isMultiParagraph = paragraphCount >= 2;
 
   return (
     <motion.div
@@ -293,7 +296,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                     "text-xs tabular-nums transition-colors",
                     wordCount > 0 ? "text-text-tertiary" : "text-transparent",
                   )}>
-                    {wordCount} word{wordCount !== 1 ? "s" : ""}
+                    {charCount} chars &middot; {wordCount} word{wordCount !== 1 ? "s" : ""}
                   </span>
 
                   {/* Submit button */}
@@ -355,6 +358,20 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Multi-paragraph hint */}
+              <AnimatePresence>
+                {isMultiParagraph && mode === "capture" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 rounded-xl border border-accent-primary/15 bg-accent-primary/5 px-4 py-2.5 text-xs text-accent-primary/80"
+                  >
+                    Multiple paragraphs detected &mdash; consider using <strong>Organize</strong> mode to decompose into separate units.
                   </motion.div>
                 )}
               </AnimatePresence>

@@ -3,7 +3,9 @@ import { getAIProvider } from "@/server/ai/provider";
 import {
   TypeSuggestionSchema,
   AttributeEnrichmentSchema,
-  RelationSuggestionsSchema,
+  TypeSpecificAttributesSchema,
+  LayeredRelationSuggestionsSchema,
+  ScopeJumpSchema,
   SalienceScoreSchema,
   IntegrityCheckSchema,
   DecompositionBoundariesSchema,
@@ -193,6 +195,60 @@ export function createPipelineService(db: PrismaClient) {
             voice: e.voice as Prisma.UnitUpdateInput["voice"],
           },
         });
+
+        // Type-specific attribute enrichment (second AI call within Pass 3)
+        const needsTypeSpecific =
+          classifiedType === "claim" ||
+          classifiedType === "counterargument" ||
+          classifiedType === "question" ||
+          classifiedType === "evidence" ||
+          classifiedType === "idea";
+
+        if (needsTypeSpecific) {
+          try {
+            let typeSpecificPrompt: string;
+            if (classifiedType === "claim" || classifiedType === "counterargument") {
+              typeSpecificPrompt = `Rate the argument weight (0-1) of this ${classifiedType}.\n\nContent: "${primaryContent.slice(0, 500)}"\n\nargumentWeight: how logically forceful/persuasive is the argument? 0=weak, 1=very strong.`;
+            } else if (classifiedType === "question") {
+              typeSpecificPrompt = `Classify the scope of this question.\n\nContent: "${primaryContent.slice(0, 500)}"\n\nquestionScope options:\n- clarifying: seeks clarification of existing point\n- exploratory: opens new territory\n- challenging: contests a claim\n- connecting: links disparate ideas`;
+            } else if (classifiedType === "evidence") {
+              typeSpecificPrompt = `Rate the evidence strength (0-1) of this evidence unit.\n\nContent: "${primaryContent.slice(0, 500)}"\n\nevidenceStrength: how strong/reliable is this evidence? 0=anecdotal/weak, 1=empirical/rigorous.`;
+            } else {
+              typeSpecificPrompt = `Rate the novelty score (0-1) of this idea.\n\nContent: "${primaryContent.slice(0, 500)}"\n\nnoveltyScore: how novel/original is this idea? 0=common/derivative, 1=highly novel/original.`;
+            }
+
+            const typeAttrs = await provider.generateStructured<{
+              argumentWeight?: number;
+              questionScope?: "clarifying" | "exploratory" | "challenging" | "connecting";
+              evidenceStrength?: number;
+              noveltyScore?: number;
+            }>(
+              typeSpecificPrompt,
+              {
+                temperature: 0.3,
+                maxTokens: 128,
+                zodSchema: TypeSpecificAttributesSchema,
+                schema: {
+                  name: "TypeSpecificAttributes",
+                  description: "Type-specific attribute enrichment",
+                  properties: {},
+                  required: [],
+                },
+              },
+            );
+
+            // Store non-empty attributes in unit meta
+            const hasAttrs = Object.values(typeAttrs).some((v) => v !== undefined);
+            if (hasAttrs) {
+              await db.unit.update({
+                where: { id: unit.id },
+                data: { meta: typeAttrs as Prisma.InputJsonValue },
+              });
+            }
+          } catch {
+            // Type-specific enrichment failure does not fail the pass
+          }
+        }
       }
 
       // ── Pass 4: Relation Detection ────────────────────────────
@@ -215,15 +271,15 @@ export function createPipelineService(db: PrismaClient) {
           .map((u) => `[${u.id}] (${u.unitType}): ${u.content.slice(0, 100)}`)
           .join("\n");
 
-        return provider.generateStructured<{ relations: Array<{ targetUnitId: string; relationType: string; strength: number; reasoning: string }> }>(
-          `Given this new unit and existing units, suggest relations.\n\nNew unit (${classifiedType}): "${primaryContent.slice(0, 300)}"\n\nExisting units:\n${existingContext}\n\nSuggest up to 3 relations with strength scores.`,
+        return provider.generateStructured<{ relations: Array<{ targetUnitId: string; layer: string; subtype: string; strength: number; nsDirection: string; reasoning: string }> }>(
+          `Given this new unit and existing units, suggest relations with layer classification.\n\nNew unit (${classifiedType}): "${primaryContent.slice(0, 300)}"\n\nExisting units:\n${existingContext}\n\nFor each relation provide:\n- targetUnitId: the ID of the related unit\n- layer: one of structural, evidential, dialogical, generative, temporal, compositional, analytical, meta\n- subtype: specific relation subtype (e.g., supports, contradicts, derives_from, expands, exemplifies)\n- strength: 0-1 confidence\n- nsDirection: nucleus_to_satellite, satellite_to_nucleus, or multinuclear\n\nSuggest up to 5 relations.`,
           {
             temperature: 0.3,
             maxTokens: 512,
-            zodSchema: RelationSuggestionsSchema,
+            zodSchema: LayeredRelationSuggestionsSchema,
             schema: {
-              name: "RelationSuggestions",
-              description: "Suggest relations to existing units",
+              name: "LayeredRelationSuggestions",
+              description: "Suggest layered relations to existing units",
               properties: {},
               required: ["relations"],
             },
@@ -250,8 +306,10 @@ export function createPipelineService(db: PrismaClient) {
                 payload: {
                   sourceUnitId: unit.id,
                   targetUnitId: rel.targetUnitId,
-                  relationType: rel.relationType,
+                  layer: rel.layer,
+                  subtype: rel.subtype,
                   strength: rel.strength,
+                  nsDirection: rel.nsDirection,
                   reasoning: rel.reasoning,
                 } as Prisma.InputJsonValue,
                 rationale: rel.reasoning,
@@ -261,13 +319,72 @@ export function createPipelineService(db: PrismaClient) {
         }
       }
 
-      // ── Pass 5: Context Placement ─────────────────────────────
-      // If contextId provided, assign directly. Otherwise skip.
+      // ── Pass 5: Context Placement + Scope Jump Detection ──────
       if (input.contextId) {
-        passes.push({ pass: "context_placement", status: "completed", durationMs: 0 });
+        const ctxStart = Date.now();
         await db.unitContext.create({
           data: { unitId: unit.id, contextId: input.contextId },
         });
+
+        // Scope jump detection: compare new unit against recent units in context
+        try {
+          const recentUnits = await db.unit.findMany({
+            where: {
+              id: { not: unit.id },
+              unitContexts: { some: { contextId: input.contextId } },
+            },
+            select: { content: true, unitType: true },
+            orderBy: { createdAt: "desc" },
+            take: 3,
+          });
+
+          if (recentUnits.length >= 2) {
+            const recentSummary = recentUnits
+              .map((u) => `(${u.unitType}): ${u.content.slice(0, 100)}`)
+              .join("\n");
+
+            const scopeResult = await provider.generateStructured<{
+              isJump: boolean;
+              currentScope: string;
+              suggestedScope: string;
+              confidence: number;
+            }>(
+              `Does this new unit represent a scope jump (topic shift) compared to recent context?\n\nNew unit (${classifiedType}): "${primaryContent.slice(0, 300)}"\n\nRecent units in context:\n${recentSummary}\n\nDetermine if the new unit shifts topic significantly.`,
+              {
+                temperature: 0.2,
+                maxTokens: 256,
+                zodSchema: ScopeJumpSchema,
+                schema: {
+                  name: "ScopeJump",
+                  description: "Detect scope jump",
+                  properties: {},
+                  required: ["isJump", "currentScope", "suggestedScope", "confidence"],
+                },
+              },
+            );
+
+            if (scopeResult.isJump && scopeResult.confidence >= 0.7) {
+              const existingMeta = (unit.meta as Record<string, unknown>) ?? {};
+              await db.unit.update({
+                where: { id: unit.id },
+                data: {
+                  meta: {
+                    ...existingMeta,
+                    scopeJump: {
+                      from: scopeResult.currentScope,
+                      to: scopeResult.suggestedScope,
+                      confidence: scopeResult.confidence,
+                    },
+                  } as Prisma.InputJsonValue,
+                },
+              });
+            }
+          }
+        } catch {
+          // Scope jump detection failure is non-fatal
+        }
+
+        passes.push({ pass: "context_placement", status: "completed", durationMs: Date.now() - ctxStart });
       } else {
         passes.push({ pass: "context_placement", status: "skipped", durationMs: 0 });
       }
@@ -375,6 +492,10 @@ export function createPipelineService(db: PrismaClient) {
       }
 
       switch (passName) {
+        case "decomposition":
+        case "context_placement":
+          return { pass: passName, status: "skipped", durationMs: 0 };
+
         case "classification": {
           return runPass("classification", async () => {
             const result = await provider.generateStructured<{ unitType: string; confidence: number; reasoning: string }>(
@@ -400,8 +521,140 @@ export function createPipelineService(db: PrismaClient) {
             return result;
           });
         }
-        default:
-          return { pass: passName, status: "failed", error: `Re-run not implemented for ${passName}`, durationMs: 0 };
+
+        case "enrichment": {
+          return runPass("enrichment", async () => {
+            const result = await provider.generateStructured<{
+              epistemicAct: string | null; epistemicOrigin: string | null;
+              applicabilityScope: string | null; temporalValidity: string | null;
+              revisability: string | null; voice: string; confidence: number; reasoning: string;
+            }>(
+              `Analyze this knowledge unit and determine its epistemic properties.\n\nType: ${unit.unitType}\nContent: "${unit.content.slice(0, 1000)}"\n\nDetermine: epistemicAct, epistemicOrigin, applicabilityScope, temporalValidity, revisability, voice`,
+              {
+                temperature: 0.3,
+                maxTokens: 512,
+                zodSchema: AttributeEnrichmentSchema,
+                schema: {
+                  name: "AttributeEnrichment",
+                  description: "Enrich unit with epistemic attributes",
+                  properties: {},
+                  required: ["epistemicAct", "epistemicOrigin", "applicabilityScope", "temporalValidity", "revisability", "voice", "confidence", "reasoning"],
+                },
+              },
+            );
+            await db.unit.update({
+              where: { id: unitId },
+              data: {
+                primaryEpistemicAct: result.epistemicAct as Prisma.UnitUpdateInput["primaryEpistemicAct"],
+                epistemicOrigin: result.epistemicOrigin as Prisma.UnitUpdateInput["epistemicOrigin"],
+                applicabilityScope: result.applicabilityScope as Prisma.UnitUpdateInput["applicabilityScope"],
+                temporalValidity: result.temporalValidity as Prisma.UnitUpdateInput["temporalValidity"],
+                revisability: result.revisability as Prisma.UnitUpdateInput["revisability"],
+                voice: result.voice as Prisma.UnitUpdateInput["voice"],
+              },
+            });
+            return result;
+          });
+        }
+
+        case "relations": {
+          return runPass("relations", async () => {
+            const existingUnits = await db.unit.findMany({
+              where: {
+                projectId: unit.projectId,
+                id: { not: unitId },
+                lifecycle: { not: "archived" },
+              },
+              select: { id: true, content: true, unitType: true },
+              orderBy: { createdAt: "desc" },
+              take: 20,
+            });
+            if (existingUnits.length === 0) return { relations: [] };
+            const existingContext = existingUnits
+              .map((u) => `[${u.id}] (${u.unitType}): ${u.content.slice(0, 100)}`)
+              .join("\n");
+            const result = await provider.generateStructured<{ relations: Array<{ targetUnitId: string; layer: string; subtype: string; strength: number; nsDirection: string; reasoning: string }> }>(
+              `Given this unit and existing units, suggest layered relations.\n\nUnit (${unit.unitType}): "${unit.content.slice(0, 300)}"\n\nExisting units:\n${existingContext}`,
+              {
+                temperature: 0.3,
+                maxTokens: 512,
+                zodSchema: LayeredRelationSuggestionsSchema,
+                schema: {
+                  name: "LayeredRelationSuggestions",
+                  description: "Suggest layered relations",
+                  properties: {},
+                  required: ["relations"],
+                },
+              },
+            );
+            for (const rel of result.relations) {
+              const target = await db.unit.findUnique({ where: { id: rel.targetUnitId }, select: { id: true } });
+              if (target) {
+                await db.proposal.create({
+                  data: {
+                    kind: "relation_suggest",
+                    targetUnitId: unitId,
+                    userId,
+                    status: "pending",
+                    payload: { sourceUnitId: unitId, targetUnitId: rel.targetUnitId, layer: rel.layer, subtype: rel.subtype, strength: rel.strength, nsDirection: rel.nsDirection, reasoning: rel.reasoning } as Prisma.InputJsonValue,
+                    rationale: rel.reasoning,
+                  },
+                });
+              }
+            }
+            return result;
+          });
+        }
+
+        case "salience": {
+          return runPass("salience", async () => {
+            const result = await provider.generateStructured<{ salience: number; factors: Array<{ factor: string; weight: number; reasoning: string }> }>(
+              `Rate the salience of this knowledge unit on a 0-1 scale.\n\nType: ${unit.unitType}\nContent: "${unit.content.slice(0, 500)}"`,
+              {
+                temperature: 0.2,
+                maxTokens: 256,
+                zodSchema: SalienceScoreSchema,
+                schema: {
+                  name: "SalienceScore",
+                  description: "Calculate salience score",
+                  properties: {},
+                  required: ["salience", "factors"],
+                },
+              },
+            );
+            await db.unit.update({
+              where: { id: unitId },
+              data: { importance: result.salience },
+            });
+            return result;
+          });
+        }
+
+        case "integrity": {
+          return runPass("integrity", async () => {
+            const result = await provider.generateStructured<{ passed: boolean; issues: Array<{ type: string; severity: string; description: string; relatedUnitIds: string[] }> }>(
+              `Verify the integrity of this knowledge unit.\n\nType: ${unit.unitType}\nContent: "${unit.content.slice(0, 500)}"\n\nCheck: essential attributes populated, type matches content, any issues.`,
+              {
+                temperature: 0.2,
+                maxTokens: 256,
+                zodSchema: IntegrityCheckSchema,
+                schema: {
+                  name: "IntegrityCheck",
+                  description: "Verify unit integrity",
+                  properties: {},
+                  required: ["passed", "issues"],
+                },
+              },
+            );
+            if (!result.passed) {
+              await db.unit.update({
+                where: { id: unitId },
+                data: { aiReviewPending: true },
+              });
+            }
+            return result;
+          });
+        }
       }
     },
   };

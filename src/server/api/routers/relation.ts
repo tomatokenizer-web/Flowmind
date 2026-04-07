@@ -59,6 +59,7 @@ const idSchema = z.object({
 const listByUnitSchema = z.object({
   unitId: z.string().uuid(),
   contextId: z.string().uuid().optional(),
+  layer: relationLayerEnum.optional(),
 });
 
 const listByUnitsSchema = z.object({
@@ -126,14 +127,30 @@ export const relationRouter = createTRPCRouter({
       // IDOR fix: verify the relation's source unit belongs to the authenticated user
       const relation = await ctx.db.relation.findFirst({
         where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
-        select: { id: true },
+        select: { id: true, perspectiveId: true },
       });
       if (!relation) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
       }
       const { id, ...data } = input;
       const service = createRelationService(ctx.db);
-      return service.update(id, data as Parameters<typeof service.update>[1], ctx.session.user.id!);
+      const result = await service.update(id, data as Parameters<typeof service.update>[1], ctx.session.user.id!);
+
+      // Recompute ThoughtRank if relation belongs to a perspective (non-blocking)
+      if (relation.perspectiveId) {
+        const perspective = await ctx.db.unitPerspective.findUnique({
+          where: { id: relation.perspectiveId },
+          select: { contextId: true },
+        });
+        if (perspective) {
+          const thoughtRankService = createThoughtRankService(ctx.db);
+          void thoughtRankService.updateThoughtRankForContext(perspective.contextId).catch(() => {
+            // Non-fatal — ThoughtRank update runs best-effort
+          });
+        }
+      }
+
+      return result;
     }),
 
   delete: protectedProcedure
@@ -142,13 +159,29 @@ export const relationRouter = createTRPCRouter({
       // IDOR fix: verify the relation's source unit belongs to the authenticated user
       const relation = await ctx.db.relation.findFirst({
         where: { id: input.id, sourceUnit: { userId: ctx.session.user.id! } },
-        select: { id: true },
+        select: { id: true, perspectiveId: true },
       });
       if (!relation) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Relation not found" });
       }
       const service = createRelationService(ctx.db);
-      return service.delete(input.id, ctx.session.user.id!);
+      const result = await service.delete(input.id, ctx.session.user.id!);
+
+      // Recompute ThoughtRank if relation belonged to a perspective (non-blocking)
+      if (relation.perspectiveId) {
+        const perspective = await ctx.db.unitPerspective.findUnique({
+          where: { id: relation.perspectiveId },
+          select: { contextId: true },
+        });
+        if (perspective) {
+          const thoughtRankService = createThoughtRankService(ctx.db);
+          void thoughtRankService.updateThoughtRankForContext(perspective.contextId).catch(() => {
+            // Non-fatal — ThoughtRank update runs best-effort
+          });
+        }
+      }
+
+      return result;
     }),
 
   listByUnit: protectedProcedure
@@ -163,7 +196,7 @@ export const relationRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
       }
       const service = createRelationService(ctx.db);
-      return service.listByUnit(input.unitId, input.contextId);
+      return service.listByUnit(input.unitId, input.contextId, input.layer);
     }),
 
   listByUnits: protectedProcedure

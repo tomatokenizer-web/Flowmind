@@ -67,6 +67,13 @@ export const perspectiveRouter = createTRPCRouter({
       return service.getForUnit(input.unitId, input.contextId);
     }),
 
+  listForUnit: protectedProcedure
+    .input(z.object({ unitId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const service = createPerspectiveService(ctx.db);
+      return service.listForUnit(input.unitId);
+    }),
+
   getForContext: protectedProcedure
     .input(contextIdSchema)
     .query(async ({ ctx, input }) => {

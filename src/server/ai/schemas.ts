@@ -368,6 +368,14 @@ export const LayeredRelationSuggestionsSchema = z.object({
   ).max(5),
 });
 
+/** Pass 3 (type-specific): Type-specific attribute enrichment */
+export const TypeSpecificAttributesSchema = z.object({
+  argumentWeight: z.number().min(0).max(1).optional(),
+  questionScope: z.enum(["clarifying", "exploratory", "challenging", "connecting"]).optional(),
+  evidenceStrength: z.number().min(0).max(1).optional(),
+  noveltyScore: z.number().min(0).max(1).optional(),
+});
+
 /** Pass 6: Salience Scoring */
 export const SalienceScoreSchema = z.object({
   salience: z.number().min(0).max(1),

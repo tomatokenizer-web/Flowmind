@@ -223,6 +223,66 @@ export const inquiryRouter = createTRPCRouter({
       return service.deleteInquiry(input.id);
     }),
 
+  // ─── Inquiry ↔ Context link endpoints ─────────────────────────
+
+  addContextToInquiry: protectedProcedure
+    .input(z.object({ inquiryId: z.string().uuid(), contextId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify inquiry ownership via pursuit → project
+      const inquiry = await ctx.db.inquiry.findFirst({
+        where: {
+          id: input.inquiryId,
+          pursuit: { project: { userId: ctx.session.user.id! } },
+        },
+        select: { id: true, pursuit: { select: { projectId: true } } },
+      });
+      if (!inquiry) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Inquiry not found" });
+      }
+      // Verify context belongs to same project
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, projectId: inquiry.pursuit.projectId },
+        select: { id: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not found in this project" });
+      }
+      return ctx.db.context.update({
+        where: { id: input.contextId },
+        data: { inquiryId: input.inquiryId },
+        select: { id: true, name: true, inquiryId: true },
+      });
+    }),
+
+  removeContextFromInquiry: protectedProcedure
+    .input(z.object({ inquiryId: z.string().uuid(), contextId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify inquiry ownership via pursuit → project
+      const inquiry = await ctx.db.inquiry.findFirst({
+        where: {
+          id: input.inquiryId,
+          pursuit: { project: { userId: ctx.session.user.id! } },
+        },
+        select: { id: true },
+      });
+      if (!inquiry) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Inquiry not found" });
+      }
+      // Verify context is actually linked to this inquiry
+      const context = await ctx.db.context.findFirst({
+        where: { id: input.contextId, inquiryId: input.inquiryId },
+        select: { id: true },
+      });
+      if (!context) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Context not linked to this inquiry" });
+      }
+      return ctx.db.context.update({
+        where: { id: input.contextId },
+        data: { inquiryId: null },
+        select: { id: true, name: true, inquiryId: true },
+      });
+    }),
+
   // ─── Pivot Event endpoints ─────────────────────────────────────
 
   createPivotEvent: protectedProcedure

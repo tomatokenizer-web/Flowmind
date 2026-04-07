@@ -89,8 +89,14 @@ function buildService() {
   const mockRepo = createMockRepo();
   (createUnitRepository as ReturnType<typeof vi.fn>).mockReturnValue(mockRepo);
   const db = {
+    relation: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     navigator: {
       findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    unit: {
       update: vi.fn().mockResolvedValue({}),
     },
     assemblyItem: {

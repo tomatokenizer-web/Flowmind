@@ -129,4 +129,77 @@ export const captureRouter = createTRPCRouter({
       const pipeline = createPipelineService(ctx.db);
       return pipeline.processInput(input, ctx.session.user.id!);
     }),
+
+  /**
+   * Re-run a single pipeline pass on an existing unit.
+   */
+  rerunPass: protectedProcedure
+    .input(
+      z.object({
+        unitId: z.string().uuid(),
+        passName: z.enum([
+          "decomposition", "classification", "enrichment",
+          "relations", "context_placement", "salience", "integrity",
+        ]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+      const pipeline = createPipelineService(ctx.db);
+      return pipeline.rerunPass(input.unitId, input.passName, ctx.session.user.id!);
+    }),
+
+  /**
+   * Batch process multiple text inputs through the pipeline.
+   */
+  batchProcessInput: protectedProcedure
+    .input(
+      z.object({
+        items: z.array(
+          z.object({
+            content: z.string().min(1).max(50000),
+            contextId: z.string().uuid().optional(),
+          }),
+        ).min(1).max(20),
+        projectId: z.string().uuid(),
+        mode: z.enum(["full", "quick"]).default("quick"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      const pipeline = createPipelineService(ctx.db);
+      const results = [];
+
+      for (const item of input.items) {
+        const result = await pipeline.processInput(
+          {
+            content: item.content,
+            projectId: input.projectId,
+            contextId: item.contextId,
+            mode: input.mode,
+          },
+          ctx.session.user.id!,
+        );
+        results.push(result);
+      }
+
+      return {
+        total: results.length,
+        succeeded: results.filter((r) => r.success).length,
+        results,
+      };
+    }),
 });

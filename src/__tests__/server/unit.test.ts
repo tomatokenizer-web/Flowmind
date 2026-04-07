@@ -118,6 +118,9 @@ function createMockPrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       update: vi.fn().mockResolvedValue({}),
     },
+    relation: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     assemblyItem: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },

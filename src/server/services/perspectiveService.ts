@@ -88,6 +88,18 @@ export function createPerspectiveService(db: PrismaClient) {
       });
     },
 
+    async listForUnit(unitId: string) {
+      return db.unitPerspective.findMany({
+        where: { unitId },
+        include: {
+          context: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: { importance: "desc" },
+      });
+    },
+
     async getForContext(contextId: string) {
       return db.unitPerspective.findMany({
         where: { contextId },

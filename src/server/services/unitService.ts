@@ -26,6 +26,25 @@ export interface CreateUnitInput {
   parentInputId?: string;
   conversationId?: string;
   meta?: Prisma.InputJsonValue;
+  // v3.14 fields
+  unitKind?: Prisma.UnitCreateInput["unitKind"];
+  sourceText?: string;
+  lifecycleState?: Prisma.UnitCreateInput["lifecycleState"];
+  voice?: Prisma.UnitCreateInput["voice"];
+  authoredBy?: string;
+  primaryType?: Prisma.UnitCreateInput["primaryType"];
+  secondaryTypes?: Prisma.UnitCreateInput["secondaryTypes"];
+  typeConfidence?: Prisma.UnitCreateInput["typeConfidence"];
+  primaryEpistemicAct?: Prisma.UnitCreateInput["primaryEpistemicAct"];
+  secondaryEpistemicActs?: Prisma.UnitCreateInput["secondaryEpistemicActs"];
+  epistemicOrigin?: Prisma.UnitCreateInput["epistemicOrigin"];
+  applicabilityScope?: Prisma.UnitCreateInput["applicabilityScope"];
+  temporalValidity?: Prisma.UnitCreateInput["temporalValidity"];
+  revisability?: Prisma.UnitCreateInput["revisability"];
+  warrantCommunity?: Prisma.UnitCreateInput["warrantCommunity"];
+  stalenessAfter?: string;
+  falsificationCondition?: string;
+  recurrencePeriod?: string;
 }
 
 export interface UpdateUnitInput {
@@ -47,6 +66,29 @@ export interface UpdateUnitInput {
   locked?: boolean;
   actionRequired?: boolean;
   meta?: Prisma.InputJsonValue;
+  // v3.14 fields
+  unitKind?: Prisma.UnitUpdateInput["unitKind"];
+  sourceText?: string;
+  lifecycleState?: Prisma.UnitUpdateInput["lifecycleState"];
+  voice?: Prisma.UnitUpdateInput["voice"];
+  authoredBy?: string;
+  primaryType?: Prisma.UnitUpdateInput["primaryType"];
+  secondaryTypes?: Prisma.UnitUpdateInput["secondaryTypes"];
+  typeConfidence?: Prisma.UnitUpdateInput["typeConfidence"];
+  primaryEpistemicAct?: Prisma.UnitUpdateInput["primaryEpistemicAct"];
+  secondaryEpistemicActs?: Prisma.UnitUpdateInput["secondaryEpistemicActs"];
+  epistemicOrigin?: Prisma.UnitUpdateInput["epistemicOrigin"];
+  applicabilityScope?: Prisma.UnitUpdateInput["applicabilityScope"];
+  temporalValidity?: Prisma.UnitUpdateInput["temporalValidity"];
+  revisability?: Prisma.UnitUpdateInput["revisability"];
+  warrantCommunity?: Prisma.UnitUpdateInput["warrantCommunity"];
+  stalenessAfter?: string;
+  falsificationCondition?: string;
+  recurrencePeriod?: string;
+  aiReviewPending?: boolean;
+  localOnly?: boolean;
+  evergreenUnit?: boolean;
+  controversialFlag?: boolean;
 }
 
 export interface ListUnitsInput {
@@ -141,6 +183,25 @@ export function createUnitService(db: PrismaClient) {
         parentInputId: input.parentInputId,
         conversationId: input.conversationId,
         meta: input.meta ?? undefined,
+        // v3.14 fields — sourceText defaults to content (spec: never edited after creation)
+        sourceText: input.sourceText ?? input.content,
+        unitKind: input.unitKind,
+        lifecycleState: input.lifecycleState ?? (lifecycle === "draft" ? "draft" : "confirmed"),
+        voice: input.voice,
+        authoredBy: input.authoredBy,
+        primaryType: input.primaryType ?? unitType,
+        secondaryTypes: input.secondaryTypes,
+        typeConfidence: input.typeConfidence,
+        primaryEpistemicAct: input.primaryEpistemicAct,
+        secondaryEpistemicActs: input.secondaryEpistemicActs,
+        epistemicOrigin: input.epistemicOrigin,
+        applicabilityScope: input.applicabilityScope,
+        temporalValidity: input.temporalValidity,
+        revisability: input.revisability,
+        warrantCommunity: input.warrantCommunity,
+        stalenessAfter: input.stalenessAfter,
+        falsificationCondition: input.falsificationCondition,
+        recurrencePeriod: input.recurrencePeriod,
         user: { connect: { id: userId } },
         project: { connect: { id: input.projectId } },
       });
@@ -332,8 +393,27 @@ export function createUnitService(db: PrismaClient) {
     },
 
     async archive(id: string, userId: string) {
+      // Build dependency map before archiving
+      const [relations, navigators] = await Promise.all([
+        db.relation.findMany({
+          where: { OR: [{ sourceUnitId: id }, { targetUnitId: id }] },
+          select: {
+            id: true, type: true, strength: true,
+            sourceUnit: { select: { id: true, content: true, unitType: true } },
+            targetUnit: { select: { id: true, content: true, unitType: true } },
+          },
+        }),
+        db.navigator.findMany({
+          where: { path: { has: id } },
+          select: { id: true, name: true },
+        }),
+      ]);
+
       const result = await this.transitionLifecycle(id, "archived", userId);
       if (!result) return null;
+
+      // Clear aiReviewPending on archive
+      await db.unit.update({ where: { id }, data: { aiReviewPending: false } });
 
       await eventBus.emit({
         type: "unit.archived",
@@ -341,7 +421,19 @@ export function createUnitService(db: PrismaClient) {
         timestamp: new Date(),
       });
 
-      return result.unit;
+      return {
+        unit: result.unit,
+        previousLifecycle: result.previousLifecycle,
+        dependencies: {
+          relations: relations.map((r) => ({
+            id: r.id,
+            type: r.type,
+            strength: r.strength,
+            connectedUnit: r.sourceUnit.id === id ? r.targetUnit : r.sourceUnit,
+          })),
+          navigators,
+        },
+      };
     },
 
     async delete(id: string, userId: string) {

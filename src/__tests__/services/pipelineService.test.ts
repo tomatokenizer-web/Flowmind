@@ -80,7 +80,9 @@ describe("pipelineService", () => {
           voice: "original",
           confidence: 0.8,
           reasoning: "Based on content analysis",
-        });
+        })
+        // Type-specific enrichment for "claim"
+        .mockResolvedValueOnce({ argumentWeight: 0.8 });
 
       const result = await service.processInput(
         { content: "Democracy protects minorities", projectId: PROJECT_ID, mode: "quick" },
@@ -117,7 +119,9 @@ describe("pipelineService", () => {
           epistemicAct: "ask", epistemicOrigin: null, applicabilityScope: null,
           temporalValidity: null, revisability: null, voice: "original",
           confidence: 0.7, reasoning: "Query form",
-        });
+        })
+        // Type-specific enrichment for "question"
+        .mockResolvedValueOnce({ questionScope: "exploratory" });
 
       await service.processInput(
         { content: "What is democracy?", projectId: PROJECT_ID, mode: "quick" },
@@ -141,13 +145,15 @@ describe("pipelineService", () => {
       mockGenerateStructured
         // Pass 2: Classification
         .mockResolvedValueOnce({ unitType: "claim", confidence: 0.9, reasoning: "Assert" })
-        // Pass 3: Enrichment
+        // Pass 3: Enrichment (epistemic)
         .mockResolvedValueOnce({
           epistemicAct: "assert", epistemicOrigin: "first_person_inference",
           applicabilityScope: "universal", temporalValidity: "atemporal",
           revisability: "evidence_revisable", voice: "original",
           confidence: 0.85, reasoning: "Analysis",
         })
+        // Pass 3: Type-specific enrichment for "claim"
+        .mockResolvedValueOnce({ argumentWeight: 0.8 })
         // Pass 4: Relations (no existing units)
         // (findMany returns [] so this is skipped internally but still "completed")
         // Pass 6: Salience
@@ -190,6 +196,8 @@ describe("pipelineService", () => {
           revisability: null, voice: "original",
           confidence: 0.6, reasoning: "Speculative",
         })
+        // Type-specific enrichment for "idea" type
+        .mockResolvedValueOnce({ noveltyScore: 0.7 })
         .mockResolvedValueOnce({ salience: 0.9, factors: [] })
         .mockResolvedValueOnce({ passed: true, issues: [] });
 
@@ -215,6 +223,8 @@ describe("pipelineService", () => {
           revisability: null, voice: "original",
           confidence: 0.3, reasoning: "Unclear",
         })
+        // Type-specific enrichment for "claim" type
+        .mockResolvedValueOnce({ argumentWeight: 0.3 })
         .mockResolvedValueOnce({ salience: 0.4, factors: [] })
         .mockResolvedValueOnce({
           passed: false,
@@ -263,7 +273,9 @@ describe("pipelineService", () => {
           applicabilityScope: null, temporalValidity: null,
           revisability: null, voice: "original",
           confidence: 0.5, reasoning: "Simple",
-        });
+        })
+        // Type-specific enrichment for "claim"
+        .mockResolvedValueOnce({ argumentWeight: 0.6 });
 
       const result = await service.processInput(
         { content: "A claim.", projectId: PROJECT_ID, mode: "quick" },

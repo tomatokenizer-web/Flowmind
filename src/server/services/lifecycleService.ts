@@ -46,6 +46,7 @@ export function createLifecycleService(db: PrismaClient) {
       unitId: string,
       targetState: LifecycleState,
       userId: string,
+      options?: { aiReviewPending?: boolean },
     ) {
       const existing = await db.unit.findFirst({
         where: { id: unitId },
@@ -66,11 +67,22 @@ export function createLifecycleService(db: PrismaClient) {
         throw new InvalidTransitionError(currentState, targetState);
       }
 
+      // Determine aiReviewPending value:
+      // - When transitioning to confirmed, auto-clear to false unless explicitly set
+      // - Otherwise, use the explicitly provided value (if any)
+      let aiReviewPendingUpdate: boolean | undefined;
+      if (targetState === "confirmed") {
+        aiReviewPendingUpdate = options?.aiReviewPending ?? false;
+      } else if (options?.aiReviewPending !== undefined) {
+        aiReviewPendingUpdate = options.aiReviewPending;
+      }
+
       const unit = await db.unit.update({
         where: { id: unitId },
         data: {
           lifecycleState: targetState,
           modifiedAt: new Date(),
+          ...(aiReviewPendingUpdate !== undefined ? { aiReviewPending: aiReviewPendingUpdate } : {}),
         },
       });
 

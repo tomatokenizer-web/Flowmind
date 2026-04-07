@@ -65,6 +65,7 @@ function buildService() {
       findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({}),
       upsert: vi.fn().mockResolvedValue({}),
+      count: vi.fn().mockResolvedValue(0),
     },
     unitPerspective: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -72,6 +73,7 @@ function buildService() {
     },
     context: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      update: vi.fn().mockResolvedValue({}),
       delete: vi.fn().mockResolvedValue({}),
     },
     $transaction: vi.fn().mockImplementation(
