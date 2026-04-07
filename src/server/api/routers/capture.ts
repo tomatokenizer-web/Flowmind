@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
+import { createPipelineService } from "@/server/services/pipelineService";
 import { inferUnitType } from "@/server/services/typeHeuristicService";
 import { TRPCError } from "@trpc/server";
 import type { UnitType } from "@prisma/client";
@@ -10,6 +11,14 @@ const captureSubmitSchema = z.object({
   projectId: z.string().uuid(),
   /** "capture" stores as-is, "organize" flags for AI decomposition (Epic 5) */
   mode: z.enum(["capture", "organize"]).default("capture"),
+});
+
+const processInputSchema = z.object({
+  content: z.string().min(1, "Content is required").max(50000),
+  projectId: z.string().uuid(),
+  contextId: z.string().uuid().optional(),
+  /** "full" runs all 7 passes, "quick" skips decomposition/salience/integrity */
+  mode: z.enum(["full", "quick"]).default("full"),
 });
 
 export const captureRouter = createTRPCRouter({
@@ -86,5 +95,38 @@ export const captureRouter = createTRPCRouter({
         }
         throw error;
       }
+    }),
+
+  /**
+   * 7-pass AI processing pipeline.
+   * Runs: decomposition → classification → enrichment → relations →
+   *       context placement → salience → integrity check.
+   * Returns pipeline result with per-pass status.
+   */
+  processInput: protectedProcedure
+    .input(processInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
+      // Verify context ownership if provided
+      if (input.contextId) {
+        const context = await ctx.db.context.findFirst({
+          where: { id: input.contextId, project: { userId: ctx.session.user.id! } },
+          select: { id: true },
+        });
+        if (!context) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Context not found" });
+        }
+      }
+
+      const pipeline = createPipelineService(ctx.db);
+      return pipeline.processInput(input, ctx.session.user.id!);
     }),
 });

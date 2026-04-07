@@ -12,6 +12,9 @@ const unitTypeEnum = z.enum([
   "definition",
   "assumption",
   "action",
+  "interpretation",
+  "example",
+  "decision",
 ]);
 
 const relationTypeEnum = z.enum([
@@ -23,6 +26,26 @@ const relationTypeEnum = z.enum([
   "exemplifies",
   "defines",
   "questions",
+]);
+
+// v3.14: 8-layer relation model
+const relationLayerEnum = z.enum([
+  "structural", "evidential", "dialogical", "generative",
+  "temporal", "compositional", "analytical", "meta",
+]);
+
+const epistemicActEnum = z.enum([
+  "assert", "hypothesize", "predict",
+  "ask", "challenge",
+  "endorse", "critique", "concede", "refute",
+  "define", "distinguish", "classify",
+  "decompose", "synthesize", "generalize", "specialize",
+  "reframe", "analogize",
+  "retract", "revise",
+]);
+
+const voiceEnum = z.enum([
+  "original", "ai_assisted", "ai_refined", "ai_sourced", "external", "imported",
 ]);
 
 // ─── AI Response Schemas ─────────────────────────────────────────────────────
@@ -232,8 +255,8 @@ export const DerivationSuggestionsSchema = z.object({
   derivations: z.array(
     z.object({
       content: z.string().max(2000),
-      unitType: z.enum(["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"]),
-      relationToOrigin: z.enum(["supports", "contradicts", "derives_from", "expands", "references", "exemplifies", "defines", "questions"]),
+      unitType: unitTypeEnum,
+      relationToOrigin: relationTypeEnum,
       rationale: z.string().max(500),
     })
   ).max(5),
@@ -300,19 +323,72 @@ export const ScopeJumpSchema = z.object({
 export const NLQIntentSchema = z.object({
   keywords: z.array(z.string().max(100)).max(10),
   unitTypes: z
-    .array(
-      z.enum([
-        "claim",
-        "question",
-        "evidence",
-        "counterargument",
-        "observation",
-        "idea",
-        "definition",
-        "assumption",
-        "action",
-      ])
-    )
+    .array(unitTypeEnum)
     .optional(),
   summary: z.string().max(300),
+});
+
+// ─── Phase 2: v3.14 Pipeline Schemas ────────────────────────────────────────
+
+/** Pass 3: Attribute Enrichment — populate v3.14 epistemic/knowledge fields */
+export const AttributeEnrichmentSchema = z.object({
+  epistemicAct: epistemicActEnum.nullable(),
+  epistemicOrigin: z.enum([
+    "first_person_experience", "first_person_inference",
+    "received_testimony", "institutional_record",
+    "consensus_knowledge", "formal_derivation",
+  ]).nullable(),
+  applicabilityScope: z.enum([
+    "universal", "domain_universal", "context_conditional",
+    "instance_specific", "personal",
+  ]).nullable(),
+  temporalValidity: z.enum([
+    "atemporal", "durable", "current", "time_bounded", "historical", "recurrent",
+  ]).nullable(),
+  revisability: z.enum([
+    "immutable", "evidence_revisable", "authority_revisable",
+    "convention_revisable", "personally_revisable",
+  ]).nullable(),
+  voice: voiceEnum,
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string().max(500),
+});
+
+/** Pass 4 v3.14: Relation detection with layer+subtype */
+export const LayeredRelationSuggestionsSchema = z.object({
+  relations: z.array(
+    z.object({
+      targetUnitId: z.string(),
+      layer: relationLayerEnum,
+      subtype: z.string().max(50),
+      strength: z.number().min(0).max(1),
+      nsDirection: z.enum(["nucleus_to_satellite", "satellite_to_nucleus", "multinuclear"]),
+      reasoning: z.string().max(300),
+    })
+  ).max(5),
+});
+
+/** Pass 6: Salience Scoring */
+export const SalienceScoreSchema = z.object({
+  salience: z.number().min(0).max(1),
+  factors: z.array(
+    z.object({
+      factor: z.enum(["relation_density", "type_importance", "recency", "uniqueness", "centrality"]),
+      weight: z.number().min(0).max(1),
+      reasoning: z.string().max(200),
+    })
+  ).max(5),
+});
+
+/** Pass 7: Integrity Check */
+export const IntegrityCheckSchema = z.object({
+  passed: z.boolean(),
+  issues: z.array(
+    z.object({
+      type: z.enum(["contradiction", "duplicate", "missing_attribute", "orphan"]),
+      severity: z.enum(["error", "warning", "info"]),
+      description: z.string().max(300),
+      relatedUnitIds: z.array(z.string()).max(5),
+    })
+  ).max(10),
 });
