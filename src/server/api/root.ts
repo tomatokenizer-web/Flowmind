@@ -34,6 +34,7 @@ import { inquiryRouter } from "@/server/api/routers/inquiry";
 import { proposalRouter } from "@/server/api/routers/proposal";
 import { viewRouter } from "@/server/api/routers/view";
 import { graphQueryRouter } from "@/server/api/routers/graph-query";
+import { compassRouter } from "@/server/api/routers/compass";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -71,6 +72,7 @@ export const appRouter = createTRPCRouter({
   proposal: proposalRouter,
   view: viewRouter,
   graphQuery: graphQueryRouter,
+  compass: compassRouter,
 });
 
 export type AppRouter = typeof appRouter;

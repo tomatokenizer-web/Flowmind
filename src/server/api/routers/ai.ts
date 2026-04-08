@@ -3024,4 +3024,39 @@ Return ONLY a JSON array (no other text):
         return { chains: [], bridgeUnitsCreated: 0 };
       }
     }),
+
+  // ─── Reflection Prompts ──────────────────────────────────────────────────
+
+  generateReflectionPrompts: rateLimitedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      contextId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Load units from context using existing helper
+        const units = await getContextUnits(ctx.db, input.contextId, 20);
+
+        // Get context name
+        const context = await ctx.db.context.findUnique({
+          where: { id: input.contextId },
+          select: { name: true },
+        });
+
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+
+        const { generateReflectionPrompts } = await import("@/server/ai/reflection");
+        const prompts = await generateReflectionPrompts(
+          provider,
+          units,
+          context?.name ?? undefined,
+        );
+
+        return { prompts, aiGenerated: true };
+      } catch (error: unknown) {
+        handleAIError(error, "Generate reflection prompts");
+        return { prompts: [], aiGenerated: false };
+      }
+    }),
 });
