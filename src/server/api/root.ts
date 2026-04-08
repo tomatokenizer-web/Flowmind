@@ -35,6 +35,9 @@ import { proposalRouter } from "@/server/api/routers/proposal";
 import { viewRouter } from "@/server/api/routers/view";
 import { graphQueryRouter } from "@/server/api/routers/graph-query";
 import { compassRouter } from "@/server/api/routers/compass";
+import { featureFlagRouter } from "@/server/api/routers/feature-flag";
+import { decisionJournalRouter } from "@/server/api/routers/decision-journal";
+import { sharingRouter } from "@/server/api/routers/sharing";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -73,6 +76,9 @@ export const appRouter = createTRPCRouter({
   view: viewRouter,
   graphQuery: graphQueryRouter,
   compass: compassRouter,
+  featureFlag: featureFlagRouter,
+  decisionJournal: decisionJournalRouter,
+  sharing: sharingRouter,
 });
 
 export type AppRouter = typeof appRouter;

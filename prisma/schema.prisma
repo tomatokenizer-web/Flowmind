@@ -416,6 +416,8 @@ model User {
   webhooks               Webhook[]
   exportHistory          ExportHistory[]
   aiUsageLogs            AIUsageLog[]
+  decisionJournals       DecisionJournal[]
+  projectShares          ProjectShare[]
 
   @@map("users")
 }
@@ -480,6 +482,8 @@ model Project {
   tags                Tag[]
   webhooks            Webhook[]
   pursuits            Pursuit[]
+  shares              ProjectShare[]
+  decisionJournals    DecisionJournal[]
 
   @@index([userId])
   @@map("projects")
@@ -1218,6 +1222,53 @@ model AIUsageLog {
 
   @@index([userId, createdAt])
   @@map("ai_usage_logs")
+}
+
+// ─── Decision Journal (DEC-004 §G revert — separate feature) ────────
+
+model DecisionJournal {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title      String
+  context    String                          // situation / background
+  options    Json     @default("[]")         // array of { label, description, pros, cons }
+  chosen     String?                         // selected option label
+  rationale  String?                         // why this option was chosen
+  outcome    String?                         // later-filled result
+  unitIds    String[] @default([])           // related unit IDs for traceability
+  userId     String   @map("user_id")
+  projectId  String   @map("project_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@map("decision_journals")
+}
+
+// ─── Project Sharing / Collaboration (DEC-004 A.3 — 6-case MVP) ────
+
+enum ShareRole {
+  viewer
+  editor
+  owner
+}
+
+model ProjectShare {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String    @map("project_id") @db.Uuid
+  userId    String    @map("user_id")
+  role      ShareRole @default(viewer)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_shares")
 }
 
 // ─── Webhooks (Story 10.2) ──────────────────────────────────────────

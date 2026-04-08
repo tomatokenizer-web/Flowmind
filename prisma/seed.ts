@@ -434,6 +434,194 @@ const domainTemplates = [
       ],
     },
   },
+  {
+    name: "Legal Analysis",
+    slug: "legal-analysis",
+    type: "system",
+    config: {
+      unitTypes: [
+        "legal_rule",
+        "precedent",
+        "legal_issue",
+        "legal_argument",
+        "counterargument",
+        "court_finding",
+        "factual_record",
+      ],
+      relationTypes: [
+        "governs",
+        "applies",
+        "overrules",
+        "distinguishes",
+        "analogizes_to",
+        "rebuts",
+        "satisfies",
+      ],
+      scaffoldQuestions: [
+        {
+          type: "open_question",
+          content: "What is the central legal issue?",
+        },
+        {
+          type: "open_question",
+          content: "What rule governs this issue?",
+        },
+        {
+          type: "open_question",
+          content: "What facts are legally relevant?",
+        },
+        {
+          type: "open_question",
+          content: "What counterarguments must be addressed?",
+        },
+      ],
+      gapDetectionRules: [
+        "Every legal_rule must be linked to a legal_issue",
+        "Every legal_argument must reference a factual_record",
+        "Every counterargument must have a rebuttal addressed",
+        "Every precedent must cite its source",
+      ],
+      recommendedNavOrder: [
+        "identify issue",
+        "find governing rule",
+        "gather facts",
+        "apply rule to facts",
+        "address counterarguments",
+        "reach conclusion",
+      ],
+      assemblyTypes: [
+        "IRAC",
+        "Legal Memo",
+        "Contract Review",
+      ],
+    },
+  },
+  {
+    name: "Creative Writing",
+    slug: "creative-writing",
+    type: "system",
+    config: {
+      unitTypes: [
+        "premise",
+        "character_trait",
+        "plot_event",
+        "thematic_claim",
+        "scene_note",
+        "worldbuilding",
+        "narrative_arc",
+      ],
+      relationTypes: [
+        "motivates",
+        "reveals",
+        "foreshadows",
+        "contradicts_arc",
+        "resolves",
+        "embodies",
+        "establishes",
+      ],
+      scaffoldQuestions: [
+        {
+          type: "open_question",
+          content: "What is the central premise of this work?",
+        },
+        {
+          type: "open_question",
+          content: "What does the protagonist want?",
+        },
+        {
+          type: "open_question",
+          content: "What does the protagonist need (differently)?",
+        },
+        {
+          type: "open_question",
+          content: "What is this story actually about?",
+        },
+      ],
+      gapDetectionRules: [
+        "Every premise must have at least one thematic_claim",
+        "Every character must have at least one character_trait",
+        "Every narrative_arc must have a resolution",
+        "Every plot_event must link to at least one character",
+      ],
+      recommendedNavOrder: [
+        "define premise",
+        "create characters",
+        "outline plot",
+        "develop themes",
+        "refine narrative arcs",
+      ],
+      assemblyTypes: [
+        "Scene Outline",
+        "Character Sheet",
+        "Story Structure",
+      ],
+    },
+  },
+  {
+    name: "Strategic Decision",
+    slug: "strategic-decision",
+    type: "system",
+    config: {
+      unitTypes: [
+        "option",
+        "criterion",
+        "constraint",
+        "risk",
+        "decision",
+        "outcome",
+      ],
+      relationTypes: [
+        "evaluated_by",
+        "satisfies",
+        "violates",
+        "dominates",
+        "depends_on",
+        "exposes",
+        "mitigates",
+        "supersedes",
+      ],
+      scaffoldQuestions: [
+        {
+          type: "open_question",
+          content: "What is the decision to be made?",
+        },
+        {
+          type: "open_question",
+          content: "What are the non-negotiable constraints?",
+        },
+        {
+          type: "open_question",
+          content: "What criteria matter most?",
+        },
+        {
+          type: "open_question",
+          content: "What assumptions are you relying on?",
+        },
+        {
+          type: "open_question",
+          content: "What is the worst-case outcome of each option?",
+        },
+      ],
+      gapDetectionRules: [
+        "Every option must be evaluated by at least one criterion",
+        "Every risk must have a mitigation strategy",
+        "Every assumption must be explicitly stated",
+        "Every action must link to the thesis it operationalizes",
+      ],
+      recommendedNavOrder: [
+        "define decision",
+        "identify constraints",
+        "set criteria",
+        "generate options",
+        "evaluate options",
+        "decide",
+      ],
+      assemblyTypes: [
+        "Decision Memo",
+        "Options Comparison",
+      ],
+    },
+  },
 ];
 
 // ─── Main Seed Function ─────────────────────────────────────────────────────
@@ -457,7 +645,7 @@ async function main() {
   console.log("  ✓ System relation types seeded\n");
 
   // Seed domain templates
-  console.log("  → Seeding 4 domain templates...");
+  console.log("  → Seeding 7 domain templates...");
   for (const template of domainTemplates) {
     await prisma.domainTemplate.upsert({
       where: { slug: template.slug },
