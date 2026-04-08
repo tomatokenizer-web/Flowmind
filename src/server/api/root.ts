@@ -32,6 +32,8 @@ import { reasoningChainRouter } from "@/server/api/routers/reasoning-chain";
 import { formalizeRouter } from "@/server/api/routers/formalize";
 import { inquiryRouter } from "@/server/api/routers/inquiry";
 import { proposalRouter } from "@/server/api/routers/proposal";
+import { viewRouter } from "@/server/api/routers/view";
+import { graphQueryRouter } from "@/server/api/routers/graph-query";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -67,6 +69,8 @@ export const appRouter = createTRPCRouter({
   formalize: formalizeRouter,
   inquiry: inquiryRouter,
   proposal: proposalRouter,
+  view: viewRouter,
+  graphQuery: graphQueryRouter,
 });
 
 export type AppRouter = typeof appRouter;

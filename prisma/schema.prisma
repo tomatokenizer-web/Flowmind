@@ -7,7 +7,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
+  extensions = [uuid_ossp(map: "uuid-ossp"), vector]
 }
 
 // ─── Enums (PRD Appendix A) ────────────────────────────────────────
@@ -849,17 +849,54 @@ model AssemblyItem {
   @@map("assembly_items")
 }
 
+enum PathType {
+  // Group A — Logical / Argumentative
+  argument
+  trace_back
+  contradiction_map
+  synthesis_first
+  toulmin_validation
+
+  // Group B — Exploratory / Generative
+  discovery
+  question_anchored
+  branch_explorer
+  socratic
+  gap_focused
+
+  // Group C — Analytical / Structural
+  causal_chain
+  evidence_gradient
+  uncertainty_gradient
+  conceptual_depth
+  stakeholder_perspective
+  problem_solution
+
+  // Group D — Connective / Cross-Context
+  cross_context
+  historical_evolution
+  analogy_bridge
+  serendipity
+}
+
 model Navigator {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String
   description String?
-  purpose     String?  @db.VarChar(30)
-  contextId   String   @map("context_id") @db.Uuid
-  path        String[] @default([]) @db.Uuid
-  bridges     Json     @default("[]")
-  context     Context  @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  purpose     String?   @db.VarChar(30)
+  pathType    PathType? @map("path_type")
+  contextId   String    @map("context_id") @db.Uuid
+  path        String[]  @default([]) @db.Uuid
+  steps       Json      @default("[]") // Array of { unitId, position, annotation? }
+  bridges     Json      @default("[]")
+  metadata    Json?     // Type-specific config (e.g., entry point, reading mode)
+  aiGenerated Boolean   @default(false) @map("ai_generated")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  context     Context   @relation(fields: [contextId], references: [id], onDelete: Cascade)
 
   @@index([contextId])
+  @@index([pathType])
   @@map("navigators")
 }
 

@@ -14,6 +14,13 @@ import {
   GitBranch,
   Layers,
   ArrowUpCircle,
+  Star,
+  Hourglass,
+  Swords,
+  HelpCircle,
+  SlidersHorizontal,
+  LayoutList,
+  LayoutGrid,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -35,12 +42,15 @@ interface AttentionViewProps {
 
 // ─── Tab type ────────────────────────────────────────────────────────
 
-type AttentionTab = "incubating" | "orphans" | "similar" | "drift";
+type AttentionTab = "incubating" | "orphans" | "similar" | "drift" | "high_salience" | "stale" | "conflicting" | "unanswered" | "custom";
 
 // ─── Main Component ─────────────────────────────────────────────────
 
+type ViewMode = "list" | "grid";
+
 export function AttentionView({ projectId }: AttentionViewProps) {
   const [activeTab, setActiveTab] = React.useState<AttentionTab>("incubating");
+  const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const openPanel = usePanelStore((s) => s.openPanel);
 
   const { data: incubationUnits = [], isLoading: incLoading } =
@@ -64,6 +74,30 @@ export function AttentionView({ projectId }: AttentionViewProps) {
       { enabled: !!projectId },
     );
 
+  const { data: highSalienceUnits = [], isLoading: hsLoading } =
+    api.view.attention.useQuery(
+      { name: "high_salience", projectId },
+      { enabled: !!projectId },
+    );
+
+  const { data: staleUnits = [], isLoading: staleLoading } =
+    api.view.attention.useQuery(
+      { name: "stale", projectId },
+      { enabled: !!projectId },
+    );
+
+  const { data: conflictingUnits = [], isLoading: conflictLoading } =
+    api.view.attention.useQuery(
+      { name: "conflicting", projectId },
+      { enabled: !!projectId },
+    );
+
+  const { data: unansweredUnits = [], isLoading: unansweredLoading } =
+    api.view.attention.useQuery(
+      { name: "unanswered_questions", projectId },
+      { enabled: !!projectId },
+    );
+
   const filteredIncubation = React.useMemo(
     () => incubationUnits.filter((u) => u.projectId === projectId),
     [incubationUnits, projectId],
@@ -77,8 +111,13 @@ export function AttentionView({ projectId }: AttentionViewProps) {
   const tabs: Array<{ key: AttentionTab; label: string; count: number; icon: React.ReactNode; loading: boolean }> = [
     { key: "incubating", label: "Incubating", count: filteredIncubation.length, icon: <Sparkles className="h-4 w-4" />, loading: incLoading },
     { key: "orphans", label: "Orphans", count: orphans.length, icon: <Unlink className="h-4 w-4" />, loading: orphLoading },
+    { key: "high_salience", label: "High Salience", count: highSalienceUnits.length, icon: <Star className="h-4 w-4" />, loading: hsLoading },
+    { key: "stale", label: "Stale", count: staleUnits.length, icon: <Hourglass className="h-4 w-4" />, loading: staleLoading },
+    { key: "conflicting", label: "Conflicting", count: conflictingUnits.length, icon: <Swords className="h-4 w-4" />, loading: conflictLoading },
+    { key: "unanswered", label: "Unanswered", count: unansweredUnits.length, icon: <HelpCircle className="h-4 w-4" />, loading: unansweredLoading },
     { key: "similar", label: "Similar", count: activeSimilarPairs.length, icon: <Copy className="h-4 w-4" />, loading: simLoading },
     { key: "drift", label: "Drift", count: driftUnits.length, icon: <AlertTriangle className="h-4 w-4" />, loading: driftLoading },
+    { key: "custom", label: "Custom", count: 0, icon: <SlidersHorizontal className="h-4 w-4" />, loading: false },
   ];
 
   const { data: contexts = [] } = api.context.list.useQuery(
@@ -90,10 +129,36 @@ export function AttentionView({ projectId }: AttentionViewProps) {
     <section aria-label="Attention view" className="h-full flex flex-col">
       {/* Header */}
       <div className="border-b border-border px-6 py-4">
-        <h1 className="text-lg font-semibold text-text-primary mb-3">Attention Required</h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg font-semibold text-text-primary">Attention Required</h1>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "rounded-md p-1.5 transition-colors",
+                viewMode === "list" ? "bg-bg-hover text-text-primary" : "text-text-tertiary hover:text-text-secondary",
+              )}
+              aria-label="List view"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "rounded-md p-1.5 transition-colors",
+                viewMode === "grid" ? "bg-bg-hover text-text-primary" : "text-text-tertiary hover:text-text-secondary",
+              )}
+              aria-label="Grid view"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
         {/* Tab bar */}
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto scrollbar-none">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -143,6 +208,46 @@ export function AttentionView({ projectId }: AttentionViewProps) {
               onUnitClick={openPanel}
             />
           )}
+          {activeTab === "high_salience" && (
+            <ViewResultList
+              units={highSalienceUnits}
+              isLoading={hsLoading}
+              emptyIcon={Star}
+              emptyMessage="No high-salience units yet. Units gain salience through connections and activity."
+              onUnitClick={openPanel}
+              viewMode={viewMode}
+            />
+          )}
+          {activeTab === "stale" && (
+            <ViewResultList
+              units={staleUnits}
+              isLoading={staleLoading}
+              emptyIcon={Hourglass}
+              emptyMessage="No stale units. All units have been recently updated."
+              onUnitClick={openPanel}
+              viewMode={viewMode}
+            />
+          )}
+          {activeTab === "conflicting" && (
+            <ViewResultList
+              units={conflictingUnits}
+              isLoading={conflictLoading}
+              emptyIcon={Swords}
+              emptyMessage="No conflicting units. No contradictions detected."
+              onUnitClick={openPanel}
+              viewMode={viewMode}
+            />
+          )}
+          {activeTab === "unanswered" && (
+            <ViewResultList
+              units={unansweredUnits}
+              isLoading={unansweredLoading}
+              emptyIcon={HelpCircle}
+              emptyMessage="No unanswered questions. All questions have linked answers."
+              onUnitClick={openPanel}
+              viewMode={viewMode}
+            />
+          )}
           {activeTab === "similar" && (
             <SimilarList
               pairs={activeSimilarPairs}
@@ -159,6 +264,9 @@ export function AttentionView({ projectId }: AttentionViewProps) {
               isLoading={driftLoading}
               onUnitClick={openPanel}
             />
+          )}
+          {activeTab === "custom" && (
+            <CustomFilterView projectId={projectId} onUnitClick={openPanel} viewMode={viewMode} />
           )}
         </div>
       </div>
@@ -415,6 +523,182 @@ function SimilarList({
               onClick={() => onDismiss(pair.unitA.id, pair.unitB.id)}
             />
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Custom Filter View ─────────────────────────────────────────────
+
+const UNIT_TYPES = [
+  "claim", "question", "evidence", "counterargument", "observation",
+  "idea", "definition", "assumption", "action", "interpretation", "example", "decision",
+] as const;
+
+const LIFECYCLE_VALUES = [
+  "draft", "pending", "confirmed", "deferred", "complete", "archived", "discarded",
+] as const;
+
+const SORT_OPTIONS = [
+  { value: "date", label: "Date" },
+  { value: "salience", label: "Salience" },
+  { value: "relation_count", label: "Relations" },
+  { value: "type", label: "Type" },
+] as const;
+
+function CustomFilterView({
+  projectId,
+  onUnitClick,
+  viewMode,
+}: {
+  projectId: string;
+  onUnitClick: (id: string) => void;
+  viewMode: ViewMode;
+}) {
+  const [unitType, setUnitType] = React.useState("");
+  const [lifecycle, setLifecycle] = React.useState("");
+  const [sort, setSort] = React.useState<string>("date");
+  const [order, setOrder] = React.useState<string>("desc");
+
+  const { data: results = [], isLoading } = api.view.custom.useQuery(
+    {
+      projectId,
+      filter: {
+        ...(unitType ? { unitType } : {}),
+        ...(lifecycle ? { lifecycle } : {}),
+      },
+      sort: sort as "date" | "salience" | "relation_count" | "type",
+      order: order as "asc" | "desc",
+      limit: 50,
+    },
+    { enabled: !!projectId },
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Filter controls */}
+      <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-bg-secondary p-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-text-tertiary">Type</label>
+          <select
+            value={unitType}
+            onChange={(e) => setUnitType(e.target.value)}
+            className="rounded-md border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+          >
+            <option value="">All types</option>
+            {UNIT_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-text-tertiary">Lifecycle</label>
+          <select
+            value={lifecycle}
+            onChange={(e) => setLifecycle(e.target.value)}
+            className="rounded-md border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+          >
+            <option value="">All</option>
+            {LIFECYCLE_VALUES.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-text-tertiary">Sort by</label>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className="rounded-md border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+          >
+            {SORT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-medium uppercase tracking-wide text-text-tertiary">Order</label>
+          <select
+            value={order}
+            onChange={(e) => setOrder(e.target.value)}
+            className="rounded-md border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+          >
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Results */}
+      <ViewResultList
+        units={results}
+        isLoading={isLoading}
+        emptyIcon={SlidersHorizontal}
+        emptyMessage="No units match the current filters."
+        onUnitClick={onUnitClick}
+        viewMode={viewMode}
+      />
+    </div>
+  );
+}
+
+// ─── View Result List (generic for view.attention tabs) ─────────────
+
+function ViewResultList({
+  units,
+  isLoading,
+  emptyIcon,
+  emptyMessage,
+  onUnitClick,
+  viewMode = "list",
+}: {
+  units: Array<{ id: string; content: string; unitType: string; lifecycle: string; importance: number; createdAt: Date | string; modifiedAt: Date | string; relationCount: number }>;
+  isLoading: boolean;
+  emptyIcon: React.ElementType;
+  emptyMessage: string;
+  onUnitClick: (id: string) => void;
+  viewMode?: ViewMode;
+}) {
+  if (isLoading) return <LoadingCards />;
+  if (units.length === 0) return <EmptyState icon={emptyIcon} message={emptyMessage} />;
+
+  const isGrid = viewMode === "grid";
+
+  return (
+    <div className={isGrid ? "grid grid-cols-2 gap-3" : "space-y-3"}>
+      {units.map((unit) => (
+        <div
+          key={unit.id}
+          className={cn(
+            "rounded-xl border border-border bg-bg-primary hover:shadow-hover transition-shadow",
+            isGrid ? "p-3" : "p-4",
+          )}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <UnitTypeBadge unitType={unit.unitType as UnitType} />
+            <div className={cn("flex items-center gap-2 text-text-tertiary", isGrid ? "text-[10px]" : "text-xs")}>
+              {unit.importance > 0 && (
+                <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 font-medium text-accent-primary">
+                  {Math.round(unit.importance * 100)}%
+                </span>
+              )}
+              {!isGrid && <span>{unit.relationCount} rel</span>}
+              <span>{formatDistanceToNow(new Date(unit.modifiedAt), { addSuffix: true })}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onUnitClick(unit.id)}
+            className="text-left w-full"
+          >
+            <p className={cn(
+              "text-text-primary leading-relaxed hover:text-accent-primary transition-colors",
+              isGrid ? "text-xs line-clamp-4" : "text-sm line-clamp-3",
+            )}>
+              {unit.content}
+            </p>
+          </button>
         </div>
       ))}
     </div>

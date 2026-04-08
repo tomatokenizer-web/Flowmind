@@ -1,5 +1,41 @@
 # FlowMind — Claude Code Project Rules
 
+## SESSION START GATE (BLOCKING — DO THIS FIRST)
+
+**Before responding to ANY user message in a new session, you MUST complete ALL of these steps. No exceptions. No "I'll do it later." If you skip any step, you are violating project rules.**
+
+### Step 1: Read mandatory Obsidian notes (use MCP tools)
+1. `read_note("hermes", "FLOWMIND/_Rebuild/07-Session-Log.md")` — find last session entry
+2. `read_note("hermes", "FLOWMIND/_Rebuild/10-Conventions.md")` — reload conventions
+3. `read_note("hermes", "FLOWMIND/_Rebuild/00-Master-Plan.md")` — current phase
+
+### Step 2: Read active Phase checklist
+- Identify the current phase from Master Plan
+- Read the Phase spec file (e.g., `04-Phase-3-Navigation.md`)
+
+### Step 3: Acknowledge to the user
+- State which session you're continuing from
+- State the current phase and what's pending
+- THEN proceed with the user's request
+
+### Pre-Implementation Gate (per feature/task)
+Before writing ANY code:
+1. Search `FLOWMIND/` in Obsidian for the topic keywords
+2. Read the relevant spec notes (batch_read_notes)
+3. Cross-reference `09-Spec-to-Code-Map` for status
+4. ONLY THEN start coding
+
+### Verification Gate (per completed task)
+Before marking ANY task done:
+1. Run `pnpm typecheck`
+2. Run `pnpm test`
+3. **grep/read the actual code** to verify it matches the spec — do NOT trust agent summaries or your own memory
+4. If the spec says "UI component", verify the UI exists (not just the backend)
+
+**VIOLATION LOG**: If you realize you skipped a gate, immediately stop, go back, and complete it. Tell the user what you missed.
+
+---
+
 ## Stack
 - Next.js 15 (App Router), tRPC v11, Prisma 6 (PostgreSQL + pgvector), Zustand, Tailwind CSS
 - AI: Claude API via localhost:42069 proxy (Claude CLI)

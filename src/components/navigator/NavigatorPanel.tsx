@@ -4,6 +4,7 @@ import * as React from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Plus, ChevronRight, Compass, X, Search, Loader2, Sparkles, Play, Zap, ScanSearch, ArrowUpFromLine, Lightbulb } from "lucide-react";
 import { FlowReader } from "./FlowReader";
+import { PathMiniGraph } from "./PathMiniGraph";
 import { PathPreviewDialog, type PathProposal } from "./PathPreviewDialog";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
@@ -24,6 +25,7 @@ interface NavigatorPanelProps {
 export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
   const [creating, setCreating] = React.useState(false);
   const [newName, setNewName] = React.useState("");
+  const [typeFilter, setTypeFilter] = React.useState<string>("");
   const [activeNavId, setActiveNavId] = React.useState<string | null>(null);
   const [activeStep, setActiveStep] = React.useState(0);
   const [flowReaderNav, setFlowReaderNav] = React.useState<{ id: string; path: string[]; step: number } | null>(null);
@@ -63,6 +65,13 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
     onSuccess: () => {
       void utils.navigator.list.invalidate({ projectId });
       setActiveNavId(null);
+    },
+  });
+
+  const duplicateNav = api.navigator.duplicate.useMutation({
+    onSuccess: () => {
+      void utils.navigator.list.invalidate({ projectId });
+      toast.success("Navigator duplicated");
     },
   });
 
@@ -248,11 +257,24 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
           </div>
         )}
 
+        {navigators.length > 0 && (
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="w-full rounded-lg border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+          >
+            <option value="">All types</option>
+            {[...new Set(navigators.map((n) => n.pathType).filter(Boolean))].map((t) => (
+              <option key={t} value={t!}>{String(t).replace(/_/g, " ")}</option>
+            ))}
+          </select>
+        )}
+
         {navigators.length === 0 && !creating && (
           <p className="text-xs text-text-tertiary">No navigators yet. Create one or auto-generate from relations.</p>
         )}
 
-        {navigators.map((nav) => (
+        {navigators.filter((nav) => !typeFilter || nav.pathType === typeFilter).map((nav) => (
           <div key={nav.id} className="rounded-lg border border-border bg-bg-primary">
             <div className="flex items-center">
               <button
@@ -344,6 +366,14 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
                     );
                   })}
                 </div>
+                {/* Visual path preview mini-graph */}
+                {pathUnits.length > 0 && (
+                  <PathMiniGraph
+                    units={pathUnits.map((u) => ({ id: u.id, content: u.content, unitType: u.unitType }))}
+                    activeIndex={activeStep}
+                    className="mt-2"
+                  />
+                )}
               </div>
             )}
 
@@ -499,6 +529,14 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
                 )}
                 <button
                   type="button"
+                  onClick={() => duplicateNav.mutate({ id: nav.id })}
+                  disabled={duplicateNav.isPending}
+                  className="text-[10px] text-text-tertiary hover:text-accent-primary transition-colors px-1.5 py-0.5 rounded hover:bg-bg-hover"
+                >
+                  Duplicate
+                </button>
+                <button
+                  type="button"
                   onClick={() => deleteNav.mutate({ id: nav.id })}
                   disabled={deleteNav.isPending}
                   className="text-[10px] text-text-tertiary hover:text-accent-danger transition-colors px-1.5 py-0.5 rounded hover:bg-bg-hover"
@@ -559,6 +597,9 @@ export function NavigatorPanel({ projectId }: NavigatorPanelProps) {
           )}
           {proposeAndGenerate.isPending ? "Analyzing & proposing paths…" : "AI: Propose navigation paths"}
         </button>
+
+        {/* Generate by Path Type */}
+        <PathTypeGenerator projectId={projectId} />
 
         {/* Flow Reader overlay */}
         {flowReaderNav && flowReaderNav.path.length > 0 && (
@@ -714,6 +755,119 @@ function AddUnitPopover({ projectId, navigatorId, addUnit }: AddUnitPopoverProps
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+// ─── Path Type Generator ──────────────────────────────────────────────
+
+const PATH_TYPE_GROUPS = [
+  { group: "Logical", types: [
+    { value: "argument", label: "Argument" },
+    { value: "trace_back", label: "Trace-back" },
+    { value: "contradiction_map", label: "Contradiction Map" },
+  ]},
+  { group: "Exploratory", types: [
+    { value: "discovery", label: "Discovery" },
+    { value: "question_anchored", label: "Question-Anchored" },
+    { value: "branch_explorer", label: "Branch Explorer" },
+    { value: "gap_focused", label: "Gap-Focused" },
+  ]},
+  { group: "Analytical", types: [
+    { value: "causal_chain", label: "Causal Chain" },
+    { value: "evidence_gradient", label: "Evidence Gradient" },
+    { value: "conceptual_depth", label: "Conceptual Depth" },
+  ]},
+  { group: "Connective", types: [
+    { value: "cross_context", label: "Cross-Context" },
+    { value: "historical_evolution", label: "Historical Evolution" },
+    { value: "serendipity", label: "Serendipity" },
+  ]},
+];
+
+function PathTypeGenerator({ projectId }: { projectId: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [selectedType, setSelectedType] = React.useState<string | null>(null);
+  const utils = api.useUtils();
+
+  const generateTyped = api.navigator.generateTypedPath.useMutation({
+    onSuccess: (nav) => {
+      void utils.navigator.list.invalidate({ projectId });
+      toast.success(`Generated "${nav.name}"`, { description: `${nav.path.length} steps` });
+      setSelectedType(null);
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to generate path");
+    },
+  });
+
+  const { data: contexts } = api.context.list.useQuery(
+    { projectId },
+    { enabled: open },
+  );
+  const firstContextId = contexts?.[0]?.id;
+
+  const handleGenerate = (pathType: string) => {
+    if (!firstContextId) {
+      toast.error("No context found. Create a context first.");
+      return;
+    }
+    setSelectedType(pathType);
+    const label = PATH_TYPE_GROUPS.flatMap((g) => g.types).find((t) => t.value === pathType)?.label ?? pathType;
+    generateTyped.mutate({
+      name: `${label} Path`,
+      pathType,
+      contextId: firstContextId,
+    });
+  };
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+      >
+        <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
+        Generate by Path Type
+      </button>
+
+      {open && (
+        <div className="space-y-2 pl-2">
+          {PATH_TYPE_GROUPS.map((group) => (
+            <div key={group.group}>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-text-tertiary mb-1">
+                {group.group}
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {group.types.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    disabled={generateTyped.isPending}
+                    onClick={() => handleGenerate(type.value)}
+                    className={cn(
+                      "rounded-md border px-2 py-0.5 text-[11px] transition-colors",
+                      selectedType === type.value && generateTyped.isPending
+                        ? "border-accent-primary/50 bg-accent-primary/10 text-accent-primary"
+                        : "border-border text-text-secondary hover:border-accent-primary/40 hover:text-accent-primary",
+                    )}
+                  >
+                    {selectedType === type.value && generateTyped.isPending ? (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        {type.label}
+                      </span>
+                    ) : (
+                      type.label
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

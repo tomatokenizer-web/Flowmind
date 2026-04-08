@@ -23,6 +23,7 @@ import { Button } from "~/components/ui/button";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
 import { DerivationSuggestions } from "~/components/unit/DerivationSuggestions";
 import { toast } from "~/lib/toast";
+import { useNavigatorStore, type ReadingMode } from "~/stores/navigator-store";
 import type { UnitType } from "@prisma/client";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -105,15 +106,27 @@ export function FlowReader({
   onUnitSelect,
   onPathUpdated,
 }: FlowReaderProps) {
-  const [step, setStep] = React.useState(initialStep);
+  // Reading position persistence via store
+  const navStore = useNavigatorStore();
+  const savedStep = navigatorId ? navStore.getReadingPosition(navigatorId) : 0;
+  const [step, setStep] = React.useState(initialStep || savedStep);
   const [[direction], setDirection] = React.useState([0]);
   const [showCreate, setShowCreate] = React.useState(false);
   const [newContent, setNewContent] = React.useState("");
   const [newType, setNewType] = React.useState<string>("idea");
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const sidebarOpen = navStore.sidebarOpen;
+  const setSidebarOpen = navStore.setSidebarOpen;
+  const readingMode = navStore.readingMode;
   const [placementSuggestion, setPlacementSuggestion] = React.useState<PlacementSuggestion | null>(null);
   const [lastDerivedUnitId, setLastDerivedUnitId] = React.useState<string | null>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Persist reading position on step change
+  React.useEffect(() => {
+    if (navigatorId) {
+      navStore.saveReadingPosition(navigatorId, step);
+    }
+  }, [navigatorId, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentUnitId = path[step];
   const pathSet = React.useMemo(() => new Set(path), [path]);
@@ -165,6 +178,32 @@ export function FlowReader({
     () => currentNavBridges.find((b) => b.afterStepIndex === step),
     [currentNavBridges, step],
   );
+
+  // ── Reading speed tracking ────────────────────────────────────────
+  const stepStartRef = React.useRef<number>(Date.now());
+
+  React.useEffect(() => {
+    const now = Date.now();
+    if (stepStartRef.current && currentUnitId) {
+      const elapsed = now - stepStartRef.current;
+      if (elapsed > 500) {
+        const prevIdx = step > 0 ? step - 1 : step;
+        const prevUnitId = path[prevIdx];
+        if (prevUnitId) navStore.recordReadingTime(prevUnitId, elapsed);
+      }
+    }
+    stepStartRef.current = now;
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Step annotation from navigator data ─────────────────────────
+  const currentStepAnnotation = React.useMemo(() => {
+    if (!navigatorId || !navData) return null;
+    const nav = navData.find((n) => n.id === navigatorId);
+    if (!nav || !Array.isArray(nav.steps)) return null;
+    const stepData = (nav.steps as Array<{ unitId: string; position: number; annotation?: string }>)
+      .find((s) => s.unitId === currentUnitId);
+    return stepData?.annotation ?? null;
+  }, [navigatorId, navData, currentUnitId]);
 
   // ── Mutations ────────────────────────────────────────────────────
   const createUnit = api.unit.create.useMutation({
@@ -231,6 +270,9 @@ export function FlowReader({
   // ── Branch to a related unit (navigate to it if in path, or jump) ──
   const branchTo = React.useCallback(
     (unitId: string) => {
+      if (currentUnitId) {
+        navStore.pushBranchHistory(currentUnitId);
+      }
       const idx = path.indexOf(unitId);
       if (idx >= 0) {
         goTo(idx);
@@ -254,17 +296,17 @@ export function FlowReader({
       )
         return;
 
-      if (e.key === "ArrowLeft") {
+      if (e.key === "ArrowLeft" || e.key === "j" || e.key === "J") {
         e.preventDefault();
         goPrev();
-      } else if (e.key === "ArrowRight") {
+      } else if (e.key === "ArrowRight" || e.key === "k" || e.key === "K") {
         e.preventDefault();
         goNext();
       } else if (e.key === "Escape") {
         e.preventDefault();
         onClose();
       } else if (e.key === "b" || e.key === "B") {
-        setSidebarOpen((v) => !v);
+        setSidebarOpen(!sidebarOpen);
       }
     };
     window.addEventListener("keydown", handler);
@@ -350,6 +392,24 @@ export function FlowReader({
           <span>
             {step + 1} / {path.length}
           </span>
+          <span className="text-border">|</span>
+          <ReadingModeSelector current={readingMode} onChange={navStore.setReadingMode} />
+          {navStore.branchHistory.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const prev = navStore.popBranchHistory();
+                if (prev) {
+                  const idx = path.indexOf(prev);
+                  if (idx >= 0) goTo(idx);
+                }
+              }}
+              className="flex items-center gap-1 text-xs text-text-tertiary hover:text-accent-primary transition-colors"
+            >
+              <ChevronLeft className="h-3 w-3" />
+              Back
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -430,10 +490,30 @@ export function FlowReader({
                       </span>
                     </div>
 
-                    {/* Main content */}
-                    <p className="text-lg leading-relaxed text-text-primary whitespace-pre-wrap">
+                    {/* Step annotation */}
+                    {currentStepAnnotation && (
+                      <div className="rounded-lg border border-dashed border-accent-primary/30 bg-accent-primary/5 px-3 py-2">
+                        <p className="text-xs text-accent-primary italic">{currentStepAnnotation}</p>
+                      </div>
+                    )}
+
+                    {/* Main content — adapts to reading mode */}
+                    <p className={cn(
+                      "leading-relaxed text-text-primary whitespace-pre-wrap",
+                      readingMode === "skim" ? "text-sm line-clamp-3" : "text-lg",
+                    )}>
                       {sanitizeContent(unit.content)}
                     </p>
+
+                    {/* Deep mode: show extra metadata */}
+                    {readingMode === "deep" && (
+                      <div className="grid grid-cols-2 gap-2 text-xs text-text-tertiary border-t border-border pt-3">
+                        <div>Importance: <span className="text-text-secondary">{unit.importance?.toFixed(2) ?? "—"}</span></div>
+                        <div>Origin: <span className="text-text-secondary">{unit.originType?.replace(/_/g, " ") ?? "—"}</span></div>
+                        <div>Created: <span className="text-text-secondary">{new Date(unit.createdAt).toLocaleDateString()}</span></div>
+                        <div>Modified: <span className="text-text-secondary">{new Date(unit.modifiedAt).toLocaleDateString()}</span></div>
+                      </div>
+                    )}
 
                     {/* Relations summary */}
                     {relations.length > 0 && (
@@ -865,10 +945,48 @@ export function FlowReader({
 
       {/* ── Keyboard hint ───────────────────────────────────────── */}
       <div className="flex items-center justify-center gap-4 pb-3 text-xs text-text-tertiary">
-        <span>← → Navigate</span>
+        <span>← → / J K Navigate</span>
         <span>B Branches</span>
         <span>Esc Close</span>
       </div>
+    </div>
+  );
+}
+
+// ─── Reading Mode Selector ──────────────────────────────────────────
+
+const READING_MODES: Array<{ value: ReadingMode; label: string; description: string }> = [
+  { value: "focused", label: "Focused", description: "Full detail, one at a time" },
+  { value: "skim", label: "Skim", description: "Summaries, quick overview" },
+  { value: "deep", label: "Deep", description: "Unit + relations + metadata" },
+  { value: "guided", label: "Guided", description: "AI narration between units" },
+];
+
+function ReadingModeSelector({
+  current,
+  onChange,
+}: {
+  current: ReadingMode;
+  onChange: (mode: ReadingMode) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-border bg-bg-primary p-0.5">
+      {READING_MODES.map((mode) => (
+        <button
+          key={mode.value}
+          type="button"
+          onClick={() => onChange(mode.value)}
+          title={mode.description}
+          className={cn(
+            "px-2 py-0.5 rounded-md text-xs transition-colors",
+            current === mode.value
+              ? "bg-accent-primary/15 text-accent-primary font-medium"
+              : "text-text-tertiary hover:text-text-secondary",
+          )}
+        >
+          {mode.label}
+        </button>
+      ))}
     </div>
   );
 }
