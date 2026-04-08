@@ -204,9 +204,102 @@ export function createExportService(db: PrismaClient) {
     return Buffer.from(arrayBuffer);
   }
 
+  /**
+   * Generate a styled standalone HTML page from assembly content.
+   */
+  async function exportToHTML(
+    assemblyId: string,
+    userId: string,
+  ): Promise<string> {
+    const data = await getAssemblyData(assemblyId, userId);
+
+    const escapeHtml = (str: string) =>
+      str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    const itemsHtml = data.items
+      .map((item) => {
+        const bridgeHtml = item.bridgeText
+          ? `<p class="bridge">${escapeHtml(item.bridgeText)}</p>`
+          : "";
+        return `<div class="unit">
+      <span class="unit-type">${escapeHtml(item.unitType)}</span>
+      <p class="unit-content">${escapeHtml(item.content)}</p>
+      ${bridgeHtml}
+    </div>`;
+      })
+      .join("\n  ");
+
+    const descriptionHtml = data.description
+      ? `<p class="description">${escapeHtml(data.description)}</p>`
+      : "";
+
+    const exportDate = new Date().toLocaleDateString();
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(data.name)}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; line-height: 1.6; }
+    h1 { border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+    .description { color: #6b7280; font-style: italic; margin-bottom: 2rem; }
+    .unit { margin-bottom: 1.5rem; }
+    .unit-type { display: inline-block; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #6b7280; background: #f3f4f6; padding: 0.125rem 0.5rem; border-radius: 0.25rem; margin-bottom: 0.25rem; }
+    .unit-content { margin: 0; }
+    .bridge { color: #9ca3af; font-style: italic; margin: 0.5rem 0; padding-left: 1rem; border-left: 2px solid #e5e7eb; }
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; font-size: 0.75rem; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(data.name)}</h1>
+  ${descriptionHtml}
+  ${itemsHtml}
+  <footer>Exported from FlowMind &middot; ${exportDate}</footer>
+</body>
+</html>`;
+
+    logger.info({ assemblyId, unitCount: data.items.length }, "HTML export generated");
+    return html;
+  }
+
+  /**
+   * Generate a structured JSON export of assembly content.
+   */
+  async function exportToJSON(
+    assemblyId: string,
+    userId: string,
+  ): Promise<string> {
+    const data = await getAssemblyData(assemblyId, userId);
+
+    const exportData = {
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      assembly: {
+        name: data.name,
+        description: data.description,
+        items: data.items.map((item) => ({
+          position: item.position,
+          unitType: item.unitType,
+          content: item.content,
+          bridgeText: item.bridgeText,
+        })),
+      },
+    };
+
+    logger.info({ assemblyId, unitCount: data.items.length }, "JSON export generated");
+    return JSON.stringify(exportData, null, 2);
+  }
+
   return {
     getAssemblyData,
     exportToPDF,
+    exportToHTML,
+    exportToJSON,
   };
 }
 

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createAssemblyService } from "@/server/services/assemblyService";
+import { createExportService } from "@/server/services/exportService";
+import { createBridgeTextService } from "@/server/services/bridgeTextService";
+import { createCompoundingService } from "@/server/services/compoundingService";
 import { TRPCError } from "@trpc/server";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────────────
@@ -470,5 +473,60 @@ export const assemblyRouter = createTRPCRouter({
       const shared = a.items.filter((i) => bIds.has(i.unitId)).map((i) => i.unitId);
 
       return { onlyInA, onlyInB, shared, summary: { added: onlyInB.length, removed: onlyInA.length, shared: shared.length } };
+    }),
+
+  // ─── Export endpoints ──────────────────────────────────────────────
+
+  exportHTML: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const svc = createExportService(ctx.db);
+      return { html: await svc.exportToHTML(input.assemblyId, ctx.session.user.id!) };
+    }),
+
+  exportJSON: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const svc = createExportService(ctx.db);
+      return { json: await svc.exportToJSON(input.assemblyId, ctx.session.user.id!) };
+    }),
+
+  exportPDF: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const svc = createExportService(ctx.db);
+      const buffer = await svc.exportToPDF(input.assemblyId, ctx.session.user.id!);
+      return { pdf: buffer.toString("base64"), mimeType: "application/pdf" };
+    }),
+
+  // ─── Bridge text generation ────────────────────────────────────────
+
+  generateBridges: protectedProcedure
+    .input(z.object({
+      navigatorId: z.string().uuid(),
+      style: z.enum(["academic", "conversational", "minimal", "narrative"]).default("conversational"),
+      length: z.enum(["sentence", "paragraph", "detailed"]).default("sentence"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const svc = createBridgeTextService(ctx.db);
+      return svc.generateBridges(input.navigatorId, input.style, input.length);
+    }),
+
+  // ─── Knowledge compounding metrics ─────────────────────────────────
+
+  compoundingMetrics: protectedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      contextId: z.string().uuid().optional(),
+      unitId: z.string().uuid().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      const svc = createCompoundingService(ctx.db);
+      return svc.getCompoundingMetrics(input.projectId, input.contextId, input.unitId);
     }),
 });
