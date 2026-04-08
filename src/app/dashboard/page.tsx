@@ -9,17 +9,29 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { useAssemblyStore } from "~/stores/assemblyStore";
 import { useCaptureStore } from "~/stores/capture-store";
 import { cn } from "~/lib/utils";
-import { GraphView } from "~/components/graph/GraphView";
-import { ThreadView } from "~/components/thread/ThreadView";
-import { ContextView } from "~/components/context/context-view";
-import { AssemblyBoard } from "~/components/assembly/AssemblyBoard";
-import { NavigateView } from "~/components/navigator/NavigateView";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
-import { AssemblyTemplateDialog } from "~/components/assembly/AssemblyTemplateDialog";
-import { AssemblyCompareDialog } from "~/components/assembly/AssemblyCompareDialog";
-import { FormalizeWizard } from "~/components/formalize/FormalizeWizard";
-import { AttentionView } from "~/components/attention/AttentionView";
+
+// ─── Lazy-loaded heavy views (code splitting) ────────────────────────
+const GraphView = React.lazy(() => import("~/components/graph/GraphView").then(m => ({ default: m.GraphView })));
+const ThreadView = React.lazy(() => import("~/components/thread/ThreadView").then(m => ({ default: m.ThreadView })));
+const ContextView = React.lazy(() => import("~/components/context/context-view").then(m => ({ default: m.ContextView })));
+const AssemblyBoard = React.lazy(() => import("~/components/assembly/AssemblyBoard").then(m => ({ default: m.AssemblyBoard })));
+const NavigateView = React.lazy(() => import("~/components/navigator/NavigateView").then(m => ({ default: m.NavigateView })));
+const AssemblyTemplateDialog = React.lazy(() => import("~/components/assembly/AssemblyTemplateDialog").then(m => ({ default: m.AssemblyTemplateDialog })));
+const AssemblyCompareDialog = React.lazy(() => import("~/components/assembly/AssemblyCompareDialog").then(m => ({ default: m.AssemblyCompareDialog })));
+const FormalizeWizard = React.lazy(() => import("~/components/formalize/FormalizeWizard").then(m => ({ default: m.FormalizeWizard })));
+const AttentionView = React.lazy(() => import("~/components/attention/AttentionView").then(m => ({ default: m.AttentionView })));
+
+// ─── Suspense fallback for lazy-loaded views ─────────────────────────
+
+function ViewFallback() {
+  return (
+    <div className="flex h-64 items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+    </div>
+  );
+}
 
 // ─── Project stats + quick actions bar ────────────────────────────────
 
@@ -176,7 +188,9 @@ function AssemblyViewWithList({ projectId, assemblyId }: { projectId: string | u
   if (assemblyId && projectId) {
     return (
       <section aria-label="Assembly view" className="h-[calc(100vh-48px)]">
-        <AssemblyBoard assemblyId={assemblyId} projectId={projectId} />
+        <React.Suspense fallback={<ViewFallback />}>
+          <AssemblyBoard assemblyId={assemblyId} projectId={projectId} />
+        </React.Suspense>
       </section>
     );
   }
@@ -431,7 +445,9 @@ export default function DashboardPage() {
   if (viewMode === "graph") {
     return (
       <section aria-label="Graph view" className="h-[calc(100vh-120px)]">
-        <GraphView projectId={projectId} />
+        <React.Suspense fallback={<ViewFallback />}>
+          <GraphView projectId={projectId} />
+        </React.Suspense>
       </section>
     );
   }
@@ -439,7 +455,9 @@ export default function DashboardPage() {
   if (viewMode === "thread") {
     return (
       <section aria-label="Thread view" className="h-[calc(100vh-120px)]">
-        <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
+        <React.Suspense fallback={<ViewFallback />}>
+          <ThreadView projectId={projectId} onSwitchToGraph={() => setViewMode("graph")} />
+        </React.Suspense>
       </section>
     );
   }
@@ -451,11 +469,19 @@ export default function DashboardPage() {
   }
 
   if (viewMode === "navigate") {
-    return <NavigateView projectId={projectId} />;
+    return (
+      <React.Suspense fallback={<ViewFallback />}>
+        <NavigateView projectId={projectId} />
+      </React.Suspense>
+    );
   }
 
   if (viewMode === "attention") {
-    return <AttentionView projectId={projectId} />;
+    return (
+      <React.Suspense fallback={<ViewFallback />}>
+        <AttentionView projectId={projectId} />
+      </React.Suspense>
+    );
   }
 
   return (
@@ -469,7 +495,9 @@ export default function DashboardPage() {
           <div className="flex justify-end px-4 pt-3">
             <CompletenessCompass />
           </div>
-          <ContextView projectId={projectId} />
+          <React.Suspense fallback={<ViewFallback />}>
+            <ContextView projectId={projectId} />
+          </React.Suspense>
         </>
       ) : (
         /* No context selected — show context overview grid */

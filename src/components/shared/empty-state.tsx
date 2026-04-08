@@ -2,10 +2,13 @@
 
 import * as React from "react";
 import {
+  AlertTriangle,
   FileText,
   FolderOpen,
   Layers,
+  Lock,
   Search,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -118,6 +121,42 @@ export function EmptySearch(props: VariantProps) {
       icon={Search}
       headline="No results found"
       description="Try adjusting your search terms or filters."
+      {...props}
+    />
+  );
+}
+
+export function ErrorState(props: VariantProps & { message?: string }) {
+  const { message, ...rest } = props;
+  return (
+    <EmptyState
+      icon={AlertTriangle}
+      headline="Something went wrong"
+      description={message ?? "An unexpected error occurred. Please try again."}
+      actionLabel="Retry"
+      {...rest}
+    />
+  );
+}
+
+export function PermissionDenied(props: VariantProps) {
+  return (
+    <EmptyState
+      icon={Lock}
+      headline="Access denied"
+      description="You don't have permission to view this content. Ask the project owner for access."
+      {...props}
+    />
+  );
+}
+
+export function OfflineState(props: VariantProps) {
+  return (
+    <EmptyState
+      icon={WifiOff}
+      headline="You're offline"
+      description="Check your internet connection and try again."
+      actionLabel="Retry"
       {...props}
     />
   );
