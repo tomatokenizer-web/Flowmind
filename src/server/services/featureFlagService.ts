@@ -25,6 +25,10 @@ const DEFAULT_FLAGS: Array<{
   { key: "knowledge_compounding", enabled: true, description: "Enable knowledge compounding metrics" },
   { key: "domain_templates", enabled: true, description: "Enable domain template selection" },
   { key: "decision_journal", enabled: false, description: "Decision journal feature (Phase 6)" },
+  // DEC-2026-002 §B.15.1 — Capture mode selector.
+  // false (default) = review_queue: proposals stay `pending` until the user resolves them.
+  // true = auto_apply: proposals surfaced by the scheduler are immediately marked `accepted`.
+  { key: "proposal.auto_apply", enabled: false, description: "Capture mode: auto-apply vs review queue" },
 ];
 
 // ─── Service Factory ───────────────────────────────────────────────

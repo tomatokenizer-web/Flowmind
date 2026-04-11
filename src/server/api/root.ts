@@ -38,6 +38,8 @@ import { compassRouter } from "@/server/api/routers/compass";
 import { featureFlagRouter } from "@/server/api/routers/feature-flag";
 import { decisionJournalRouter } from "@/server/api/routers/decision-journal";
 import { sharingRouter } from "@/server/api/routers/sharing";
+import { ragRouter } from "@/server/api/routers/rag";
+import { proactiveRouter } from "@/server/api/routers/proactive";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -79,6 +81,8 @@ export const appRouter = createTRPCRouter({
   featureFlag: featureFlagRouter,
   decisionJournal: decisionJournalRouter,
   sharing: sharingRouter,
+  rag: ragRouter,
+  proactive: proactiveRouter,
 });
 
 export type AppRouter = typeof appRouter;
