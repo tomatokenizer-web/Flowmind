@@ -9,7 +9,10 @@ import type { PrismaClient } from "@prisma/client";
 
 const USER_ID = "user-1";
 
-function createMockDb(existingProposals: Array<{ kind: string }> = []) {
+function createMockDb(
+  existingProposals: Array<{ kind: string }> = [],
+  suppressions: Array<{ proposalKind: string; targetUnitId: string | null }> = [],
+) {
   const created = new Map<string, { id: string; userId: string; status: string }>();
   let seq = 0;
   return {
@@ -35,6 +38,19 @@ function createMockDb(existingProposals: Array<{ kind: string }> = []) {
     },
     unit: {
       findUnique: vi.fn().mockResolvedValue({ id: "u1" }),
+    },
+    // DEC-2026-002 §8 — scheduler queries this on every schedule/preview
+    // call to apply cooldown filtering. Tests default to empty.
+    proactiveSuppression: {
+      findMany: vi.fn().mockResolvedValue(suppressions),
+      create: vi.fn().mockResolvedValue({ id: "s1" }),
+    },
+    // DEC-2026-002 §19 — proposal.resolve touches this when a
+    // compounding proposal is accepted/rejected (not exercised here).
+    userInsightMetrics: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: "m1" }),
+      update: vi.fn().mockResolvedValue({ id: "m1" }),
     },
   } as unknown as PrismaClient;
 }
@@ -195,5 +211,47 @@ describe("proactiveSchedulerService", () => {
       { dailyBudget: 5 },
     );
     expect(db.proposal.update).not.toHaveBeenCalled();
+  });
+
+  // ─── DEC-2026-002 §8: suppression / cooldown filtering ──────────
+
+  it("filters out candidates matching an active suppression row", async () => {
+    // Seed a targeted suppression: reframe + u1 is in cooldown.
+    const suppressedDb = createMockDb([], [
+      { proposalKind: "reframe", targetUnitId: "u1" },
+    ]);
+    const svc = createProactiveSchedulerService(suppressedDb);
+    const result = await svc.schedule(
+      USER_ID,
+      [
+        { kind: "reframe" as const, targetUnitId: "u1", payload: {} },  // should be suppressed
+        { kind: "reframe" as const, targetUnitId: "u2", payload: {} },  // should pass
+      ],
+      { dailyBudget: 10 },
+    );
+    expect(result.suppressed).toBe(1);
+    expect(result.surfaced).toBe(1);
+    expect(suppressedDb.proposal.create).toHaveBeenCalledTimes(1);
+    const createdCall = (suppressedDb.proposal.create as ReturnType<typeof vi.fn>)
+      .mock.calls[0]?.[0];
+    expect(createdCall?.data?.targetUnitId).toBe("u2");
+  });
+
+  it("wildcard suppression (null targetUnitId) suppresses the entire kind", async () => {
+    const suppressedDb = createMockDb([], [
+      { proposalKind: "counter", targetUnitId: null },
+    ]);
+    const svc = createProactiveSchedulerService(suppressedDb);
+    const result = await svc.schedule(
+      USER_ID,
+      [
+        { kind: "counter" as const, targetUnitId: "u1", payload: {} },
+        { kind: "counter" as const, targetUnitId: "u2", payload: {} },
+        { kind: "maturation" as const, targetUnitId: "u3", payload: {} }, // different kind — passes
+      ],
+      { dailyBudget: 10 },
+    );
+    expect(result.suppressed).toBe(2);
+    expect(result.surfaced).toBe(1);
   });
 });

@@ -19,6 +19,16 @@ function createMockDb() {
     unit: {
       findUnique: vi.fn().mockResolvedValue({ id: "u1" }),
     },
+    // DEC-2026-002 §8 — scheduler queries this during schedule/preview.
+    proactiveSuppression: {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: "s1" }),
+    },
+    userInsightMetrics: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: "m1" }),
+      update: vi.fn().mockResolvedValue({ id: "m1" }),
+    },
   } as unknown as PrismaClient;
 }
 
@@ -184,6 +194,51 @@ describe("ruleProposalBridgeService", () => {
       expect(result.candidates).toHaveLength(0);
       expect(result.surfaced).toBe(0);
       expect(result.deferred).toBe(0);
+    });
+
+    // ─── DEC-2026-002 §B.15.6: evalTick idempotency ──────────────
+
+    it("stamps evalTick on created proposals", async () => {
+      const svc = createRuleProposalBridgeService(db);
+      await svc.scanAndPropose(
+        USER_ID,
+        [{ id: "u1", unitType: "claim", content: "This is definitely the right approach." }],
+        [],
+        { dailyBudget: 5 },
+      );
+      const createCall = (db.proposal.create as ReturnType<typeof vi.fn>)
+        .mock.calls[0]?.[0];
+      expect(createCall?.data?.evalTick).toBeTypeOf("number");
+      expect(createCall?.data?.evalTick).toBeGreaterThan(0);
+    });
+
+    it("deduplicates candidates matching existing pending rule_action proposals", async () => {
+      // Seed: pending rule_action already exists for u1 / transparent_confidence.
+      // Our scan will find BOTH a transparent_confidence violation (pointing
+      // at u1, → deduplicated) and other rule violations (→ still surfaced).
+      (db.proposal.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          targetUnitId: "u1",
+          payload: { rule: "transparent_confidence", action: "soften_certainty" },
+        },
+      ]);
+      const svc = createRuleProposalBridgeService(db);
+      const result = await svc.scanAndPropose(
+        USER_ID,
+        [{ id: "u1", unitType: "claim", content: "This is definitely the right approach." }],
+        [],
+        { dailyBudget: 10 },
+      );
+      expect(result.deduplicated).toBeGreaterThanOrEqual(1);
+      // No transparent_confidence + u1 proposal should have been created.
+      const createCalls = (db.proposal.create as ReturnType<typeof vi.fn>).mock.calls;
+      for (const call of createCalls) {
+        const data = call[0]?.data;
+        const payload = data?.payload as { rule?: string } | undefined;
+        if (payload?.rule === "transparent_confidence") {
+          expect(data?.targetUnitId).not.toBe("u1");
+        }
+      }
     });
 
     it("attaches targetUnitId to certainty-language candidates", async () => {

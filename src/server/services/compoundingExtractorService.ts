@@ -274,6 +274,11 @@ export function createCompoundingExtractorService(db: PrismaClient) {
    *
    * This is NOT gated by the ProactiveScheduler because compounding
    * proposals are user-initiated (triggered by export), not AI-initiated.
+   *
+   * DEC-2026-002 §19 — when the user's rolling compounding acceptance
+   * rate has fallen below the auto-disable threshold, we still return
+   * the candidates (so the UI can preview what WOULD have surfaced)
+   * but create zero proposals. The user must explicitly reactivate.
    */
   async function extractFromAssembly(
     assemblyId: string,
@@ -294,6 +299,16 @@ export function createCompoundingExtractorService(db: PrismaClient) {
       ...opts,
       existingUnitContents,
     });
+
+    const disabled = await proposalService.isCompoundingDisabled(userId);
+    if (disabled) {
+      return {
+        candidates,
+        proposalsCreated: 0,
+        assemblyId,
+        autoDisabled: true,
+      };
+    }
 
     const created = [];
     for (const c of candidates) {
@@ -320,6 +335,7 @@ export function createCompoundingExtractorService(db: PrismaClient) {
       candidates,
       proposalsCreated: created.length,
       assemblyId,
+      autoDisabled: false,
     };
   }
 

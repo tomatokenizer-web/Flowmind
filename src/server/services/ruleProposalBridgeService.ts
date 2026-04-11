@@ -209,31 +209,83 @@ export function createRuleProposalBridgeService(db: PrismaClient) {
         ruleResult,
         surfaced: 0,
         deferred: 0,
+        suppressedByCooldown: 0,
+        deduplicated: 0,
         candidates: [],
         dryRun: opts.dryRun ?? false,
       };
     }
 
+    // DEC-2026-002 §B.15.6 — stamp a single monotonic tick for this
+    // scan and de-dupe against existing pending rule_action proposals
+    // for the same (targetUnitId, rule). Without this, repeated scans
+    // of the same unit would pile duplicate nudges into the queue.
+    const evalTick = Date.now();
+    const existingPending = await db.proposal.findMany({
+      where: {
+        userId,
+        kind: "rule_action",
+        status: "pending",
+      },
+      select: { targetUnitId: true, payload: true },
+    });
+    const pendingKeys = new Set<string>();
+    for (const p of existingPending) {
+      const rule =
+        typeof p.payload === "object" && p.payload !== null && "rule" in p.payload
+          ? String((p.payload as { rule?: unknown }).rule ?? "")
+          : "";
+      pendingKeys.add(`${p.targetUnitId ?? "*"}::${rule}`);
+    }
+
+    const deduped: Candidate[] = [];
+    let deduplicated = 0;
+    for (const c of candidates) {
+      const rule = (c.payload as { rule?: string }).rule ?? "";
+      const key = `${c.targetUnitId ?? "*"}::${rule}`;
+      if (pendingKeys.has(key)) {
+        deduplicated++;
+        continue;
+      }
+      deduped.push({ ...c, evalTick });
+    }
+
+    if (deduped.length === 0) {
+      return {
+        ruleResult,
+        surfaced: 0,
+        deferred: 0,
+        suppressedByCooldown: 0,
+        deduplicated,
+        candidates,
+        dryRun: opts.dryRun ?? false,
+      };
+    }
+
     if (opts.dryRun) {
-      const preview = await scheduler.preview(userId, candidates, {
+      const preview = await scheduler.preview(userId, deduped, {
         dailyBudget: opts.dailyBudget,
       });
       return {
         ruleResult,
         surfaced: preview.wouldSurface.length,
         deferred: preview.wouldDefer.length,
+        suppressedByCooldown: preview.wouldSuppress.length,
+        deduplicated,
         candidates,
         dryRun: true,
       };
     }
 
-    const result = await scheduler.schedule(userId, candidates, {
+    const result = await scheduler.schedule(userId, deduped, {
       dailyBudget: opts.dailyBudget,
     });
     return {
       ruleResult,
       surfaced: result.surfaced,
       deferred: result.deferred,
+      suppressedByCooldown: result.suppressed,
+      deduplicated,
       candidates,
       dryRun: false,
     };

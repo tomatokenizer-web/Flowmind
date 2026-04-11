@@ -1,4 +1,4 @@
-import type { PrismaClient, Certainty } from "@prisma/client";
+import type { PrismaClient, Certainty, SalienceTier } from "@prisma/client";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -14,6 +14,18 @@ export type CognitiveLoad = {
   loadEstimate: "low" | "moderate" | "high" | "overwhelming";
   suggestion?: string;
 };
+
+export type TierCounts = {
+  foreground: number;
+  background: number;
+  deep: number;
+  unranked: number;
+};
+
+// DEC-2026-002 §7: percentile cutoffs for attention tier bucketing.
+// Foreground = top 10%, deep = bottom 30%, background = middle.
+const FOREGROUND_PERCENTILE = 0.9;
+const DEEP_PERCENTILE = 0.3;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -171,7 +183,9 @@ export function createSalienceService(db: PrismaClient) {
       if (total > maxRel) maxRel = total;
     }
 
-    const updates = units.map((u) => {
+    // First pass: compute scores without writing, so we can derive
+    // percentile cutoffs from the full distribution.
+    const scored = units.map((u) => {
       const inD = inMap.get(u.id) ?? 0;
       const outD = outMap.get(u.id) ?? 0;
       const totalD = inD + outD;
@@ -190,15 +204,67 @@ export function createSalienceService(db: PrismaClient) {
           userW * WEIGHTS.userDesignated,
       );
 
-      return db.unit.update({
-        where: { id: u.id },
-        data: { importance: score },
-      });
+      return { id: u.id, score };
     });
+
+    // DEC-2026-002 §7 — derive tier cutoffs from the project-wide
+    // distribution so tier membership is always meaningful.
+    const sortedScores = scored.map((s) => s.score).sort((a, b) => a - b);
+    const pickCutoff = (p: number) => {
+      const idx = Math.min(
+        sortedScores.length - 1,
+        Math.max(0, Math.floor(p * sortedScores.length)),
+      );
+      return sortedScores[idx]!;
+    };
+    const deepCutoff = pickCutoff(DEEP_PERCENTILE);
+    const foregroundCutoff = pickCutoff(FOREGROUND_PERCENTILE);
+
+    function tierFor(score: number): SalienceTier {
+      if (score >= foregroundCutoff && sortedScores.length > 1) return "foreground";
+      if (score < deepCutoff) return "deep";
+      return "background";
+    }
+
+    const now = new Date();
+    const updates = scored.map((s) =>
+      db.unit.update({
+        where: { id: s.id },
+        data: {
+          // Legacy — kept for back-compat with the old `importance` field.
+          importance: s.score,
+          // DEC-2026-002 §7 — new attention-routing fields.
+          salienceScore: s.score,
+          salienceTier: tierFor(s.score),
+          salienceUpdatedAt: now,
+        },
+      }),
+    );
 
     await db.$transaction(updates);
 
     return { updated: units.length };
+  }
+
+  /**
+   * Read-only tier histogram for UI display. Does not recompute —
+   * returns whatever the last batch run wrote. Units with a NULL
+   * salienceTier are counted as `unranked`.
+   */
+  async function getTierCounts(projectId: string): Promise<TierCounts> {
+    const rows = await db.unit.findMany({
+      where: { projectId },
+      select: { salienceTier: true },
+    });
+
+    const counts: TierCounts = { foreground: 0, background: 0, deep: 0, unranked: 0 };
+    for (const r of rows) {
+      if (r.salienceTier === "foreground") counts.foreground++;
+      else if (r.salienceTier === "background") counts.background++;
+      else if (r.salienceTier === "deep") counts.deep++;
+      else counts.unranked++;
+    }
+    return counts;
   }
 
   async function decaySalience(
@@ -256,7 +322,13 @@ export function createSalienceService(db: PrismaClient) {
     };
   }
 
-  return { computeSalience, batchRecomputeSalience, decaySalience, getCognitiveLoad };
+  return {
+    computeSalience,
+    batchRecomputeSalience,
+    decaySalience,
+    getCognitiveLoad,
+    getTierCounts,
+  };
 }
 
 export type SalienceService = ReturnType<typeof createSalienceService>;

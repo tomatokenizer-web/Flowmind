@@ -63,11 +63,19 @@ export interface Candidate {
   rationale?: string;
   /** Additional priority boost from the producer (0-100). */
   priority?: number;
+  /** DEC-2026-002 §B.15.6 — monotonic tick for idempotent rule scans. */
+  evalTick?: number;
 }
 
 export interface ScheduleResult {
   surfaced: number;
   deferred: number;
+  /**
+   * Candidates filtered out by the §8 cooldown (rejected within the
+   * last SUPPRESSION_COOLDOWN_DAYS). Does not consume budget and is
+   * returned separately from `dropped` (which is budget-based).
+   */
+  suppressed: number;
   budgetRemaining: number;
   budgetTotal: number;
   dropped: Candidate[];
@@ -190,6 +198,25 @@ export function createProactiveSchedulerService(db: PrismaClient) {
 
     let budgetRemaining = status.budgetRemaining;
 
+    // DEC-2026-002 §8 — drop any candidate whose (kind, targetUnitId)
+    // matches an unexpired suppression row.
+    const active = await db.proactiveSuppression.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      select: { proposalKind: true, targetUnitId: true },
+    });
+    const suppressionKeys = new Set<string>();
+    for (const s of active) {
+      // A NULL targetUnitId suppresses the whole kind.
+      suppressionKeys.add(`${s.proposalKind}::${s.targetUnitId ?? "*"}`);
+    }
+    const isSuppressed = (c: Candidate) => {
+      if (suppressionKeys.has(`${c.kind}::*`)) return true;
+      if (c.targetUnitId && suppressionKeys.has(`${c.kind}::${c.targetUnitId}`)) {
+        return true;
+      }
+      return false;
+    };
+
     // Sort by priority (stable) — highest first.
     const sorted = [...candidates]
       .map((c, idx) => ({ c, idx, score: scoreCandidate(c) }))
@@ -198,8 +225,13 @@ export function createProactiveSchedulerService(db: PrismaClient) {
 
     const surfaced: Candidate[] = [];
     const dropped: Candidate[] = [];
+    let suppressedCount = 0;
 
     for (const candidate of sorted) {
+      if (isSuppressed(candidate)) {
+        suppressedCount++;
+        continue;
+      }
       const cost = PROPOSAL_COST[candidate.kind] ?? 1;
       if (cost <= budgetRemaining) {
         const created = await proposalService.create(
@@ -209,6 +241,7 @@ export function createProactiveSchedulerService(db: PrismaClient) {
             contextId: candidate.contextId,
             payload: candidate.payload,
             rationale: candidate.rationale,
+            evalTick: candidate.evalTick,
           },
           userId,
         );
@@ -232,6 +265,7 @@ export function createProactiveSchedulerService(db: PrismaClient) {
     return {
       surfaced: surfaced.length,
       deferred: dropped.length,
+      suppressed: suppressedCount,
       budgetRemaining,
       budgetTotal: dailyBudget,
       dropped,
@@ -249,10 +283,20 @@ export function createProactiveSchedulerService(db: PrismaClient) {
   ): Promise<{
     wouldSurface: Candidate[];
     wouldDefer: Candidate[];
+    wouldSuppress: Candidate[];
     budgetStatus: BudgetStatus;
   }> {
     const dailyBudget = opts.dailyBudget ?? DEFAULT_DAILY_BUDGET;
     const status = await getBudgetStatus(userId, dailyBudget);
+
+    const active = await db.proactiveSuppression.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      select: { proposalKind: true, targetUnitId: true },
+    });
+    const suppressionKeys = new Set<string>();
+    for (const s of active) {
+      suppressionKeys.add(`${s.proposalKind}::${s.targetUnitId ?? "*"}`);
+    }
 
     let remaining = status.budgetRemaining;
     const sorted = [...candidates].sort(
@@ -260,8 +304,17 @@ export function createProactiveSchedulerService(db: PrismaClient) {
     );
     const wouldSurface: Candidate[] = [];
     const wouldDefer: Candidate[] = [];
+    const wouldSuppress: Candidate[] = [];
 
     for (const c of sorted) {
+      const suppressed =
+        suppressionKeys.has(`${c.kind}::*`) ||
+        (c.targetUnitId !== undefined &&
+          suppressionKeys.has(`${c.kind}::${c.targetUnitId}`));
+      if (suppressed) {
+        wouldSuppress.push(c);
+        continue;
+      }
       const cost = PROPOSAL_COST[c.kind] ?? 1;
       if (cost <= remaining) {
         wouldSurface.push(c);
@@ -274,6 +327,7 @@ export function createProactiveSchedulerService(db: PrismaClient) {
     return {
       wouldSurface,
       wouldDefer,
+      wouldSuppress,
       budgetStatus: status,
     };
   }

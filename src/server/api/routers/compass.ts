@@ -79,4 +79,18 @@ export const compassRouter = createTRPCRouter({
       const svc = createSalienceService(ctx.db);
       return svc.getCognitiveLoad(input.projectId);
     }),
+
+  /**
+   * DEC-2026-002 §7 — attention tier histogram. Counts units per
+   * salienceTier (foreground/background/deep/unranked). Used by the
+   * attention-view UI to render tier occupancy without triggering a
+   * recompute; call `salienceBatchRecompute` first if tiers are stale.
+   */
+  salienceTierCounts: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await verifyProject(ctx.db, input.projectId, ctx.session.user.id!);
+      const svc = createSalienceService(ctx.db);
+      return svc.getTierCounts(input.projectId);
+    }),
 });
