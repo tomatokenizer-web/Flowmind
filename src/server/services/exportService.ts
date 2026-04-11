@@ -295,11 +295,100 @@ export function createExportService(db: PrismaClient) {
     return JSON.stringify(exportData, null, 2);
   }
 
+  /**
+   * Generate a Markdown document from assembly content.
+   * Per DEC-2026-002 §15: markdown is an MVP export format.
+   */
+  async function exportToMarkdown(
+    assemblyId: string,
+    userId: string,
+  ): Promise<string> {
+    const data = await getAssemblyData(assemblyId, userId);
+
+    const lines: string[] = [];
+    lines.push(`# ${data.name}`);
+    lines.push("");
+
+    if (data.description) {
+      lines.push(`_${data.description}_`);
+      lines.push("");
+    }
+
+    lines.push("---");
+    lines.push("");
+
+    for (const item of data.items) {
+      lines.push(`**${item.unitType.toUpperCase()}**`);
+      lines.push("");
+      lines.push(item.content);
+      lines.push("");
+      if (item.bridgeText) {
+        lines.push(`> ${item.bridgeText}`);
+        lines.push("");
+      }
+    }
+
+    lines.push("---");
+    lines.push(
+      `_Exported from FlowMind · ${new Date().toLocaleDateString()}_`,
+    );
+
+    const markdown = lines.join("\n");
+    logger.info(
+      { assemblyId, unitCount: data.items.length },
+      "Markdown export generated",
+    );
+    return markdown;
+  }
+
+  /**
+   * Generate a plain-text document from assembly content.
+   * Per DEC-2026-002 §15: plaintext is an MVP export format.
+   */
+  async function exportToPlaintext(
+    assemblyId: string,
+    userId: string,
+  ): Promise<string> {
+    const data = await getAssemblyData(assemblyId, userId);
+
+    const lines: string[] = [];
+    lines.push(data.name);
+    lines.push("=".repeat(Math.min(data.name.length, 60)));
+    lines.push("");
+
+    if (data.description) {
+      lines.push(data.description);
+      lines.push("");
+    }
+
+    for (const item of data.items) {
+      lines.push(`[${item.unitType.toUpperCase()}]`);
+      lines.push(item.content);
+      if (item.bridgeText) {
+        lines.push("");
+        lines.push(`  ${item.bridgeText}`);
+      }
+      lines.push("");
+    }
+
+    lines.push("---");
+    lines.push(`Exported from FlowMind — ${new Date().toLocaleDateString()}`);
+
+    const plaintext = lines.join("\n");
+    logger.info(
+      { assemblyId, unitCount: data.items.length },
+      "Plaintext export generated",
+    );
+    return plaintext;
+  }
+
   return {
     getAssemblyData,
     exportToPDF,
     exportToHTML,
     exportToJSON,
+    exportToMarkdown,
+    exportToPlaintext,
   };
 }
 

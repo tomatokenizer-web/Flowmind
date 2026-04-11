@@ -4,6 +4,7 @@ import { createAssemblyService } from "@/server/services/assemblyService";
 import { createExportService } from "@/server/services/exportService";
 import { createBridgeTextService } from "@/server/services/bridgeTextService";
 import { createCompoundingService } from "@/server/services/compoundingService";
+import { createCompoundingExtractorService } from "@/server/services/compoundingExtractorService";
 import { TRPCError } from "@trpc/server";
 
 // ─── Zod Schemas ───────────────────────────────────────────────────────────
@@ -497,6 +498,90 @@ export const assemblyRouter = createTRPCRouter({
       const svc = createExportService(ctx.db);
       const buffer = await svc.exportToPDF(input.assemblyId, ctx.session.user.id!);
       return { pdf: buffer.toString("base64"), mimeType: "application/pdf" };
+    }),
+
+  exportMarkdown: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const svc = createExportService(ctx.db);
+      return { markdown: await svc.exportToMarkdown(input.assemblyId, ctx.session.user.id!) };
+    }),
+
+  exportPlaintext: protectedProcedure
+    .input(z.object({ assemblyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const svc = createExportService(ctx.db);
+      return { plaintext: await svc.exportToPlaintext(input.assemblyId, ctx.session.user.id!) };
+    }),
+
+  // ─── Compounding candidate-unit extraction ────────────────────────
+  // Per DEC-2026-002 §19: after export, scan the rendered artifact for
+  // new candidate Units and surface them as `compounding` Proposals.
+
+  extractCompoundingCandidates: protectedProcedure
+    .input(
+      z.object({
+        assemblyId: z.string().uuid(),
+        format: z.enum(["markdown", "plaintext"]).default("markdown"),
+        minLength: z.number().int().min(5).max(1000).optional(),
+        maxLength: z.number().int().min(10).max(4000).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const exportSvc = createExportService(ctx.db);
+      const userId = ctx.session.user.id!;
+      const rendered =
+        input.format === "markdown"
+          ? await exportSvc.exportToMarkdown(input.assemblyId, userId)
+          : await exportSvc.exportToPlaintext(input.assemblyId, userId);
+
+      const extractor = createCompoundingExtractorService(ctx.db);
+      return {
+        format: input.format,
+        candidates: extractor.previewExtraction(rendered, {
+          minLength: input.minLength,
+          maxLength: input.maxLength,
+          limit: input.limit,
+        }),
+      };
+    }),
+
+  compoundFromExport: protectedProcedure
+    .input(
+      z.object({
+        assemblyId: z.string().uuid(),
+        contextId: z.string().uuid().optional(),
+        format: z.enum(["markdown", "plaintext"]).default("markdown"),
+        minLength: z.number().int().min(5).max(1000).optional(),
+        maxLength: z.number().int().min(10).max(4000).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify assembly ownership
+      const assembly = await ctx.db.assembly.findFirst({
+        where: { id: input.assemblyId, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!assembly) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Assembly not found" });
+      }
+
+      const exportSvc = createExportService(ctx.db);
+      const userId = ctx.session.user.id!;
+      const rendered =
+        input.format === "markdown"
+          ? await exportSvc.exportToMarkdown(input.assemblyId, userId)
+          : await exportSvc.exportToPlaintext(input.assemblyId, userId);
+
+      const extractor = createCompoundingExtractorService(ctx.db);
+      return extractor.extractFromAssembly(input.assemblyId, rendered, userId, {
+        contextId: input.contextId,
+        minLength: input.minLength,
+        maxLength: input.maxLength,
+        limit: input.limit,
+      });
     }),
 
   // ─── Bridge text generation ────────────────────────────────────────
