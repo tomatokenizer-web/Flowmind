@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Download, Copy, FileText, Presentation, Mail, Hash, FileDown, History, Clock } from "lucide-react";
+import { X, Download, Copy, FileText, Presentation, Mail, Hash, FileDown, History, Clock, FileCode, FileType2 } from "lucide-react";
 import { format } from "date-fns";
 import { api } from "~/trpc/react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
+import { CompoundingPanel } from "~/components/assembly/CompoundingPanel";
 
 type ExportFormat = "essay" | "presentation" | "email" | "social";
 type ActiveTab = "export" | "history";
@@ -239,6 +240,34 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
     recordExport();
   };
 
+  // Server-rendered format exports (DEC-2026-002 §15: markdown/plaintext/html/json).
+  const [serverFormatDownloading, setServerFormatDownloading] = React.useState<
+    "markdown" | "plaintext" | null
+  >(null);
+
+  const downloadServerFormat = async (kind: "markdown" | "plaintext") => {
+    if (serverFormatDownloading) return;
+    setServerFormatDownloading(kind);
+    try {
+      const result =
+        kind === "markdown"
+          ? await utils.assembly.exportMarkdown.fetch({ assemblyId })
+          : await utils.assembly.exportPlaintext.fetch({ assemblyId });
+      const content = "markdown" in result ? result.markdown : result.plaintext;
+      const ext = kind === "markdown" ? "md" : "txt";
+      const mime = kind === "markdown" ? "text/markdown" : "text/plain";
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${assemblyName.replace(/\s+/g, "-").toLowerCase()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setServerFormatDownloading(null);
+    }
+  };
+
   const toggleUnit = (unitId: string) => {
     setSelectedUnitIds((prev) => {
       const next = new Set(prev);
@@ -404,8 +433,13 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                 )}
               </div>
 
+              {/* Compounding candidate extractor (DEC-2026-002 §19) */}
+              <div className="mt-3">
+                <CompoundingPanel assemblyId={assemblyId} />
+              </div>
+
               {/* Actions */}
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
                 <Button
                   variant="ghost"
                   disabled={selectedUnits.length === 0}
@@ -421,6 +455,22 @@ export function ExportDialog({ open, onOpenChange, assemblyId, assemblyName }: E
                 >
                   <FileDown className="h-4 w-4" />
                   PDF
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={serverFormatDownloading !== null}
+                  onClick={() => void downloadServerFormat("markdown")}
+                >
+                  <FileCode className="h-4 w-4" />
+                  {serverFormatDownloading === "markdown" ? "Downloading..." : "Markdown"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={serverFormatDownloading !== null}
+                  onClick={() => void downloadServerFormat("plaintext")}
+                >
+                  <FileType2 className="h-4 w-4" />
+                  {serverFormatDownloading === "plaintext" ? "Downloading..." : "Plaintext"}
                 </Button>
                 <Button variant="ghost" onClick={handleCopy} disabled={!formattedContent || selectedUnits.length === 0}>
                   <Copy className="h-4 w-4" />

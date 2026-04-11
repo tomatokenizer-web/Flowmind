@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Sparkles,
   Loader2,
+  Zap,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -62,6 +63,36 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
     : query.toLowerCase().startsWith("ask:")
     ? query.slice(4).trim()
     : "";
+
+  // RAG Fusion mode — activated when query starts with "fuse:" or ">"
+  // Uses the 4-layer Reciprocal Rank Fusion router (DEC-2026-002 §1).
+  const isFuseMode =
+    query.startsWith(">") || query.toLowerCase().startsWith("fuse:");
+  const fuseQuery = query.startsWith(">")
+    ? query.slice(1).trim()
+    : query.toLowerCase().startsWith("fuse:")
+    ? query.slice(5).trim()
+    : "";
+  const [debouncedFuseQuery, setDebouncedFuseQuery] = React.useState("");
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFuseQuery(fuseQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fuseQuery]);
+
+  const { data: fuseData, isFetching: fuseFetching } = api.rag.query.useQuery(
+    {
+      query: debouncedFuseQuery,
+      projectId: projectId ?? "",
+      contextId,
+      limit: 15,
+    },
+    {
+      enabled: isFuseMode && debouncedFuseQuery.length >= 2 && !!projectId,
+      staleTime: 30_000,
+    },
+  );
 
   const [nlqResults, setNlqResults] = React.useState<Array<{
     unitId: string;
@@ -133,6 +164,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
     if (open) {
       setQuery("");
       setDebouncedQuery("");
+      setDebouncedFuseQuery("");
       setSelectedIndex(0);
       setNlqResults([]);
       setNlqSummary("");
@@ -222,6 +254,29 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
       action: () => void;
     }> = [];
 
+    // Fuse mode — show RRF fusion results with matched-layer summary
+    if (isFuseMode) {
+      if (fuseData?.results) {
+        for (const r of fuseData.results) {
+          const layers = r.matchedLayers.join(" · ");
+          result.push({
+            id: r.unitId,
+            label:
+              r.content.slice(0, 60) + (r.content.length > 60 ? "..." : ""),
+            sublabel: `${layers} · ${r.fusedScore.toFixed(4)}`,
+            icon: Zap,
+            section: `Fusion (${fuseData.intent})`,
+            unitType: r.unitType,
+            action: () => {
+              openPanel(r.unitId);
+              setOpen(false);
+            },
+          });
+        }
+      }
+      return result;
+    }
+
     // NLQ mode — show AI results
     if (isNLQMode) {
       for (const r of nlqResults) {
@@ -307,6 +362,8 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
 
     return result;
   }, [
+    isFuseMode,
+    fuseData,
     isNLQMode,
     nlqResults,
     debouncedQuery,
@@ -398,7 +455,13 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                 >
                   {/* Search input */}
                   <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                    {isNLQMode ? (
+                    {isFuseMode ? (
+                      fuseFetching ? (
+                        <Loader2 className="h-5 w-5 text-accent-primary flex-shrink-0 animate-spin" />
+                      ) : (
+                        <Zap className="h-5 w-5 text-accent-primary flex-shrink-0" aria-hidden="true" />
+                      )
+                    ) : isNLQMode ? (
                       nlqMutation.isPending ? (
                         <Loader2 className="h-5 w-5 text-accent-primary flex-shrink-0 animate-spin" />
                       ) : (
@@ -415,7 +478,7 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                         setQuery(e.target.value);
                         setSelectedIndex(0);
                       }}
-                      placeholder="Search… or type ? to ask in natural language"
+                      placeholder="Search… ? for AI, > for 4-layer fusion"
                       className={cn(
                         "flex-1 bg-transparent text-text-primary",
                         "placeholder:text-text-tertiary",
@@ -443,6 +506,20 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                     </div>
                   )}
 
+                  {/* Fuse mode banner */}
+                  {isFuseMode && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-accent-primary/5 border-b border-border text-xs text-accent-primary">
+                      <Zap className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                      <span>
+                        {fuseData
+                          ? `4-layer fusion · intent: ${fuseData.intent} · ${fuseData.results.length} result${fuseData.results.length === 1 ? "" : "s"}`
+                          : fuseQuery.length >= 2
+                          ? "Running Reciprocal Rank Fusion…"
+                          : 'Type a query after ">" (e.g. "> how does auth work")'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Results */}
                   <div
                     ref={listRef}
@@ -451,7 +528,13 @@ export function CommandPalette({ projectId, contextId }: CommandPaletteProps) {
                   >
                     {items.length === 0 ? (
                       <div className="py-8 text-center text-text-tertiary">
-                        {isNLQMode
+                        {isFuseMode
+                          ? fuseFetching
+                            ? "Running Reciprocal Rank Fusion…"
+                            : fuseQuery.length >= 2
+                            ? "No results found"
+                            : 'Type a query after ">"'
+                          : isNLQMode
                           ? nlqMutation.isPending
                             ? "Searching with AI…"
                             : nlqQuery.length >= 3

@@ -27,6 +27,10 @@ import {
   Loader2,
   Plus,
   ChevronRight,
+  ShieldCheck,
+  AlertTriangle,
+  AlertCircle,
+  Info,
 } from "lucide-react";
 import type {
   AlternativeFraming,
@@ -50,7 +54,7 @@ interface UnitAIActionsMenuProps {
   onUpdateUnit?: (id: string, updates: { content?: string; unitType?: string }) => void;
 }
 
-type DialogType = "framing" | "counter" | "assumptions" | "stance" | null;
+type DialogType = "framing" | "counter" | "assumptions" | "stance" | "rules" | null;
 
 export function UnitAIActionsMenu({
   unit,
@@ -62,10 +66,18 @@ export function UnitAIActionsMenu({
   const [activeDialog, setActiveDialog] = React.useState<DialogType>(null);
 
   // Mutations
+  const utils = api.useUtils();
   const framingMutation = api.ai.generateAlternativeFraming.useMutation();
   const counterMutation = api.ai.suggestCounterArguments.useMutation();
   const assumptionsMutation = api.ai.identifyAssumptions.useMutation();
   const stanceMutation = api.ai.classifyStance.useMutation();
+  const rulesMutation = api.proactive.scanRules.useMutation({
+    onSuccess: () => {
+      void utils.proposal.list.invalidate();
+      void utils.proposal.countPending.invalidate();
+      void utils.proactive.getBudgetStatus.invalidate();
+    },
+  });
 
   const handleFraming = () => {
     setActiveDialog("framing");
@@ -103,6 +115,22 @@ export function UnitAIActionsMenu({
     });
   };
 
+  const handleRulesScan = () => {
+    setActiveDialog("rules");
+    rulesMutation.mutate({
+      units: [
+        {
+          id: unit.id,
+          unitType: unit.unitType,
+          content: unit.content,
+        },
+      ],
+      relations: [],
+      contextId,
+      dryRun: false,
+    });
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -133,6 +161,11 @@ export function UnitAIActionsMenu({
               Classify Stance
             </DropdownMenuItem>
           )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleRulesScan}>
+            <ShieldCheck className="mr-2 h-4 w-4" />
+            Scan Epistemic Rules
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -228,6 +261,26 @@ export function UnitAIActionsMenu({
             data={stanceMutation.data}
             isLoading={stanceMutation.isPending}
             error={stanceMutation.error?.message}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Epistemic Rules Dialog */}
+      <Dialog open={activeDialog === "rules"} onOpenChange={(open) => !open && setActiveDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Epistemic Rules Scan
+            </DialogTitle>
+            <DialogDescription>
+              Violations detected and proposals surfaced through your daily budget
+            </DialogDescription>
+          </DialogHeader>
+          <RulesScanResults
+            data={rulesMutation.data}
+            isLoading={rulesMutation.isPending}
+            error={rulesMutation.error?.message}
           />
         </DialogContent>
       </Dialog>
@@ -441,6 +494,83 @@ function StanceResults({
             ))}
           </ul>
         </div>
+      )}
+    </div>
+  );
+}
+
+type RulesScanData = NonNullable<
+  ReturnType<typeof api.proactive.scanRules.useMutation>["data"]
+>;
+
+function RulesScanResults({
+  data,
+  isLoading,
+  error,
+}: {
+  data: RulesScanData | undefined;
+  isLoading: boolean;
+  error?: string;
+}) {
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
+  if (!data) return <EmptyState />;
+
+  const violations = data.ruleResult.violations;
+
+  if (violations.length === 0) {
+    return (
+      <div className="py-6 px-4 text-center space-y-2">
+        <ShieldCheck className="h-8 w-8 mx-auto text-green-500" />
+        <p className="text-sm font-medium">No violations detected</p>
+        <p className="text-xs text-text-secondary">
+          This unit passes all active epistemic rules.
+        </p>
+      </div>
+    );
+  }
+
+  const severityStyle: Record<string, { icon: React.ComponentType<{ className?: string }>; className: string; label: string }> = {
+    error: { icon: AlertCircle, className: "text-red-500 bg-red-500/10 border-red-500/30", label: "Error" },
+    warning: { icon: AlertTriangle, className: "text-amber-500 bg-amber-500/10 border-amber-500/30", label: "Warning" },
+    info: { icon: Info, className: "text-blue-500 bg-blue-500/10 border-blue-500/30", label: "Info" },
+  };
+
+  return (
+    <div className="space-y-3 max-h-[400px] overflow-auto">
+      <div className="flex items-center justify-between rounded-md border border-border bg-bg-secondary px-3 py-2 text-xs text-text-secondary">
+        <span>
+          <strong className="text-text-primary">{violations.length}</strong>{" "}
+          violation{violations.length === 1 ? "" : "s"} found
+        </span>
+        <span>
+          <strong className="text-text-primary">{data.surfaced}</strong>{" "}
+          surfaced · <strong className="text-text-primary">{data.deferred}</strong> deferred
+        </span>
+      </div>
+      {violations.map((v, i) => {
+        const style = severityStyle[v.severity] ?? severityStyle.info!;
+        const Icon = style.icon;
+        return (
+          <div
+            key={i}
+            className={`p-3 rounded-lg border ${style.className}`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <Icon className="h-4 w-4" />
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                {style.label}
+              </span>
+              <span className="text-xs text-text-secondary">· {v.rule}</span>
+            </div>
+            <p className="text-sm">{v.message}</p>
+          </div>
+        );
+      })}
+      {data.surfaced > 0 && (
+        <p className="text-xs text-text-secondary text-center pt-1">
+          Actionable violations have been added to your proposal inbox.
+        </p>
       )}
     </div>
   );

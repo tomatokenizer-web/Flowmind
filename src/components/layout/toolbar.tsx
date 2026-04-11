@@ -13,6 +13,7 @@ import { Breadcrumb, type BreadcrumbSegment } from "~/components/navigation/Brea
 // CompletenessCompass removed — percentage is meaningless without project-level objectives
 import { openCommandPalette } from "~/components/search";
 import { api } from "~/trpc/react";
+import { ProactiveBudgetHUD } from "~/components/layout/ProactiveBudgetHUD";
 
 const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { mode: "canvas", icon: Layout, label: "Canvas" },
@@ -191,6 +192,9 @@ export function Toolbar({
           ))}
         </div>
       )}
+
+      {/* Proactive budget HUD */}
+      {!focusMode && <ProactiveBudgetHUD />}
 
       {/* AI Command Panel button */}
       {!focusMode && (

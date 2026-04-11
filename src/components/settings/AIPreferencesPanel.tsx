@@ -43,6 +43,16 @@ export function AIPreferencesPanel() {
     },
   });
 
+  // Capture mode (DEC-2026-002 §B.15.1) — persisted independently
+  // via the proactive router / feature flag.
+  const { data: captureModeData } = api.proactive.getCaptureMode.useQuery();
+  const captureMode = captureModeData?.captureMode ?? "review_queue";
+  const setCaptureMode = api.proactive.setCaptureMode.useMutation({
+    onSuccess: () => {
+      void utils.proactive.getCaptureMode.invalidate();
+    },
+  });
+
   const handleSave = () => {
     updateMutation.mutate({
       interventionIntensity: INTENSITY_VALUES[intensityLevel],
@@ -163,6 +173,56 @@ export function AIPreferencesPanel() {
                 value={opt.id}
                 checked={model === opt.id}
                 onChange={(e) => setModel(e.target.value as "depth" | "speed" | "balanced")}
+                className="accent-accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  {opt.label}
+                </p>
+                <p className="text-xs text-text-tertiary">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Capture mode (DEC-2026-002 §B.15.1) */}
+      <div className="rounded-xl border border-border p-4">
+        <p className="mb-1 text-sm font-medium text-text-primary">
+          Capture Mode
+        </p>
+        <p className="mb-3 text-xs text-text-tertiary">
+          How should the proactive scheduler handle AI-surfaced proposals?
+        </p>
+        <div className="space-y-2">
+          {[
+            {
+              id: "review_queue" as const,
+              label: "Review queue",
+              desc: "Proposals wait in your inbox until you accept or reject them (default).",
+            },
+            {
+              id: "auto_apply" as const,
+              label: "Auto-apply",
+              desc: "Proposals are accepted immediately. You can still undo from history.",
+            },
+          ].map((opt) => (
+            <label
+              key={opt.id}
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+                captureMode === opt.id
+                  ? "border-accent-primary bg-accent-primary/5"
+                  : "border-border hover:bg-bg-hover",
+              )}
+            >
+              <input
+                type="radio"
+                name="capture-mode"
+                value={opt.id}
+                checked={captureMode === opt.id}
+                disabled={setCaptureMode.isPending}
+                onChange={() => setCaptureMode.mutate({ captureMode: opt.id })}
                 className="accent-accent-primary"
               />
               <div>
