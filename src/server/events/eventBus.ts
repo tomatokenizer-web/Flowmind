@@ -9,6 +9,7 @@ export type UnitEventType =
   | "unit.deleted"
   | "unit.lifecycleChanged"
   | "unit.merged"
+  | "unit.split"
   | "unit.contentChanged";
 
 export type ResourceEventType =
@@ -23,7 +24,7 @@ export type RelationEventType =
 export type AppEventType = UnitEventType | ResourceEventType | RelationEventType;
 
 export interface UnitEvent {
-  type: Exclude<UnitEventType, "unit.merged">;
+  type: Exclude<UnitEventType, "unit.merged" | "unit.split">;
   payload: {
     unitId: string;
     userId: string;
@@ -38,6 +39,17 @@ export interface UnitMergedEvent {
   payload: {
     sourceUnitId: string;
     targetUnitId: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
+export interface UnitSplitEvent {
+  type: "unit.split";
+  payload: {
+    parentUnitId: string;
+    firstChildId: string;
+    secondChildId: string;
     userId: string;
   };
   timestamp: Date;
@@ -63,7 +75,12 @@ export interface RelationEvent {
   timestamp: Date;
 }
 
-export type AppEvent = UnitEvent | UnitMergedEvent | ResourceEvent | RelationEvent;
+export type AppEvent =
+  | UnitEvent
+  | UnitMergedEvent
+  | UnitSplitEvent
+  | ResourceEvent
+  | RelationEvent;
 
 type EventHandler = (event: AppEvent) => void | Promise<void>;
 
