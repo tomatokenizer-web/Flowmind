@@ -66,13 +66,15 @@ function polarToCartesian(
 const AXIS_COUNT = 6;
 const AXIS_ANGLES = Array.from({ length: AXIS_COUNT }, (_, i) => i * 60);
 const GRID_LEVELS = [0.25, 0.5, 0.75, 1.0];
+// Ordered: 4 structure dims, then 2 depth dims — matches the
+// dimensions array order in compassService.calculateCompass.
 const AXIS_LABELS = [
   "Evidence",
   "Counter",
   "Definitions",
+  "Scope",
   "Assumptions",
   "Questions",
-  "Scope",
 ];
 
 interface RadarChartProps {
@@ -272,8 +274,13 @@ export function CompletenessCompass({ className }: { className?: string }) {
     { enabled: !!projectId },
   );
 
-  const overall = data?.overall ?? 0;
-  const color = overallColor(overall);
+  // Per DEC §4: structure and depth are parallel — never merged.
+  // The trigger badge shows structure as the primary ring with a
+  // small depth chip below it.
+  const structureScore = data?.structure.score ?? 0;
+  const depthScore = data?.depth.score ?? 0;
+  const structureColor = overallColor(structureScore);
+  const depthColor = overallColor(depthScore);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -285,15 +292,15 @@ export function CompletenessCompass({ className }: { className?: string }) {
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
             className,
           )}
-          aria-label={`Completeness: ${overall}%`}
-          title="Completeness Compass"
+          aria-label={`Structure ${structureScore}%, Depth ${depthScore}%`}
+          title={`Structure ${structureScore}% · Depth ${depthScore}%`}
         >
-          <ProgressRing percentage={overall} color={color} />
+          <ProgressRing percentage={structureScore} color={structureColor} />
           <span
             className="absolute text-[9px] font-bold"
-            style={{ color }}
+            style={{ color: structureColor }}
           >
-            {overall}%
+            {structureScore}
           </span>
         </button>
       </Popover.Trigger>
@@ -314,12 +321,31 @@ export function CompletenessCompass({ className }: { className?: string }) {
 
           {data ? (
             <div className="space-y-3">
-              {/* Overall score */}
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-2xl font-bold" style={{ color }}>
-                  {overall}%
-                </span>
-                <span className="text-xs text-text-tertiary">overall</span>
+              {/* Dual score — structure vs depth, never merged (DEC §4) */}
+              <div className="flex items-center justify-around gap-2 rounded-lg border border-border/50 bg-bg-secondary/40 px-3 py-2">
+                <div className="flex flex-col items-center">
+                  <span
+                    className="text-2xl font-bold tabular-nums"
+                    style={{ color: structureColor }}
+                  >
+                    {structureScore}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-text-tertiary">
+                    Structure
+                  </span>
+                </div>
+                <div className="h-8 w-px bg-border" />
+                <div className="flex flex-col items-center">
+                  <span
+                    className="text-2xl font-bold tabular-nums"
+                    style={{ color: depthColor }}
+                  >
+                    {depthScore}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-text-tertiary">
+                    Depth
+                  </span>
+                </div>
               </div>
 
               {/* Radar chart */}

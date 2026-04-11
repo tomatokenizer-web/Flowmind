@@ -1,18 +1,39 @@
 import type { PrismaClient } from "@prisma/client";
 
 // ─── Types ─────────────────────────────────────────────────────────
+//
+// Per DEC-2026-002 §4: Completeness Compass MUST return two parallel
+// scores, never a merged `overall` value.
+//
+//   structure = is the reasoning wired correctly? (graph-topology)
+//   depth     = is the reasoning epistemically mature? (maturation)
+//
+// Each dimension tags itself with a `category` so the UI can render
+// the two halves independently.
+
+export type CompassCategory = "structure" | "depth";
 
 export type CompassDimension = {
   name: string;
   label: string;
+  category: CompassCategory;
   score: number;
   numerator: number;
   denominator: number;
   gaps: string[];
 };
 
+export type CompassCategoryScore = {
+  /** Weighted average of this category's dimensions (0-100). */
+  score: number;
+  /** Only the dimensions that belong to this category. */
+  dimensions: CompassDimension[];
+};
+
 export type CompassResult = {
-  overall: number;
+  structure: CompassCategoryScore;
+  depth: CompassCategoryScore;
+  /** All 6 dimensions in display order — convenience accessor for list UIs. */
   dimensions: CompassDimension[];
   suggestions: string[];
 };
@@ -35,9 +56,7 @@ export type CompassService = ReturnType<typeof createCompassService>;
 // ─── Constants ─────────────────────────────────────────────────────
 
 const CLAIM_TYPES = new Set(["claim"]);
-const EVIDENCE_TYPES = new Set(["evidence"]);
 const DEFINITION_TYPES = new Set(["definition"]);
-const ASSUMPTION_TYPES = new Set(["assumption"]);
 const QUESTION_TYPES = new Set(["question"]);
 
 const SUPPORTS_SUBTYPES = new Set(["supports"]);
@@ -53,13 +72,29 @@ const LIFECYCLE_STAGES = [
 const MAX_GAPS = 3;
 const CONTENT_TRUNCATE = 50;
 
+// Each dimension belongs to exactly one category per DEC §4.
+// Structure dims describe graph topology; depth dims describe
+// epistemic maturation of the reasoning.
+const DIMENSION_CATEGORY: Record<string, CompassCategory> = {
+  evidence_coverage: "structure",
+  counter_argument_coverage: "structure",
+  definition_coverage: "structure",
+  scope_balance: "structure",
+  assumption_surfacing: "depth",
+  question_resolution: "depth",
+};
+
+// Intra-category weights — each category's dimensions sum to 1.0.
 const DIMENSION_WEIGHTS: Record<string, number> = {
-  evidence_coverage: 0.25,
-  counter_argument_coverage: 0.15,
-  definition_coverage: 0.15,
-  assumption_surfacing: 0.15,
-  question_resolution: 0.15,
+  // Structure (4 dims) — evidence dominates since un-grounded claims
+  // are the most common structural failure.
+  evidence_coverage: 0.40,
+  counter_argument_coverage: 0.25,
+  definition_coverage: 0.20,
   scope_balance: 0.15,
+  // Depth (2 dims) — equal weight
+  assumption_surfacing: 0.50,
+  question_resolution: 0.50,
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────
@@ -90,7 +125,16 @@ function buildDimension(
   gaps: string[],
 ): CompassDimension {
   const score = denominator === 0 ? 100 : Math.round((numerator / denominator) * 100);
-  return { name, label, score, numerator, denominator, gaps: gaps.slice(0, MAX_GAPS) };
+  const category = DIMENSION_CATEGORY[name] ?? "structure";
+  return {
+    name,
+    label,
+    category,
+    score,
+    numerator,
+    denominator,
+    gaps: gaps.slice(0, MAX_GAPS),
+  };
 }
 
 function generateSuggestions(dimensions: CompassDimension[]): string[] {
@@ -171,7 +215,6 @@ export function createCompassService(db: PrismaClient) {
     })) as unknown as RelationRow[];
 
     // ── Index data ──────────────────────────────────────────────
-    const unitById = new Map(units.map((u) => [u.id, u]));
     const claims = units.filter((u) => CLAIM_TYPES.has(u.unitType));
     const questions = units.filter((u) => QUESTION_TYPES.has(u.unitType));
     const concepts = units.filter((u) => DEFINITION_TYPES.has(u.unitType));
@@ -347,6 +390,7 @@ export function createCompassService(db: PrismaClient) {
     const scopeDim: CompassDimension = {
       name: "scope_balance",
       label: "Scope Balance",
+      category: DIMENSION_CATEGORY.scope_balance ?? "structure",
       score: entropyScore,
       numerator: nonEmptyStages,
       denominator: LIFECYCLE_STAGES.length,
@@ -354,25 +398,42 @@ export function createCompassService(db: PrismaClient) {
     };
 
     // ── Aggregate ───────────────────────────────────────────────
+    // Display order keeps structure dims first, then depth dims.
     const dimensions = [
       evidenceDim,
       counterDim,
       definitionDim,
+      scopeDim,
       assumptionDim,
       questionDim,
-      scopeDim,
     ];
 
-    const overall = Math.round(
-      dimensions.reduce(
-        (sum, d) => sum + d.score * (DIMENSION_WEIGHTS[d.name] ?? 0),
+    // Per DEC §4: two parallel scores, NEVER merged into one "overall".
+    function aggregateCategory(category: CompassCategory): CompassCategoryScore {
+      const categoryDims = dimensions.filter((d) => d.category === category);
+      if (categoryDims.length === 0) {
+        return { score: 0, dimensions: [] };
+      }
+      const weightSum = categoryDims.reduce(
+        (sum, d) => sum + (DIMENSION_WEIGHTS[d.name] ?? 0),
         0,
-      ),
-    );
+      );
+      const weighted =
+        weightSum === 0
+          ? categoryDims.reduce((sum, d) => sum + d.score, 0) / categoryDims.length
+          : categoryDims.reduce(
+              (sum, d) => sum + d.score * (DIMENSION_WEIGHTS[d.name] ?? 0),
+              0,
+            ) / weightSum;
+      return { score: Math.round(weighted), dimensions: categoryDims };
+    }
+
+    const structure = aggregateCategory("structure");
+    const depth = aggregateCategory("depth");
 
     const suggestions = generateSuggestions(dimensions);
 
-    return { overall, dimensions, suggestions };
+    return { structure, depth, dimensions, suggestions };
   }
 
   return { calculateCompass };
