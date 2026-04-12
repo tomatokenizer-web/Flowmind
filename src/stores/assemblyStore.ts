@@ -13,7 +13,7 @@ interface AssemblyState {
 
 export const useAssemblyStore = create<AssemblyState>((set) => ({
   activeAssemblyId: null,
-  setActiveAssembly: (id) => set({ activeAssemblyId: id }),
+  setActiveAssembly: (id) => set({ activeAssemblyId: id, bridgeTexts: {} }),
   bridgeTexts: {},
   setBridgeText: (afterUnitId, text) =>
     set((s) => ({ bridgeTexts: { ...s.bridgeTexts, [afterUnitId]: text } })),

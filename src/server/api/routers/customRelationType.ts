@@ -36,6 +36,15 @@ export const customRelationTypeRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createInput)
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
       // Check for name conflict with system relation types
       const systemConflict = await ctx.db.systemRelationType.findFirst({
         where: { name: { equals: input.name, mode: "insensitive" } },
@@ -45,7 +54,7 @@ export const customRelationTypeRouter = createTRPCRouter({
       if (systemConflict) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: `The name "${input.name}" conflicts with a system relation type.`,
+          message: "The chosen name conflicts with a system relation type.",
         });
       }
 
@@ -72,8 +81,12 @@ export const customRelationTypeRouter = createTRPCRouter({
     .input(listInput)
     .query(async ({ ctx, input }) => {
       if (!input.projectId) return [];
+      // IDOR fix: scope to user's projects
       return ctx.db.customRelationType.findMany({
-        where: { projectId: input.projectId },
+        where: {
+          projectId: input.projectId,
+          project: { userId: ctx.session.user.id! },
+        },
         orderBy: { createdAt: "asc" },
         include: {
           createdBy: { select: { id: true, name: true } },
@@ -86,6 +99,15 @@ export const customRelationTypeRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, name, description, reusable } = input;
 
+      // IDOR fix: verify ownership before update
+      const existing = await ctx.db.customRelationType.findFirst({
+        where: { id, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Custom relation type not found" });
+      }
+
       // If renaming, check for system type conflict
       if (name !== undefined) {
         const systemConflict = await ctx.db.systemRelationType.findFirst({
@@ -96,7 +118,7 @@ export const customRelationTypeRouter = createTRPCRouter({
         if (systemConflict) {
           throw new TRPCError({
             code: "CONFLICT",
-            message: `The name "${name}" conflicts with a system relation type.`,
+            message: "The chosen name conflicts with a system relation type.",
           });
         }
       }
@@ -116,10 +138,10 @@ export const customRelationTypeRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(deleteInput)
     .mutation(async ({ ctx, input }) => {
-      // Look up the custom type to get its name for the relations query
-      const customType = await ctx.db.customRelationType.findUnique({
-        where: { id: input.id },
-        select: { name: true },
+      // IDOR fix: verify ownership before delete
+      const customType = await ctx.db.customRelationType.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { name: true, projectId: true },
       });
 
       if (!customType) {
@@ -129,11 +151,12 @@ export const customRelationTypeRouter = createTRPCRouter({
         });
       }
 
-      // Set affected relations to "untyped" instead of cascade delete
+      // Scope relation cleanup to the same project (IDOR fix)
       const updateResult = await ctx.db.relation.updateMany({
         where: {
           type: customType.name,
           isCustom: true,
+          sourceUnit: { projectId: customType.projectId },
         },
         data: {
           type: "untyped",

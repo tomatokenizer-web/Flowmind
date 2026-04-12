@@ -655,11 +655,13 @@ export function createGraphQueryService(db: PrismaClient) {
       visited.add(id);
       if (id !== unitId) ordered.push(id);
 
+      // ancestors = units pointing TO current (current is target)
+      // descendants = units current points TO (current is source)
       const where: Prisma.RelationWhereInput =
         direction === "ancestors"
-          ? { sourceUnitId: id }
+          ? { targetUnitId: id }
           : direction === "descendants"
-            ? { targetUnitId: id }
+            ? { sourceUnitId: id }
             : { OR: [{ sourceUnitId: id }, { targetUnitId: id }] };
 
       const rels = await db.relation.findMany({

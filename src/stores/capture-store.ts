@@ -66,11 +66,11 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   batchTexts: [],
 
   open: () => set({ isOpen: true, phase: "input", showAudioRecorder: false, errorMessage: null }),
-  close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null }),
+  close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [] }),
   toggle: () =>
     set((s) =>
       s.isOpen
-        ? { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null }
+        ? { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [] }
         : { isOpen: true, phase: "input", errorMessage: null }
     ),
   toggleMode: () =>

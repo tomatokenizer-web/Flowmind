@@ -32,10 +32,10 @@ export const useAISuggestionStore = create<AISuggestionState>()(
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
           createdAt: Date.now(),
         };
-        set((state) => ({
-          suggestions: [suggestion, ...state.suggestions].slice(0, 50),
-          pendingCount: state.suggestions.length + 1,
-        }));
+        set((state) => {
+          const updated = [suggestion, ...state.suggestions].slice(0, 50);
+          return { suggestions: updated, pendingCount: updated.length };
+        });
       },
       removeSuggestion: (id) =>
         set((state) => {

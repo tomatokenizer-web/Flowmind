@@ -93,6 +93,6 @@ export const proposalRouter = createTRPCRouter({
     .input(z.object({ olderThanDays: z.number().int().min(1).max(90).default(7) }))
     .mutation(async ({ ctx, input }) => {
       const service = createProposalService(ctx.db);
-      return service.expireStale(input.olderThanDays);
+      return service.expireStale(input.olderThanDays, ctx.session.user.id!);
     }),
 });

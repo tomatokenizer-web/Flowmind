@@ -466,11 +466,19 @@ export function initWebhookDelivery(db: PrismaClient): void {
     "unit.lifecycleChanged",
     "unit.merged",
     "unit.contentChanged",
+    "unit.fossilized",
+    "unit.promoted",
     "resource.created",
     "resource.deleted",
     "relation.created",
     "relation.updated",
     "relation.deleted",
+    "proposal.created",
+    "proposal.accepted",
+    "proposal.rejected",
+    "context.tierChanged",
+    "assembly.exported",
+    "membership.changed",
   ];
 
   for (const eventType of eventTypes) {

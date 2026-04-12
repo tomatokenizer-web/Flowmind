@@ -10,6 +10,8 @@ import {
   IntegrityCheckSchema,
   DecompositionBoundariesSchema,
 } from "@/server/ai/schemas";
+import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
+import { eventBus } from "@/server/events/eventBus";
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -50,6 +52,7 @@ export interface PipelineInput {
 
 export function createPipelineService(db: PrismaClient) {
   const provider = getAIProvider();
+  const unitService = createUnitService(db);
 
   async function runPass<T>(
     name: PassName,
@@ -139,20 +142,35 @@ export function createPipelineService(db: PrismaClient) {
         classifiedType = classResult.data.unitType as UnitType;
       }
 
-      // Create the unit in DB with classification result
-      const unit = await db.unit.create({
-        data: {
-          content: primaryContent,
-          unitType: classifiedType,
-          lifecycle: "draft",
-          lifecycleState: "draft",
-          originType: "direct_write",
-          voice: "original",
-          aiTrustLevel: "user_authored",
+      // Create the unit via unitService → fires unit.created event
+      // (triggers embedding, rules, proactive subscribers per B.9 spec)
+      let unit;
+      try {
+        unit = await unitService.create(
+          {
+            content: primaryContent,
+            unitType: classifiedType,
+            lifecycle: "draft",
+            lifecycleState: "draft",
+            originType: "direct_write",
+            voice: "original",
+            aiTrustLevel: "user_authored",
+            projectId: input.projectId,
+          },
           userId,
-          projectId: input.projectId,
-        },
-      });
+        );
+      } catch (error) {
+        if (error instanceof DuplicateUnitContentError) {
+          // Pipeline-created units skip duplicate check — retrieve existing
+          const existing = await db.unit.findFirst({
+            where: { projectId: input.projectId, content: primaryContent },
+          });
+          if (!existing) throw error;
+          unit = existing;
+        } else {
+          throw error;
+        }
+      }
 
       // ── Pass 3: Attribute Enrichment ──────────────────────────
       const enrichResult = await runPass("enrichment", async () => {
@@ -451,26 +469,40 @@ export function createPipelineService(db: PrismaClient) {
       }
 
       // ── Create additional units from decomposition ────────────
+      // Each child goes through unitService → fires unit.created event
       if (unitContents.length > 1) {
         for (let i = 1; i < unitContents.length; i++) {
-          await db.unit.create({
-            data: {
-              content: unitContents[i]!,
-              unitType: "observation",
-              lifecycle: "draft",
-              lifecycleState: "draft",
-              originType: "direct_write",
-              voice: "original",
-              aiTrustLevel: "user_authored",
+          try {
+            await unitService.create(
+              {
+                content: unitContents[i]!,
+                unitType: "observation",
+                lifecycle: "draft",
+                lifecycleState: "draft",
+                originType: "direct_write",
+                voice: "original",
+                aiTrustLevel: "user_authored",
+                projectId: input.projectId,
+                parentInputId: unit.id,
+              },
               userId,
-              projectId: input.projectId,
-              parentInputId: unit.id,
-            },
-          });
+            );
+          } catch (error) {
+            if (!(error instanceof DuplicateUnitContentError)) throw error;
+            // Skip duplicate decomposition children silently
+          }
         }
       }
 
       const allPassed = passes.every((p) => p.status === "completed" || p.status === "skipped");
+
+      // Emit unit.updated after all enrichment passes so downstream
+      // subscribers (salience, compass, rules) see the fully-enriched unit
+      await eventBus.emit({
+        type: "unit.updated",
+        payload: { unitId: unit.id, userId },
+        timestamp: new Date(),
+      });
 
       return {
         unitId: unit.id,

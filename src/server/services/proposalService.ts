@@ -209,7 +209,7 @@ export function createProposalService(db: PrismaClient) {
       return updated;
     },
 
-    async expireStale(olderThanDays: number = 7) {
+    async expireStale(olderThanDays: number = 7, userId?: string) {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - olderThanDays);
 
@@ -217,6 +217,8 @@ export function createProposalService(db: PrismaClient) {
         where: {
           status: "pending",
           createdAt: { lt: cutoff },
+          // IDOR fix: scope to user's proposals when userId provided
+          ...(userId ? { userId } : {}),
         },
         data: {
           status: "expired",

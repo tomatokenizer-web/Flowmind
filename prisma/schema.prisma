@@ -353,16 +353,6 @@ enum ScaleSource {
   user_override
 }
 
-enum AssemblyRole {
-  thesis
-  support_role    @map("support")
-  evidence_role   @map("evidence")
-  counterpoint
-  bridge_role     @map("bridge")
-  background_role @map("background")
-  conclusion
-}
-
 enum NsDirection {
   nucleus_to_satellite
   satellite_to_nucleus
@@ -393,11 +383,6 @@ enum PursuitStatus {
   paused_pursuit    @map("paused")
   completed_pursuit @map("completed")
   archived_pursuit  @map("archived")
-}
-
-enum WorkType {
-  assembly_work @map("assembly")
-  document_work @map("document")
 }
 
 // ─── Models ────────────────────────────────────────────────────────
@@ -863,7 +848,7 @@ model AssemblyItem {
   position   Int
   bridgeText String?  @map("bridge_text")
   assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
-  unit       Unit?    @relation(fields: [unitId], references: [id])
+  unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
   @@index([assemblyId])
   @@map("assembly_items")
@@ -970,7 +955,7 @@ model ContextReference {
 
   sourceContext Context @relation("SourceReferences", fields: [sourceContextId], references: [id], onDelete: Cascade)
   targetContext Context @relation("TargetReferences", fields: [targetContextId], references: [id], onDelete: Cascade)
-  createdBy     User    @relation(fields: [createdById], references: [id])
+  createdBy     User    @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@unique([sourceContextId, targetContextId])
   @@index([sourceContextId])
@@ -1187,7 +1172,7 @@ model ExportHistory {
   assemblyId  String   @map("assembly_id") @db.Uuid
   assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   userId      String   @map("user_id")
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   format      String   @db.VarChar(50)
   unitIds     String[] @map("unit_ids") @db.Uuid
   contentHash String   @map("content_hash") @db.VarChar(64)

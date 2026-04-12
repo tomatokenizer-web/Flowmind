@@ -128,11 +128,14 @@ export function useKeyboardShortcuts(
   defsRef.current = defs;
 
   // Register all shortcuts in the global registry
+  // Use JSON.stringify to stabilize deps — defs is often an inline array literal
+  const defsKey = JSON.stringify(defs.map((d) => d.keys));
   useEffect(() => {
     if (!enabled) return;
     const unregisters = defsRef.current.map((s) => registerShortcut(s));
     return () => unregisters.forEach((fn) => fn());
-  }, [enabled, defs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, defsKey]);
 
   // Listen for keydown events
   useEffect(() => {

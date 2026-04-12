@@ -76,18 +76,44 @@ export function createFeatureFlagService(db: PrismaClient) {
   async function getAllFlags(
     opts?: { userId?: string; projectId?: string },
   ): Promise<FlagCheck[]> {
-    const results: FlagCheck[] = [];
+    // Batch-load all flags in a single query to avoid N+1
+    const keys = DEFAULT_FLAGS.map((f) => f.key);
+    const allDbFlags = await db.featureFlag.findMany({
+      where: { key: { in: keys } },
+      select: { key: true, enabled: true, scope: true, scopeId: true },
+    });
 
-    for (const def of DEFAULT_FLAGS) {
-      const enabled = await isEnabled(def.key, opts);
-      results.push({
-        key: def.key,
-        enabled,
-        scope: "global",
-      });
+    // Group by key for resolution
+    const flagsByKey = new Map<string, typeof allDbFlags>();
+    for (const flag of allDbFlags) {
+      const existing = flagsByKey.get(flag.key) ?? [];
+      existing.push(flag);
+      flagsByKey.set(flag.key, existing);
     }
 
-    return results;
+    return DEFAULT_FLAGS.map((def) => {
+      const candidates = flagsByKey.get(def.key) ?? [];
+      // Resolution chain: project → user → global → default
+      let resolved: { enabled: boolean; scope: string } | undefined;
+      if (opts?.projectId) {
+        const match = candidates.find((f) => f.scope === "project" && f.scopeId === opts.projectId);
+        if (match) resolved = { enabled: match.enabled, scope: "project" };
+      }
+      if (!resolved && opts?.userId) {
+        const match = candidates.find((f) => f.scope === "user" && f.scopeId === opts.userId);
+        if (match) resolved = { enabled: match.enabled, scope: "user" };
+      }
+      if (!resolved) {
+        const match = candidates.find((f) => f.scope === "global" && f.scopeId === null);
+        if (match) resolved = { enabled: match.enabled, scope: "global" };
+      }
+
+      return {
+        key: def.key,
+        enabled: resolved?.enabled ?? def.enabled,
+        scope: (resolved?.scope ?? "default") as FlagScope,
+      };
+    });
   }
 
   /** Set a feature flag value */

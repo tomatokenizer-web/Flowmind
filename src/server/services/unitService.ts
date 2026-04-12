@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient, Lifecycle } from "@prisma/client";
 import { createUnitRepository } from "@/server/repositories/unitRepository";
 import { eventBus } from "@/server/events/eventBus";
 import { suggestUnitType } from "@/server/services/typeHeuristicService";
@@ -369,9 +369,9 @@ export function createUnitService(db: PrismaClient) {
       if (eligibleIds.length > 0) {
         updatedCount = await repo.bulkUpdateLifecycle(
           eligibleIds,
-          targetState,
+          targetState as Lifecycle,
           userId,
-          allowedFromStates,
+          allowedFromStates as Lifecycle[],
         );
 
         // Emit events for updated units

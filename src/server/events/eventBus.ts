@@ -10,7 +10,9 @@ export type UnitEventType =
   | "unit.lifecycleChanged"
   | "unit.merged"
   | "unit.split"
-  | "unit.contentChanged";
+  | "unit.contentChanged"
+  | "unit.fossilized"
+  | "unit.promoted";
 
 export type ResourceEventType =
   | "resource.created"
@@ -21,7 +23,25 @@ export type RelationEventType =
   | "relation.updated"
   | "relation.deleted";
 
-export type AppEventType = UnitEventType | ResourceEventType | RelationEventType;
+export type ProposalEventType =
+  | "proposal.created"
+  | "proposal.accepted"
+  | "proposal.rejected";
+
+export type ContextEventType = "context.tierChanged";
+
+export type AssemblyEventType = "assembly.exported";
+
+export type MembershipEventType = "membership.changed";
+
+export type AppEventType =
+  | UnitEventType
+  | ResourceEventType
+  | RelationEventType
+  | ProposalEventType
+  | ContextEventType
+  | AssemblyEventType
+  | MembershipEventType;
 
 export interface UnitEvent {
   type: Exclude<UnitEventType, "unit.merged" | "unit.split">;
@@ -30,6 +50,7 @@ export interface UnitEvent {
     userId: string;
     unit?: Unit;
     changes?: Partial<Unit>;
+    previousLifecycle?: string;
   };
   timestamp: Date;
 }
@@ -75,12 +96,61 @@ export interface RelationEvent {
   timestamp: Date;
 }
 
+export interface ProposalEvent {
+  type: ProposalEventType;
+  payload: {
+    proposalId: string;
+    kind: string;
+    targetUnitId?: string;
+    contextId?: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
+export interface ContextTierEvent {
+  type: "context.tierChanged";
+  payload: {
+    contextId: string;
+    previousTier: string;
+    newTier: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
+export interface AssemblyExportedEvent {
+  type: "assembly.exported";
+  payload: {
+    assemblyId: string;
+    format: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
+export interface MembershipChangedEvent {
+  type: "membership.changed";
+  payload: {
+    projectId: string;
+    targetUserId: string;
+    action: "added" | "removed" | "roleChanged";
+    role?: string;
+    userId: string;
+  };
+  timestamp: Date;
+}
+
 export type AppEvent =
   | UnitEvent
   | UnitMergedEvent
   | UnitSplitEvent
   | ResourceEvent
-  | RelationEvent;
+  | RelationEvent
+  | ProposalEvent
+  | ContextTierEvent
+  | AssemblyExportedEvent
+  | MembershipChangedEvent;
 
 type EventHandler = (event: AppEvent) => void | Promise<void>;
 

@@ -315,6 +315,14 @@ export const unitRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify unit ownership before transition
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitService(ctx.db);
       const result = await service.transitionLifecycle(
         input.id,
@@ -427,6 +435,14 @@ export const unitRouter = createTRPCRouter({
   archive: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify unit ownership before archive
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitService(ctx.db);
       return service.archive(input.id, ctx.session.user.id!);
     }),
@@ -434,6 +450,14 @@ export const unitRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify unit ownership before delete
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.id, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
       const service = createUnitService(ctx.db);
       return service.delete(input.id, ctx.session.user.id!);
     }),

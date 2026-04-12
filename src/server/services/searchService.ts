@@ -325,8 +325,8 @@ export function createSearchService(db: PrismaClient) {
         lifecycle,
         created_at,
         1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
-      FROM "units"
-      WHERE project_id = ${projectId}::uuid
+      FROM "Unit"
+      WHERE "projectId" = ${projectId}::uuid
         AND embedding IS NOT NULL
       ORDER BY embedding <=> ${vectorLiteral}::vector
       LIMIT ${limit}

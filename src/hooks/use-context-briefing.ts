@@ -27,6 +27,9 @@ export function useContextBriefing(contextId: string | null | undefined) {
     null,
   );
 
+  const mutateRef = React.useRef(updateLastViewedMutation.mutate);
+  mutateRef.current = updateLastViewedMutation.mutate;
+
   const updateLastViewedUnit = React.useCallback(
     (unitId: string) => {
       if (!contextId) return;
@@ -34,10 +37,10 @@ export function useContextBriefing(contextId: string | null | undefined) {
         clearTimeout(updateTimeoutRef.current);
       }
       updateTimeoutRef.current = setTimeout(() => {
-        updateLastViewedMutation.mutate({ contextId, unitId });
+        mutateRef.current({ contextId, unitId });
       }, 2000);
     },
-    [contextId], // eslint-disable-line react-hooks/exhaustive-deps
+    [contextId],
   );
 
   React.useEffect(() => {

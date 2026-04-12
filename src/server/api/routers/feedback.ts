@@ -58,6 +58,12 @@ export const feedbackRouter = createTRPCRouter({
       contextId: z.string().uuid().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify unit ownership before recovery action
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
       const service = createOrphanService(ctx.db);
       return service.recoverOrphan(input.unitId, input.action, input.contextId);
     }),
@@ -66,8 +72,9 @@ export const feedbackRouter = createTRPCRouter({
   completeAction: protectedProcedure
     .input(z.object({ unitId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const unit = await ctx.db.unit.findUnique({
-        where: { id: input.unitId },
+      // IDOR fix: verify unit ownership
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, project: { userId: ctx.session.user.id! } },
         select: { id: true, unitType: true, lifecycle: true },
       });
       if (!unit) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
@@ -95,6 +102,12 @@ export const feedbackRouter = createTRPCRouter({
   getDriftUnits: protectedProcedure
     .input(z.object({ projectId: z.string().uuid(), threshold: z.number().min(0).max(1).optional() }))
     .query(async ({ ctx, input }) => {
+      // IDOR fix: verify project ownership
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       const service = createDriftService(ctx.db);
       return service.getHighDriftUnits(input.projectId, input.threshold);
     }),
@@ -106,6 +119,12 @@ export const feedbackRouter = createTRPCRouter({
       contextId: z.string().uuid().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // IDOR fix: verify unit ownership
+      const owned = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      if (!owned) throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
       if (input.action === "keep") {
         await ctx.db.unit.update({ where: { id: input.unitId }, data: { driftScore: 0 } });
       } else if (input.action === "move" && input.contextId) {
@@ -165,11 +184,11 @@ export const feedbackRouter = createTRPCRouter({
   // ─── Reverse Provenance (8.5) ────────────────────────────────────
   getReverseProvenance: protectedProcedure
     .input(z.object({ unitId: z.string().uuid() }))
-    .query(async ({ ctx, input: _input }) => {
+    .query(async ({ ctx, input }) => {
       // Find units that reference this unit as their source
       const derivedUnits = await ctx.db.unit.findMany({
         where: {
-          sourceSpan: { not: undefined },
+          parentInputId: input.unitId,
           userId: ctx.session.user.id!,
         },
         select: { id: true, content: true, unitType: true, sourceSpan: true },

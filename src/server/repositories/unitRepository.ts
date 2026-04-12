@@ -136,18 +136,18 @@ export function createUnitRepository(db: PrismaClient) {
      */
     async bulkUpdateLifecycle(
       ids: string[],
-      targetLifecycle: string,
+      targetLifecycle: Lifecycle,
       userId: string,
-      allowedFromStates: string[],
+      allowedFromStates: Lifecycle[],
     ) {
       const result = await db.unit.updateMany({
         where: {
           id: { in: ids },
           project: { userId },
-          lifecycle: { in: allowedFromStates as Lifecycle[] },
+          lifecycle: { in: allowedFromStates },
         },
         data: {
-          lifecycle: targetLifecycle as Lifecycle,
+          lifecycle: targetLifecycle,
           modifiedAt: new Date(),
         },
       });

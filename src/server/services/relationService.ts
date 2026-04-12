@@ -192,6 +192,9 @@ export function createRelationService(db: PrismaClient) {
           ...(data.type !== undefined ? { type: data.type } : {}),
           ...(data.direction !== undefined ? { direction: data.direction } : {}),
           ...(data.purpose !== undefined ? { purpose: data.purpose } : {}),
+          ...(data.layer !== undefined ? { layer: data.layer } : {}),
+          ...(data.subtype !== undefined ? { subtype: data.subtype } : {}),
+          ...(data.confidence !== undefined ? { confidence: data.confidence } : {}),
         },
         include: {
           sourceUnit: {
