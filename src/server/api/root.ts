@@ -40,6 +40,7 @@ import { decisionJournalRouter } from "@/server/api/routers/decision-journal";
 import { sharingRouter } from "@/server/api/routers/sharing";
 import { ragRouter } from "@/server/api/routers/rag";
 import { proactiveRouter } from "@/server/api/routers/proactive";
+import { embeddingRouter } from "@/server/api/routers/embedding";
 
 export const appRouter = createTRPCRouter({
   project: projectRouter,
@@ -83,6 +84,7 @@ export const appRouter = createTRPCRouter({
   sharing: sharingRouter,
   rag: ragRouter,
   proactive: proactiveRouter,
+  embedding: embeddingRouter,
 });
 
 export type AppRouter = typeof appRouter;

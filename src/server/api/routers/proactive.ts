@@ -9,6 +9,8 @@ import {
 } from "@/server/services/proactiveSchedulerService";
 import { createRuleProposalBridgeService } from "@/server/services/ruleProposalBridgeService";
 import { createFeatureFlagService } from "@/server/services/featureFlagService";
+import { createMaturationEvaluatorService } from "@/server/services/maturationEvaluatorService";
+import { TRPCError } from "@trpc/server";
 
 const CAPTURE_MODE_FLAG_KEY = "proposal.auto_apply";
 
@@ -181,4 +183,91 @@ export const proactiveRouter = createTRPCRouter({
     proposalCost: PROPOSAL_COST,
     kindBasePriority: KIND_BASE_PRIORITY,
   })),
+
+  // ─── Maturation evaluator (DEC-2026-002 §5) ─────────────────────
+
+  /**
+   * Run the maturation evaluator over a project's claims and return
+   * per-unit breakdowns + below-threshold candidates. Does NOT push
+   * to the scheduler — callers get the candidates and decide when
+   * to surface them.
+   */
+  evaluateMaturation: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        contextId: z.string().uuid().optional(),
+        threshold: z.number().min(0).max(1).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+      const svc = createMaturationEvaluatorService(ctx.db);
+      return svc.evaluateProject(input.projectId, {
+        contextId: input.contextId,
+        threshold: input.threshold,
+        limit: input.limit,
+      });
+    }),
+
+  /**
+   * Run the maturation evaluator AND hand the resulting candidates
+   * to the proactive scheduler. Returns both the breakdowns and the
+   * scheduler result so the UI can render the full picture.
+   */
+  surfaceMaturation: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        contextId: z.string().uuid().optional(),
+        threshold: z.number().min(0).max(1).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+        dailyBudget: z.number().int().min(1).max(50).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+      const evaluator = createMaturationEvaluatorService(ctx.db);
+      const { breakdowns, candidates } = await evaluator.evaluateProject(
+        input.projectId,
+        {
+          contextId: input.contextId,
+          threshold: input.threshold,
+          limit: input.limit,
+        },
+      );
+      if (candidates.length === 0) {
+        return {
+          breakdowns,
+          scheduler: {
+            surfaced: 0,
+            deferred: 0,
+            suppressed: 0,
+            budgetRemaining: input.dailyBudget ?? DEFAULT_DAILY_BUDGET,
+            budgetTotal: input.dailyBudget ?? DEFAULT_DAILY_BUDGET,
+          },
+        };
+      }
+      const scheduler = createProactiveSchedulerService(ctx.db);
+      const captureMode = await resolveCaptureMode(ctx.db, ctx.session.user.id!);
+      const schedulerResult = await scheduler.schedule(
+        ctx.session.user.id!,
+        candidates,
+        { dailyBudget: input.dailyBudget, captureMode },
+      );
+      return { breakdowns, scheduler: schedulerResult };
+    }),
 });

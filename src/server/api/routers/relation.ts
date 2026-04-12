@@ -4,6 +4,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createRelationService } from "@/server/services/relationService";
 import { updateLoopbacksForContext } from "@/server/services/cycleDetectionService";
 import { createUnitMergeService } from "@/server/services/unitMergeService";
+import { createUnitSplitService } from "@/server/services/unitSplitService";
 import { createThoughtRankService } from "@/server/services/thoughtRankService";
 
 // ─── Zod Schemas ────────────────────────────────────────────────────
@@ -298,5 +299,43 @@ export const relationRouter = createTRPCRouter({
       }
       const service = createUnitMergeService(ctx.db);
       return service.merge({ ...input, userId: ctx.session.user.id! });
+    }),
+
+  // ─── Unit Split (DEC-2026-002 §14) ───────────────────────────────
+
+  splitPreview: protectedProcedure
+    .input(z.object({
+      sourceUnitId: z.string().uuid(),
+      splitAtOffset: z.number().int().min(1),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Ownership check per security review follow-up.
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.sourceUnitId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+      const service = createUnitSplitService(ctx.db);
+      return service.preview(input.sourceUnitId, input.splitAtOffset);
+    }),
+
+  split: protectedProcedure
+    .input(z.object({
+      sourceUnitId: z.string().uuid(),
+      splitAtOffset: z.number().int().min(1),
+      relationPolicy: z.enum(["first", "second", "both", "none"]).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.sourceUnitId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+      const service = createUnitSplitService(ctx.db);
+      return service.split({ ...input, userId: ctx.session.user.id! });
     }),
 });

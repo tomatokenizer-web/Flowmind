@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
 import { createPipelineService } from "@/server/services/pipelineService";
+import { createImportPipelineService } from "@/server/services/importPipelineService";
 import { inferUnitType } from "@/server/services/typeHeuristicService";
 import { TRPCError } from "@trpc/server";
 import type { UnitType } from "@prisma/client";
@@ -201,5 +202,35 @@ export const captureRouter = createTRPCRouter({
         succeeded: results.filter((r) => r.success).length,
         results,
       };
+    }),
+
+  /**
+   * DEC-2026-002 §11 — 2-phase import preview. Segments raw text
+   * into card-sized units, flags within-batch duplicates, and
+   * cross-references against the project's existing corpus. Does
+   * NOT write any units — callers pass `new` items through
+   * `processInput` and `duplicate_of_existing` items through the
+   * merge router as their policy dictates.
+   */
+  importPreview: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        rawText: z.string().min(1).max(200000),
+        strategy: z.enum(["sentence", "paragraph", "semantic"]).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const project = await ctx.db.project.findFirst({
+        where: { id: input.projectId, userId: ctx.session.user.id! },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+      const svc = createImportPipelineService(ctx.db);
+      return svc.importBatch(input.projectId, input.rawText, {
+        strategy: input.strategy,
+      });
     }),
 });
