@@ -18,6 +18,7 @@ import {
   Hourglass,
   Swords,
   HelpCircle,
+  Zap,
   SlidersHorizontal,
   LayoutList,
   LayoutGrid,
@@ -33,6 +34,7 @@ import { usePanelStore } from "~/stores/panel-store";
 import { BranchProjectDialog } from "~/components/project/BranchProjectDialog";
 import { LoadingCards, EmptyState, ContextPicker, ActionButton } from "./shared";
 import { OrphanCard } from "./OrphanCard";
+import { ProactiveInsightsFeed } from "~/components/dashboard/ProactiveInsightsFeed";
 
 // ─── Props ───────────────────────────────────────────────────────────
 
@@ -42,7 +44,7 @@ interface AttentionViewProps {
 
 // ─── Tab type ────────────────────────────────────────────────────────
 
-type AttentionTab = "incubating" | "orphans" | "similar" | "drift" | "high_salience" | "stale" | "conflicting" | "unanswered" | "custom";
+type AttentionTab = "incubating" | "orphans" | "similar" | "drift" | "high_salience" | "stale" | "conflicting" | "unanswered" | "proactive" | "custom";
 
 // ─── Main Component ─────────────────────────────────────────────────
 
@@ -117,6 +119,7 @@ export function AttentionView({ projectId }: AttentionViewProps) {
     { key: "unanswered", label: "Unanswered", count: unansweredUnits.length, icon: <HelpCircle className="h-4 w-4" />, loading: unansweredLoading },
     { key: "similar", label: "Similar", count: activeSimilarPairs.length, icon: <Copy className="h-4 w-4" />, loading: simLoading },
     { key: "drift", label: "Drift", count: driftUnits.length, icon: <AlertTriangle className="h-4 w-4" />, loading: driftLoading },
+    { key: "proactive", label: "Proactive", count: 0, icon: <Zap className="h-4 w-4" />, loading: false },
     { key: "custom", label: "Custom", count: 0, icon: <SlidersHorizontal className="h-4 w-4" />, loading: false },
   ];
 
@@ -264,6 +267,9 @@ export function AttentionView({ projectId }: AttentionViewProps) {
               isLoading={driftLoading}
               onUnitClick={openPanel}
             />
+          )}
+          {activeTab === "proactive" && (
+            <ProactiveInsightsFeed onNavigateToUnit={openPanel} />
           )}
           {activeTab === "custom" && (
             <CustomFilterView projectId={projectId} onUnitClick={openPanel} viewMode={viewMode} />

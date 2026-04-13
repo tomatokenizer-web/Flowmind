@@ -39,12 +39,16 @@ function safeAsync(
 // ─── Subscriber implementations ────────────────────────────────────
 
 function createSalienceSubscribers(db: PrismaClient) {
-  const { createSalienceService } = require("@/server/services/salienceService") as typeof import("@/server/services/salienceService");
-  const svc = createSalienceService(db);
+  let svc: Awaited<ReturnType<typeof loadSalienceService>> | null = null;
+  async function loadSalienceService() {
+    const mod = await import("@/server/services/salienceService");
+    return mod.createSalienceService(db);
+  }
 
   return {
     onUnitCreated: safeAsync("salience.onUnitCreated", async (event) => {
       if (event.type !== "unit.created" && event.type !== "unit.updated") return;
+      svc ??= await loadSalienceService();
       const { unitId } = event.payload;
       await svc.computeSalience(unitId);
     }),
@@ -52,15 +56,16 @@ function createSalienceSubscribers(db: PrismaClient) {
 }
 
 function createCompassSubscribers(db: PrismaClient) {
-  const { createCompassService } = require("@/server/services/compassService") as typeof import("@/server/services/compassService");
-  const svc = createCompassService(db);
+  let svc: Awaited<ReturnType<typeof loadCompassService>> | null = null;
+  async function loadCompassService() {
+    const mod = await import("@/server/services/compassService");
+    return mod.createCompassService(db);
+  }
 
   return {
     onUnitChanged: safeAsync("compass.onUnitChanged", async (event) => {
       if (event.type !== "unit.created" && event.type !== "unit.updated") return;
-      // Compass recalculation is expensive — only invalidate cache here.
-      // Actual recalc happens on next compass.calculate() call.
-      // For now, we do a lightweight recalc for the unit's project.
+      svc ??= await loadCompassService();
       const unit = event.payload.unit;
       if (unit?.projectId) {
         await svc.calculateCompass(unit.projectId);
@@ -70,13 +75,17 @@ function createCompassSubscribers(db: PrismaClient) {
 }
 
 function createRulesSubscribers(db: PrismaClient) {
-  const { createRuleProposalBridgeService } = require("@/server/services/ruleProposalBridgeService") as typeof import("@/server/services/ruleProposalBridgeService");
-  const bridge = createRuleProposalBridgeService(db);
+  let bridge: Awaited<ReturnType<typeof loadBridgeService>> | null = null;
+  async function loadBridgeService() {
+    const mod = await import("@/server/services/ruleProposalBridgeService");
+    return mod.createRuleProposalBridgeService(db);
+  }
 
   return {
     onUnitCreated: safeAsync("rules.onUnitCreated", async (event) => {
       if (event.type !== "unit.created") return;
-      const { unitId, userId } = event.payload;
+      bridge ??= await loadBridgeService();
+      const { userId } = event.payload;
       const unit = event.payload.unit;
       if (!unit) return;
 
@@ -87,12 +96,16 @@ function createRulesSubscribers(db: PrismaClient) {
 }
 
 function createProactiveSubscribers(db: PrismaClient) {
-  const { createProactiveSchedulerService } = require("@/server/services/proactiveSchedulerService") as typeof import("@/server/services/proactiveSchedulerService");
-  const scheduler = createProactiveSchedulerService(db);
+  let scheduler: Awaited<ReturnType<typeof loadSchedulerService>> | null = null;
+  async function loadSchedulerService() {
+    const mod = await import("@/server/services/proactiveSchedulerService");
+    return mod.createProactiveSchedulerService(db);
+  }
 
   return {
     onProposalCreated: safeAsync("proactive.onProposalCreated", async (event) => {
       if (event.type !== "proposal.created") return;
+      scheduler ??= await loadSchedulerService();
       const { userId } = event.payload;
       // Schedule proactive check after new proposal arrives
       await scheduler.schedule(userId, []);
@@ -101,12 +114,16 @@ function createProactiveSubscribers(db: PrismaClient) {
 }
 
 function createCompoundingSubscribers(db: PrismaClient) {
-  const { createCompoundingExtractorService } = require("@/server/services/compoundingExtractorService") as typeof import("@/server/services/compoundingExtractorService");
-  const extractor = createCompoundingExtractorService(db);
+  let extractor: Awaited<ReturnType<typeof loadExtractorService>> | null = null;
+  async function loadExtractorService() {
+    const mod = await import("@/server/services/compoundingExtractorService");
+    return mod.createCompoundingExtractorService(db);
+  }
 
   return {
     onAssemblyExported: safeAsync("compounding.onAssemblyExported", async (event) => {
       if (event.type !== "assembly.exported") return;
+      extractor ??= await loadExtractorService();
       const { assemblyId, userId } = event.payload;
       // Extract compounding candidates from the exported assembly
       await extractor.extractFromAssembly(assemblyId, "", userId);

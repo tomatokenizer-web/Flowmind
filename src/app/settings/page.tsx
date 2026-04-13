@@ -10,6 +10,8 @@ import {
   Keyboard,
   Shield,
   Palette,
+  Database,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
@@ -20,6 +22,8 @@ import { PrivacyPanel } from "~/components/settings/PrivacyPanel";
 import { ApiKeysPanel } from "~/components/settings/ApiKeysPanel";
 import { IntegrationsPanel } from "~/components/settings/IntegrationsPanel";
 import { AppearancePanel } from "~/components/settings/AppearancePanel";
+import { EmbeddingModelManager } from "~/components/settings/EmbeddingModelManager";
+import { SharingPanel } from "~/components/settings/SharingPanel";
 
 // ─── Tab types ─────────────────────────────────────────────────────
 type Tab =
@@ -30,7 +34,9 @@ type Tab =
   | "privacy"
   | "api-keys"
   | "export"
-  | "integrations";
+  | "integrations"
+  | "embeddings"
+  | "sharing";
 
 // ─── Main Settings Page ────────────────────────────────────────────
 export default function SettingsPage() {
@@ -42,6 +48,8 @@ export default function SettingsPage() {
     { id: "privacy", label: "Privacy & Data", icon: Shield },
     { id: "api-keys", label: "API Keys", icon: Key },
     { id: "export", label: "Integrations", icon: Puzzle },
+    { id: "embeddings", label: "Embeddings", icon: Database },
+    { id: "sharing" as Tab, label: "Sharing", icon: Users },
   ];
 
   return (
@@ -89,6 +97,12 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="export">
           <IntegrationsPanel />
+        </TabsContent>
+        <TabsContent value="embeddings">
+          <EmbeddingModelManager />
+        </TabsContent>
+        <TabsContent value="sharing">
+          <SharingPanel />
         </TabsContent>
       </Tabs>
     </div>

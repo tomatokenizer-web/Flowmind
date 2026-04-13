@@ -8,9 +8,14 @@ import { useProjectId, useProjectLoading } from "~/contexts/project-context";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useAssemblyStore } from "~/stores/assemblyStore";
 import { useCaptureStore } from "~/stores/capture-store";
+import { usePanelStore } from "~/stores/panel-store";
 import { cn } from "~/lib/utils";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
+import { RAGSearchPanel } from "~/components/search/RAGSearchPanel";
+import { ProactiveInsightsFeed } from "~/components/dashboard/ProactiveInsightsFeed";
+import { DecisionJournalPanel } from "~/components/dashboard/DecisionJournalPanel";
+import { RuleViolationsPanel } from "~/components/dashboard/RuleViolationsPanel";
 
 // ─── Lazy-loaded heavy views (code splitting) ────────────────────────
 const GraphView = React.lazy(() => import("~/components/graph/GraphView").then(m => ({ default: m.GraphView })));
@@ -491,8 +496,11 @@ export default function DashboardPage() {
 
       {activeContextId ? (
         <>
-          {/* Completeness Compass — top-right of the context view */}
-          <div className="flex justify-end px-4 pt-3">
+          {/* Completeness Compass + Rule Check — top bar of the context view */}
+          <div className="flex items-start justify-between gap-4 px-4 pt-3">
+            <div className="flex-1 min-w-0">
+              <RuleViolationsPanel projectId={projectId} contextId={activeContextId} />
+            </div>
             <CompletenessCompass />
           </div>
           <React.Suspense fallback={<ViewFallback />}>
@@ -500,11 +508,24 @@ export default function DashboardPage() {
           </React.Suspense>
         </>
       ) : (
-        /* No context selected — show context overview grid */
-        <ContextOverviewGrid
-          projectId={projectId}
-          onCreateContext={() => setCreateContextOpen(true)}
-        />
+        /* No context selected — show context overview grid + dashboard widgets */
+        <>
+          <ContextOverviewGrid
+            projectId={projectId}
+            onCreateContext={() => setCreateContextOpen(true)}
+          />
+          <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-xl border border-border bg-bg-primary p-4">
+              <RAGSearchPanel projectId={projectId} onSelectUnit={(id) => usePanelStore.getState().openPanel(id)} />
+            </div>
+            <div className="rounded-xl border border-border bg-bg-primary p-4">
+              <ProactiveInsightsFeed />
+            </div>
+            <div className="rounded-xl border border-border bg-bg-primary p-4 lg:col-span-2">
+              <DecisionJournalPanel projectId={projectId} />
+            </div>
+          </div>
+        </>
       )}
 
       {projectId && (
