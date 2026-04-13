@@ -349,16 +349,28 @@ export function AICommandPanel() {
             />
             {visibleResults.has("completeness") && completenessMutation.data && (
               <ResultBox>
-                <p className="font-medium text-text-primary">
-                  Score:{" "}
-                  <span className={cn(
-                    completenessMutation.data.score >= 0.7 ? "text-green-500"
-                      : completenessMutation.data.score >= 0.4 ? "text-amber-500"
-                      : "text-red-400"
-                  )}>
-                    {Math.round(completenessMutation.data.score * 100)}%
-                  </span>
-                </p>
+                <div className="flex gap-4 font-medium text-text-primary">
+                  <p>
+                    Structure:{" "}
+                    <span className={cn(
+                      completenessMutation.data.structureScore >= 0.7 ? "text-green-500"
+                        : completenessMutation.data.structureScore >= 0.4 ? "text-amber-500"
+                        : "text-red-400"
+                    )}>
+                      {Math.round(completenessMutation.data.structureScore * 100)}%
+                    </span>
+                  </p>
+                  <p>
+                    Depth:{" "}
+                    <span className={cn(
+                      completenessMutation.data.depthScore >= 0.7 ? "text-green-500"
+                        : completenessMutation.data.depthScore >= 0.4 ? "text-amber-500"
+                        : "text-red-400"
+                    )}>
+                      {Math.round(completenessMutation.data.depthScore * 100)}%
+                    </span>
+                  </p>
+                </div>
                 {completenessMutation.data.missingElements.slice(0, 3).map((el, i) => (
                   <p key={i} className="text-text-secondary">• {el.description}</p>
                 ))}

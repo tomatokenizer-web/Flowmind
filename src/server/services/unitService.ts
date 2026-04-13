@@ -124,11 +124,13 @@ export class DuplicateUnitContentError extends Error {
 const VALID_TRANSITIONS: Record<string, string[]> = {
   draft: ["pending", "confirmed", "discarded"],
   pending: ["confirmed", "draft", "deferred", "discarded"],
-  confirmed: ["draft", "complete", "archived", "discarded"],
+  confirmed: ["draft", "complete", "archived", "discarded", "fossilized", "promoted"],
   deferred: ["pending", "draft", "discarded"],
-  complete: ["confirmed", "archived"],
+  complete: ["confirmed", "archived", "fossilized"],
   archived: ["draft", "confirmed"],
   discarded: ["draft"],
+  fossilized: ["archived"],       // Fossils can only be archived (tombstone)
+  promoted: ["confirmed", "archived"], // Promoted units return to confirmed or archive
 };
 
 export function createUnitService(db: PrismaClient) {
@@ -318,9 +320,25 @@ export function createUnitService(db: PrismaClient) {
           userId,
           unit,
           changes: { lifecycle: targetState as unknown as undefined },
+          previousLifecycle: existing.lifecycle,
         },
         timestamp: new Date(),
       });
+
+      // Emit specific events for fossilized/promoted transitions
+      if (targetState === "fossilized") {
+        await eventBus.emit({
+          type: "unit.fossilized",
+          payload: { unitId: id, userId, unit, changes: {}, previousLifecycle: existing.lifecycle },
+          timestamp: new Date(),
+        });
+      } else if (targetState === "promoted") {
+        await eventBus.emit({
+          type: "unit.promoted",
+          payload: { unitId: id, userId, unit, changes: {}, previousLifecycle: existing.lifecycle },
+          timestamp: new Date(),
+        });
+      }
 
       return { unit, previousLifecycle: existing.lifecycle };
     },

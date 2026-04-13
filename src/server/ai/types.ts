@@ -63,8 +63,10 @@ export interface MergeSuggestion {
   confidence: number;
 }
 
+// DEC-2026-002 §4: Dual output {structureScore, depthScore}. No single overall score.
 export interface CompletenessAnalysis {
-  score: number; // 0-1
+  structureScore: number; // 0-1 — graph topology / coverage
+  depthScore: number;     // 0-1 — epistemic maturation
   missingElements: Array<{
     type: "evidence" | "counterargument" | "definition" | "example" | "assumption";
     description: string;

@@ -44,6 +44,8 @@ enum Lifecycle {
   complete
   archived
   discarded
+  fossilized
+  promoted
 }
 
 enum Quality {

@@ -382,6 +382,43 @@ export function createExportService(db: PrismaClient) {
     return plaintext;
   }
 
+  /**
+   * Persist an export event to the ExportHistory table.
+   * Called by the router after each successful export.
+   */
+  async function recordExport(
+    assemblyId: string,
+    userId: string,
+    format: string,
+    content: string,
+  ): Promise<void> {
+    // Collect unit IDs from the assembly
+    const items = await db.assemblyItem.findMany({
+      where: { assemblyId },
+      select: { unitId: true },
+    });
+    const unitIds = items
+      .map((i) => i.unitId)
+      .filter((id): id is string => id !== null);
+
+    // Simple hash of the content for deduplication
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const contentHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    await db.exportHistory.create({
+      data: {
+        assemblyId,
+        userId,
+        format,
+        unitIds,
+        contentHash: contentHash.slice(0, 64),
+      },
+    });
+  }
+
   return {
     getAssemblyData,
     exportToPDF,
@@ -389,6 +426,7 @@ export function createExportService(db: PrismaClient) {
     exportToJSON,
     exportToMarkdown,
     exportToPlaintext,
+    recordExport,
   };
 }
 

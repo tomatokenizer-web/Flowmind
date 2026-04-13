@@ -440,6 +440,8 @@ export const projectRouter = createTRPCRouter({
         complete: 0,
         archived: 0,
         discarded: 0,
+        fossilized: 0,
+        promoted: 0,
       };
 
       for (const s of unitStats) {

@@ -22,19 +22,19 @@ export type TierCounts = {
   unranked: number;
 };
 
-// DEC-2026-002 §7: percentile cutoffs for attention tier bucketing.
-// Foreground = top 10%, deep = bottom 30%, background = middle.
-const FOREGROUND_PERCENTILE = 0.9;
-const DEEP_PERCENTILE = 0.3;
+// DEC-2026-002 §2: percentile cutoffs for attention tier bucketing.
+// Foreground = top 15%, deep = bottom 45%, background = middle 40%.
+const FOREGROUND_PERCENTILE = 0.85;
+const DEEP_PERCENTILE = 0.45;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+// DEC-2026-002 §2: S = 0.4·recency + 0.2·freq + 0.2·centrality + 0.2·aiScore
 const WEIGHTS = {
-  betweenness: 0.4,
+  recency: 0.4,
   relationCount: 0.2,
+  betweenness: 0.2,
   certainty: 0.2,
-  recency: 0.1,
-  userDesignated: 0.1,
 } as const;
 
 const CERTAINTY_MAP: Record<Certainty, number> = {
@@ -52,12 +52,6 @@ function recencyWeight(modifiedAt: Date, halfLifeDays = 30): number {
   const daysSince =
     (Date.now() - modifiedAt.getTime()) / (1000 * 60 * 60 * 24);
   return Math.exp(-daysSince / halfLifeDays);
-}
-
-function userDesignatedWeight(pinned: boolean, flagged: boolean): number {
-  if (pinned) return 1.0;
-  if (flagged) return 0.7;
-  return 0.0;
 }
 
 function clamp01(v: number): number {
@@ -118,14 +112,13 @@ export function createSalienceService(db: PrismaClient) {
     const relationNorm = clamp01(totalRelations / Math.max(maxRelations, 1));
     const certaintyW = certaintyToWeight(unit.certainty);
     const recencyW = recencyWeight(unit.modifiedAt);
-    const userW = userDesignatedWeight(unit.pinned, unit.flagged);
 
+    // DEC-2026-002 §2: S = 0.4·recency + 0.2·freq + 0.2·centrality + 0.2·aiScore
     const score = clamp01(
-      betweennessApprox * WEIGHTS.betweenness +
+      recencyW * WEIGHTS.recency +
         relationNorm * WEIGHTS.relationCount +
-        certaintyW * WEIGHTS.certainty +
-        recencyW * WEIGHTS.recency +
-        userW * WEIGHTS.userDesignated,
+        betweennessApprox * WEIGHTS.betweenness +
+        certaintyW * WEIGHTS.certainty,
     );
 
     const daysSince =
@@ -134,11 +127,10 @@ export function createSalienceService(db: PrismaClient) {
     return {
       score,
       factors: [
-        { factor: "betweenness_centrality", value: betweennessApprox, weight: WEIGHTS.betweenness },
-        { factor: "relation_count", value: relationNorm, weight: WEIGHTS.relationCount },
-        { factor: "certainty_weight", value: certaintyW, weight: WEIGHTS.certainty },
         { factor: "recency_weight", value: recencyW, weight: WEIGHTS.recency },
-        { factor: "user_designated_weight", value: userW, weight: WEIGHTS.userDesignated },
+        { factor: "relation_count", value: relationNorm, weight: WEIGHTS.relationCount },
+        { factor: "betweenness_centrality", value: betweennessApprox, weight: WEIGHTS.betweenness },
+        { factor: "certainty_weight", value: certaintyW, weight: WEIGHTS.certainty },
       ],
       stale: daysSince > 30,
     };
@@ -194,14 +186,12 @@ export function createSalienceService(db: PrismaClient) {
       const relationNorm = clamp01(totalD / maxRel);
       const certaintyW = certaintyToWeight(u.certainty);
       const recencyW = recencyWeight(u.modifiedAt);
-      const userW = userDesignatedWeight(u.pinned, u.flagged);
 
       const score = clamp01(
-        betweennessApprox * WEIGHTS.betweenness +
+        recencyW * WEIGHTS.recency +
           relationNorm * WEIGHTS.relationCount +
-          certaintyW * WEIGHTS.certainty +
-          recencyW * WEIGHTS.recency +
-          userW * WEIGHTS.userDesignated,
+          betweennessApprox * WEIGHTS.betweenness +
+          certaintyW * WEIGHTS.certainty,
       );
 
       return { id: u.id, score };

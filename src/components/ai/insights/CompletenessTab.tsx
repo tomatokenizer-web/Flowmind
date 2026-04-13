@@ -24,20 +24,35 @@ export function CompletenessTab({ contextId }: CompletenessTabProps) {
 
   const data: CompletenessAnalysis = mutation.data;
 
-  const scoreColor =
-    data.score >= 0.7
+  const structureColor =
+    data.structureScore >= 0.7
       ? "text-green-500"
-      : data.score >= 0.4
+      : data.structureScore >= 0.4
+        ? "text-amber-500"
+        : "text-red-400";
+
+  const depthColor =
+    data.depthScore >= 0.7
+      ? "text-green-500"
+      : data.depthScore >= 0.4
         ? "text-amber-500"
         : "text-red-400";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className={`text-3xl font-bold ${scoreColor}`}>
-          {Math.round(data.score * 100)}%
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <div className={`text-3xl font-bold ${structureColor}`}>
+            {Math.round(data.structureScore * 100)}%
+          </div>
+          <div className="text-sm text-text-secondary">Structure</div>
         </div>
-        <div className="text-sm text-text-secondary">Completeness Score</div>
+        <div className="flex items-center gap-2">
+          <div className={`text-3xl font-bold ${depthColor}`}>
+            {Math.round(data.depthScore * 100)}%
+          </div>
+          <div className="text-sm text-text-secondary">Depth</div>
+        </div>
       </div>
 
       {data.missingElements.length > 0 && (

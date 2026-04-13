@@ -482,14 +482,18 @@ export const assemblyRouter = createTRPCRouter({
     .input(z.object({ assemblyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const svc = createExportService(ctx.db);
-      return { html: await svc.exportToHTML(input.assemblyId, ctx.session.user.id!) };
+      const html = await svc.exportToHTML(input.assemblyId, ctx.session.user.id!);
+      await svc.recordExport(input.assemblyId, ctx.session.user.id!, "html", html);
+      return { html };
     }),
 
   exportJSON: protectedProcedure
     .input(z.object({ assemblyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const svc = createExportService(ctx.db);
-      return { json: await svc.exportToJSON(input.assemblyId, ctx.session.user.id!) };
+      const json = await svc.exportToJSON(input.assemblyId, ctx.session.user.id!);
+      await svc.recordExport(input.assemblyId, ctx.session.user.id!, "json", json);
+      return { json };
     }),
 
   exportPDF: protectedProcedure
@@ -497,21 +501,27 @@ export const assemblyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const svc = createExportService(ctx.db);
       const buffer = await svc.exportToPDF(input.assemblyId, ctx.session.user.id!);
-      return { pdf: buffer.toString("base64"), mimeType: "application/pdf" };
+      const base64 = buffer.toString("base64");
+      await svc.recordExport(input.assemblyId, ctx.session.user.id!, "pdf", base64);
+      return { pdf: base64, mimeType: "application/pdf" };
     }),
 
   exportMarkdown: protectedProcedure
     .input(z.object({ assemblyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const svc = createExportService(ctx.db);
-      return { markdown: await svc.exportToMarkdown(input.assemblyId, ctx.session.user.id!) };
+      const markdown = await svc.exportToMarkdown(input.assemblyId, ctx.session.user.id!);
+      await svc.recordExport(input.assemblyId, ctx.session.user.id!, "markdown", markdown);
+      return { markdown };
     }),
 
   exportPlaintext: protectedProcedure
     .input(z.object({ assemblyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const svc = createExportService(ctx.db);
-      return { plaintext: await svc.exportToPlaintext(input.assemblyId, ctx.session.user.id!) };
+      const plaintext = await svc.exportToPlaintext(input.assemblyId, ctx.session.user.id!);
+      await svc.recordExport(input.assemblyId, ctx.session.user.id!, "plaintext", plaintext);
+      return { plaintext };
     }),
 
   // ─── Compounding candidate-unit extraction ────────────────────────

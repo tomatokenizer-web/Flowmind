@@ -210,7 +210,70 @@ function validateEpistemicIntegrity(
     }
   }
 
+  // Check: adversarial balance — claims without counterarguments
+  const hasCounterargument = units.some((u) => u.unitType === "counterargument");
+  const hasContradictsRelation = relations.some(
+    (r) => r.subtype === "contradicts" || r.subtype === "counters",
+  );
+  if (claims.length >= 3 && !hasCounterargument && !hasContradictsRelation) {
+    violations.push({
+      rule: "adversarial_balance",
+      severity: "warning",
+      message: `${claims.length} claims without any counterargument. Consider adding a dissenting perspective.`,
+    });
+    checked.push("adversarial_balance");
+  }
+
+  // Check: hidden assumptions heuristic
+  const assumptions = units.filter((u) => u.unitType === "assumption");
+  if (claims.length >= 5 && assumptions.length === 0) {
+    violations.push({
+      rule: "no_hidden_assumptions",
+      severity: "info",
+      message: `${claims.length} claims but no explicit assumptions. Consider surfacing underlying premises.`,
+    });
+  }
+
   return makeResult(violations, checked);
+}
+
+// ─── DEC-2026-002 §10: Conflict Detection ─────────────────────────
+
+export interface EpistemicConflict {
+  ruleA: string;
+  ruleB: string;
+  description: string;
+}
+
+/**
+ * Detect conflicting rule violations — when two violations propose
+ * contradictory actions (e.g., "soften certainty" vs "add confidence"
+ * on the same unit). Per DEC-2026-002 §10, both are suppressed and
+ * the conflict is surfaced to the user.
+ */
+function detectConflicts(violations: RuleViolation[]): EpistemicConflict[] {
+  const conflicts: EpistemicConflict[] = [];
+  // Conflicting pairs: transparent_confidence vs no_fabrication
+  // (one says "soften" while other says "add evidence to strengthen")
+  const hasConfidence = violations.some((v) => v.rule === "transparent_confidence");
+  const hasBalance = violations.some((v) => v.rule === "adversarial_balance");
+  const hasFabrication = violations.some((v) => v.rule === "no_fabrication");
+
+  if (hasConfidence && hasFabrication) {
+    conflicts.push({
+      ruleA: "transparent_confidence",
+      ruleB: "no_fabrication",
+      description: "Conflict: one rule suggests softening certainty while another demands adding evidence to support claims.",
+    });
+  }
+  if (hasBalance && hasConfidence) {
+    conflicts.push({
+      ruleA: "adversarial_balance",
+      ruleB: "transparent_confidence",
+      description: "Conflict: adding counterarguments may increase uncertainty while confidence scoring demands clarity.",
+    });
+  }
+  return conflicts;
 }
 
 // ─── Factory ───────────────────────────────────────────────────────
@@ -220,6 +283,7 @@ export function createEpistemicRulesService() {
     checkPreGeneration,
     checkPostGeneration,
     validateEpistemicIntegrity,
+    detectConflicts,
     CARDINAL_RULES,
   };
 }

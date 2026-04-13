@@ -89,11 +89,11 @@ Analyze the completeness of this set of thought units as an argument or analysis
 Units:
 ${unitsDesc}
 
-Evaluate:
-- What evidence is missing?
-- What counter-arguments should be addressed?
-- What terms need definition?
-- What assumptions need to be made explicit?`;
+Provide TWO separate scores (0-1 each):
+1. structureScore: How well-structured is the argument? (evidence coverage, counter-arguments, definitions, logical flow)
+2. depthScore: How epistemically mature? (assumptions surfaced, questions resolved, confidence justified)
+
+Also identify missing elements and suggest improvements.`;
 
   const result = await provider.generateStructured<CompletenessAnalysis>(prompt, {
     temperature: 0.4,
@@ -101,9 +101,10 @@ Evaluate:
     zodSchema: CompletenessAnalysisSchema,
     schema: {
       name: "CompletenessAnalysis",
-      description: "Analysis of argument completeness",
+      description: "Dual-score completeness analysis per DEC-2026-002 §4",
       properties: {
-        score: { type: "number", minimum: 0, maximum: 1 },
+        structureScore: { type: "number", minimum: 0, maximum: 1 },
+        depthScore: { type: "number", minimum: 0, maximum: 1 },
         missingElements: {
           type: "array",
           items: {
@@ -118,11 +119,11 @@ Evaluate:
         },
         suggestions: { type: "array", items: { type: "string", maxLength: 200 } },
       },
-      required: ["score", "missingElements", "suggestions"],
+      required: ["structureScore", "depthScore", "missingElements", "suggestions"],
     },
   });
 
-  logger.info({ score: result.score, missingCount: result.missingElements.length }, "Completeness analyzed");
+  logger.info({ structureScore: result.structureScore, depthScore: result.depthScore, missingCount: result.missingElements.length }, "Completeness analyzed");
   return result;
 }
 

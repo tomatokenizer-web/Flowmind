@@ -163,8 +163,10 @@ export const MergeSuggestionsSchema = z.object({
   ).max(3),
 });
 
+// DEC-2026-002 §4: Dual output {structureScore, depthScore}. No single overall score.
 export const CompletenessAnalysisSchema = z.object({
-  score: z.number().min(0).max(1),
+  structureScore: z.number().min(0).max(1),
+  depthScore: z.number().min(0).max(1),
   missingElements: z.array(
     z.object({
       type: z.enum(["evidence", "counterargument", "definition", "example", "assumption"]),
