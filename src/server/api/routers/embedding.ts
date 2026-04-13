@@ -1,15 +1,8 @@
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { z } from "zod";
+import { createTRPCRouter, protectedProcedure, adminProcedure } from "@/server/api/trpc";
 import { createEmbeddingDualReadService } from "@/server/services/embeddingDualReadService";
 
 // ─── DEC-2026-002 §13: Embedding Dual-Read Router ─────────────────
-//
-// Read-only view into the embedding-model registry. Mutation
-// endpoints (registerModel, deactivateModel, markForReembed) were
-// intentionally omitted from this commit: they operate on global
-// state not scoped to the caller, and this codebase has no
-// adminProcedure gate yet. Mutations will be reintroduced in a
-// follow-up commit behind a real admin gate; until then, run them
-// via a server-side script / CLI.
 
 export const embeddingRouter = createTRPCRouter({
   /**
@@ -21,4 +14,46 @@ export const embeddingRouter = createTRPCRouter({
     const svc = createEmbeddingDualReadService(ctx.db);
     return svc.getStatus();
   }),
+
+  /**
+   * Register a new embedding model into the dual-read registry.
+   * Admin-gated — affects global embedding infrastructure.
+   */
+  registerModel: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(100),
+        provider: z.string().min(1).max(100),
+        dimension: z.number().int().min(1).max(10000),
+        scope: z.string().max(100).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const svc = createEmbeddingDualReadService(ctx.db);
+      return svc.registerNewModel(input);
+    }),
+
+  /**
+   * Deactivate an embedding model. After this, the read path
+   * stops merging vectors from that model.
+   * Admin-gated — affects global embedding infrastructure.
+   */
+  deactivateModel: adminProcedure
+    .input(z.object({ modelName: z.string().min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const svc = createEmbeddingDualReadService(ctx.db);
+      return svc.deactivateModel(input.modelName);
+    }),
+
+  /**
+   * Mark all units embedded with a given model for re-embedding.
+   * Nulls their embeddingModel field so the embed worker picks them up.
+   * Admin-gated — bulk operation affecting many units.
+   */
+  markForReembed: adminProcedure
+    .input(z.object({ fromModel: z.string().min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const svc = createEmbeddingDualReadService(ctx.db);
+      return svc.markForReembed(input.fromModel);
+    }),
 });
