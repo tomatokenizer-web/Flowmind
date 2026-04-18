@@ -1,5 +1,6 @@
 import type { AIProvider } from "./provider";
 import type { SafetyGuard } from "./safetyGuard";
+import { z } from "zod";
 import { logger } from "../logger";
 import {
   PurposeClassificationSchema,
@@ -16,14 +17,21 @@ import type {
   AIServiceContext,
 } from "./types";
 
+const RefinementJudgmentSchema = z.object({
+  refined: z.string(),
+  shouldDecompose: z.boolean(),
+  reason: z.string(),
+});
+
 // ─── Decomposition Functions ─────────────────────────────────────────────────
 
 /**
- * Decompose text into multiple thought units with relations (3-step AI process)
+ * Smart capture: refine text first, then decompose only if warranted.
  *
- * Step 1: Classify user purpose
- * Step 2: Propose decomposition boundaries (max 3 units per safety guard)
- * Step 3: Propose relations between new units AND existing units
+ * Step 0: Refine the raw text for clarity and coherence
+ * Step 1: AI judges whether decomposition is needed
+ * Step 2: If yes — classify purpose, propose boundaries, propose relations
+ * Step 3: If no — return refined text as a single unit
  */
 export async function decomposeText(
   provider: AIProvider,
@@ -33,7 +41,7 @@ export async function decomposeText(
   existingUnits: Array<{ id: string; content: string; unitType: string }>,
   ctx: AIServiceContext
 ): Promise<DecompositionResult> {
-  // Short text: return single unit, no decomposition needed
+  // Very short text: skip AI entirely
   if (text.length < 20) {
     const tempId = `temp-${Date.now()}-0`;
     return {
@@ -66,7 +74,131 @@ export async function decomposeText(
     throw new Error(check.error.message);
   }
 
-  // ─── Step 1: Classify user purpose ─────────────────────────────────
+  // ─── Step 0: Refine text + judge decomposition need ────────────────
+  const refinePrompt = `${PROMPT_INJECTION_GUARD}
+
+You are processing raw user input for a thought management tool. Do TWO things:
+
+1. REFINE the text: fix grammar, improve clarity, tighten prose. Preserve the original meaning and voice. Do not add new ideas or remove existing ones.
+
+2. JUDGE whether this text should be DECOMPOSED into multiple thought units.
+
+Decomposition is ONLY warranted when the text contains genuinely DISTINCT ideas that belong as separate units — for example:
+- A claim AND its supporting evidence (different cognitive functions)
+- A question AND an observation about a different topic
+- Multiple independent ideas mixed in one block of text
+- An argument with a counterargument embedded in it
+
+Decomposition is NOT warranted when:
+- The text is a single coherent thought, even if it's multiple sentences
+- The text is one paragraph exploring one idea from different angles
+- Splitting would create fragments that don't stand on their own
+- The text is short (under ~200 characters) unless it clearly mixes distinct types
+
+Text to process:
+${sanitizeUserContent(text)}
+
+Respond with:
+- refined: the cleaned-up version of the full text
+- shouldDecompose: true only if the text contains genuinely distinct unit types
+- reason: brief explanation of your judgment`;
+
+  const judgment = await provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
+    refinePrompt,
+    {
+      temperature: 0.3,
+      maxTokens: 2048,
+      zodSchema: RefinementJudgmentSchema,
+      schema: {
+        name: "RefinementJudgment",
+        description: "Refined text with decomposition judgment",
+        properties: {
+          refined: { type: "string" },
+          shouldDecompose: { type: "boolean" },
+          reason: { type: "string", maxLength: 200 },
+        },
+        required: ["refined", "shouldDecompose", "reason"],
+      },
+    }
+  );
+
+  const refinedText = judgment.refined;
+
+  logger.info(
+    { shouldDecompose: judgment.shouldDecompose, reason: judgment.reason, originalLen: text.length, refinedLen: refinedText.length },
+    "AI refinement + decomposition judgment"
+  );
+
+  // ─── No decomposition needed: return refined text as single unit ───
+  if (!judgment.shouldDecompose) {
+    // Still classify the purpose for metadata
+    const purposeResult = await classifyPurpose(provider, refinedText);
+
+    const typeMap: Record<UserPurpose, string> = {
+      arguing: "claim",
+      brainstorming: "idea",
+      researching: "observation",
+      defining: "definition",
+      other: "observation",
+    };
+
+    const tempId = `temp-${Date.now()}-0`;
+    return {
+      purpose: purposeResult.purpose,
+      proposals: [
+        {
+          id: tempId,
+          content: refinedText,
+          proposedType: typeMap[purposeResult.purpose] ?? "observation",
+          confidence: purposeResult.confidence,
+          startChar: 0,
+          endChar: refinedText.length,
+          lifecycle: "draft",
+          originType: "ai_generated",
+        },
+      ],
+      relationProposals: await proposeRelations(provider, [{ content: refinedText, proposedType: typeMap[purposeResult.purpose] ?? "observation" }], existingUnits),
+    };
+  }
+
+  // ─── Decomposition warranted: full pipeline on refined text ────────
+
+  // Step 1: Classify purpose
+  const purposeResult = await classifyPurpose(provider, refinedText);
+
+  // Step 2: Propose boundaries on the REFINED text
+  const proposals = await proposeBoundaries(provider, refinedText);
+
+  // Step 3: Propose relations
+  const relationProposals = await proposeRelations(provider, proposals, existingUnits);
+
+  logger.info(
+    {
+      purpose: purposeResult.purpose,
+      proposalCount: proposals.length,
+      relationCount: relationProposals.length,
+    },
+    "AI decomposition completed"
+  );
+
+  return {
+    purpose: purposeResult.purpose,
+    proposals: proposals.map((p, idx) => ({
+      ...p,
+      id: `temp-${Date.now()}-${idx}`,
+      lifecycle: "draft" as const,
+      originType: "ai_generated" as const,
+    })),
+    relationProposals,
+  };
+}
+
+// ─── Helper: Classify Purpose ─────────────────────────────────────────────
+
+async function classifyPurpose(
+  provider: AIProvider,
+  text: string,
+): Promise<{ purpose: UserPurpose; confidence: number }> {
   const purposePrompt = `${PROMPT_INJECTION_GUARD}
 
 Analyze the following text and determine the user's primary cognitive purpose.
@@ -82,7 +214,7 @@ Available purposes:
 
 Respond with the most appropriate purpose.`;
 
-  const purposeResult = await provider.generateStructured<{ purpose: UserPurpose; confidence: number }>(
+  return provider.generateStructured<{ purpose: UserPurpose; confidence: number }>(
     purposePrompt,
     {
       temperature: 0.3,
@@ -102,17 +234,24 @@ Respond with the most appropriate purpose.`;
       },
     }
   );
+}
 
-  // ─── Step 2: Propose decomposition boundaries ──────────────────────
+// ─── Helper: Propose Boundaries ───────────────────────────────────────────
+
+async function proposeBoundaries(
+  provider: AIProvider,
+  text: string,
+): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
   const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
 
-Split the following text into distinct thought units. Each unit should be a complete, self-contained thought.
+Split the following text into distinct thought units. Each unit should be a complete, self-contained thought that can stand alone.
 
 Text: ${sanitizeUserContent(text)}
 
 Guidelines:
 - Maximum 3 units (focus on the most important divisions)
 - Each unit should have a clear cognitive function (claim, question, evidence, etc.)
+- Units MUST be meaningfully different in type or topic — do not split a single coherent argument into arbitrary pieces
 - Preserve the exact character positions for boundaries
 - Units should not overlap
 - Cover the entire text
@@ -163,32 +302,28 @@ For each unit, provide:
     }
   );
 
-  // Create proposals from boundaries
-  const proposals: UnitProposal[] = boundaryResult.boundaries.map((b, idx) => ({
-    id: `temp-${Date.now()}-${idx}`,
-    content: b.content,
-    proposedType: b.proposedType,
-    confidence: b.confidence,
-    startChar: b.startChar,
-    endChar: b.endChar,
-    lifecycle: "draft" as const,
-    originType: "ai_generated" as const,
-  }));
+  return boundaryResult.boundaries;
+}
 
-  // ─── Step 3: Propose relations ─────────────────────────────────────
-  let relationProposals: DecompositionRelationProposal[] = [];
+// ─── Helper: Propose Relations ────────────────────────────────────────────
 
-  if (existingUnits.length > 0 && proposals.length > 0) {
-    const existingUnitsDesc = existingUnits
-      .slice(0, 10)
-      .map((u, _i) => `[${u.id}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
-      .join("\n");
+async function proposeRelations(
+  provider: AIProvider,
+  proposals: Array<{ content: string; proposedType: string }>,
+  existingUnits: Array<{ id: string; content: string; unitType: string }>,
+): Promise<DecompositionRelationProposal[]> {
+  if (existingUnits.length === 0 || proposals.length === 0) return [];
 
-    const newUnitsDesc = proposals
-      .map((p, i) => `[idx:${i}] (${p.proposedType}) ${sanitizeUserContent(p.content.slice(0, 100))}`)
-      .join("\n");
+  const existingUnitsDesc = existingUnits
+    .slice(0, 10)
+    .map((u) => `[${u.id}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
+    .join("\n");
 
-    const relationPrompt = `${PROMPT_INJECTION_GUARD}
+  const newUnitsDesc = proposals
+    .map((p, i) => `[idx:${i}] (${p.proposedType}) ${sanitizeUserContent(p.content.slice(0, 100))}`)
+    .join("\n");
+
+  const relationPrompt = `${PROMPT_INJECTION_GUARD}
 
 Analyze relationships between NEW units and EXISTING units in this context.
 
@@ -215,63 +350,46 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
 - strength: relationship strength (0-1)
 - rationale: brief explanation`;
 
-    const relationResult = await provider.generateStructured<{
-      relations: Array<{
-        sourceIdx: number;
-        targetUnitId: string;
-        relationType: string;
-        strength: number;
-        rationale: string;
-      }>;
-    }>(relationPrompt, {
-      temperature: 0.4,
-      maxTokens: 768,
-      zodSchema: DecompositionRelationProposalsSchema,
-      schema: {
-        name: "RelationProposals",
-        description: "Proposed relations between new and existing units",
-        properties: {
-          relations: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                sourceIdx: { type: "number", minimum: 0, maximum: 2 },
-                targetUnitId: { type: "string" },
-                relationType: {
-                  type: "string",
-                  enum: [
-                    "supports", "contradicts", "derives_from", "expands",
-                    "references", "exemplifies", "defines", "questions",
-                  ],
-                },
-                strength: { type: "number", minimum: 0, maximum: 1 },
-                rationale: { type: "string", maxLength: 150 },
+  const relationResult = await provider.generateStructured<{
+    relations: Array<{
+      sourceIdx: number;
+      targetUnitId: string;
+      relationType: string;
+      strength: number;
+      rationale: string;
+    }>;
+  }>(relationPrompt, {
+    temperature: 0.4,
+    maxTokens: 768,
+    zodSchema: DecompositionRelationProposalsSchema,
+    schema: {
+      name: "RelationProposals",
+      description: "Proposed relations between new and existing units",
+      properties: {
+        relations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              sourceIdx: { type: "number", minimum: 0, maximum: 2 },
+              targetUnitId: { type: "string" },
+              relationType: {
+                type: "string",
+                enum: [
+                  "supports", "contradicts", "derives_from", "expands",
+                  "references", "exemplifies", "defines", "questions",
+                ],
               },
-              required: ["sourceIdx", "targetUnitId", "relationType", "strength", "rationale"],
+              strength: { type: "number", minimum: 0, maximum: 1 },
+              rationale: { type: "string", maxLength: 150 },
             },
+            required: ["sourceIdx", "targetUnitId", "relationType", "strength", "rationale"],
           },
         },
-        required: ["relations"],
       },
-    });
-
-    relationProposals = relationResult.relations;
-  }
-
-  logger.info(
-    {
-      purpose: purposeResult.purpose,
-      proposalCount: proposals.length,
-      relationCount: relationProposals.length,
+      required: ["relations"],
     },
-    "AI decomposition completed"
-  );
+  });
 
-  return {
-    purpose: purposeResult.purpose,
-    proposals,
-    relationProposals,
-  };
+  return relationResult.relations;
 }
-

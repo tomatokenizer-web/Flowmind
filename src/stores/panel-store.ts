@@ -11,6 +11,8 @@ interface PanelState {
   activeTab: DetailTab;
   /** ID of unit shown in spotlight card overlay (null = closed) */
   spotlightUnitId: string | null;
+  /** Width of the detail panel in pixels */
+  panelWidth: number;
 
   openPanel: (unitId: string) => void;
   /** Select a unit without opening the detail panel overlay */
@@ -24,6 +26,7 @@ interface PanelState {
   /** Open a unit in the centered card spotlight overlay */
   openSpotlight: (unitId: string) => void;
   closeSpotlight: () => void;
+  setPanelWidth: (width: number) => void;
 }
 
 export const usePanelStore = create<PanelState>((set, get) => ({
@@ -31,6 +34,7 @@ export const usePanelStore = create<PanelState>((set, get) => ({
   selectedUnitId: null,
   activeTab: "content",
   spotlightUnitId: null,
+  panelWidth: 420,
 
   openPanel: (unitId) =>
     set({ isOpen: true, selectedUnitId: unitId }),
@@ -61,4 +65,7 @@ export const usePanelStore = create<PanelState>((set, get) => ({
 
   closeSpotlight: () =>
     set({ spotlightUnitId: null }),
+
+  setPanelWidth: (width) =>
+    set({ panelWidth: Math.min(640, Math.max(320, width)) }),
 }));

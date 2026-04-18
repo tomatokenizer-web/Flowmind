@@ -9,22 +9,35 @@ import { useLayoutStore } from "~/stores/layout-store";
 import { UnitDetailPanel, type UnitDetailData } from "~/components/panels/UnitDetailPanel";
 import type { MetadataValues } from "~/components/unit/metadata-editor";
 import { toast } from "~/lib/toast";
+import { ResizeHandle } from "./resize-handle";
 
 interface DetailPanelProps {
   className?: string;
+}
+
+function useIsMobile() {
+  const [mobile, setMobile] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    setMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return mobile;
 }
 
 export function DetailPanel({ className }: DetailPanelProps) {
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
   const detailPanelOpen = usePanelStore((s) => s.isOpen);
   const closePanel = usePanelStore((s) => s.closePanel);
+  const panelWidth = usePanelStore((s) => s.panelWidth);
+  const setPanelWidth = usePanelStore((s) => s.setPanelWidth);
   const viewMode = useLayoutStore((s) => s.viewMode);
-  // Don't show the detail panel overlay in FlowReader (navigate) view
   const suppressed = viewMode === "navigate";
+  const isMobile = useIsMobile();
   const panelRef = React.useRef<HTMLElement>(null);
-  const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
-  // Fetch real unit data when a unit is selected
   const { data: unitData, isLoading, isFetching } = api.unit.getById.useQuery(
     { id: selectedUnitId! },
     { enabled: !!selectedUnitId },
@@ -118,62 +131,22 @@ export function DetailPanel({ className }: DetailPanelProps) {
     deleteMutation.mutate({ id: unitId });
   }, [deleteMutation]);
 
-  // Track element that opened the panel for focus return — skip when suppressed
-  React.useEffect(() => {
-    if (suppressed) return;
-    if (detailPanelOpen) {
-      returnFocusRef.current = document.activeElement as HTMLElement;
-      requestAnimationFrame(() => {
-        panelRef.current?.focus();
-      });
-    } else if (returnFocusRef.current) {
-      returnFocusRef.current.focus();
-      returnFocusRef.current = null;
-    }
-  }, [detailPanelOpen, suppressed]);
-
-  // Escape to close — skip when suppressed so other views can handle Escape
+  // Escape to close
   React.useEffect(() => {
     if (!detailPanelOpen || suppressed) return;
-
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        handleClose();
-      }
+      if (e.key === "Escape") handleClose();
     }
-
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [detailPanelOpen, handleClose, suppressed]);
 
-  // Focus trap — skip when suppressed
-  React.useEffect(() => {
-    if (!detailPanelOpen || suppressed) return;
-
-    function handleTab(e: KeyboardEvent) {
-      if (e.key !== "Tab" || !panelRef.current) return;
-
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-
-      const first = focusable[0] as HTMLElement | undefined;
-      const last = focusable[focusable.length - 1] as HTMLElement | undefined;
-      if (!first || !last) return;
-
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", handleTab);
-    return () => document.removeEventListener("keydown", handleTab);
-  }, [detailPanelOpen, suppressed]);
+  const handleResize = React.useCallback(
+    (deltaX: number) => {
+      setPanelWidth(panelWidth + deltaX);
+    },
+    [panelWidth, setPanelWidth],
+  );
 
   const panelContent = (
     <UnitDetailPanel
@@ -187,44 +160,73 @@ export function DetailPanel({ className }: DetailPanelProps) {
     />
   );
 
+  // Mobile: bottom sheet overlay
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {detailPanelOpen && !suppressed && (
+          <>
+            <motion.div
+              key="detail-backdrop-mobile"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+              onClick={handleClose}
+              aria-hidden="true"
+            />
+            <motion.aside
+              key="detail-sheet-mobile"
+              ref={panelRef}
+              role="dialog"
+              aria-label="Unit detail"
+              aria-modal="true"
+              tabIndex={-1}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 340, mass: 0.8 }}
+              className={cn(
+                "fixed inset-x-0 bottom-0 z-50",
+                "h-[85vh] rounded-t-2xl",
+                "border-t border-border bg-bg-primary shadow-modal",
+                "flex flex-col overflow-hidden focus-visible:outline-none",
+                className,
+              )}
+            >
+              {panelContent}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  // Desktop: inline split panel (right column)
   return (
     <AnimatePresence>
       {detailPanelOpen && !suppressed && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            key="detail-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-            onClick={handleClose}
-            aria-hidden="true"
-          />
-          {/* Centered card */}
-          <motion.aside
-            key="detail-card"
-            ref={panelRef}
-            role="dialog"
-            aria-label="Unit detail"
-            aria-modal="true"
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.95, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 16 }}
-            transition={{ type: "spring", damping: 28, stiffness: 340, mass: 0.8 }}
-            className={cn(
-              "fixed inset-0 z-50 m-auto",
-              "h-[min(85vh,720px)] w-[min(92vw,520px)]",
-              "rounded-2xl border border-border bg-bg-primary shadow-modal",
-              "flex flex-col overflow-hidden focus-visible:outline-none",
-              className,
-            )}
-          >
-            {panelContent}
-          </motion.aside>
-        </>
+        <motion.aside
+          key="detail-panel"
+          ref={panelRef}
+          role="complementary"
+          aria-label="Unit detail"
+          tabIndex={-1}
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: panelWidth, opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={{ type: "spring", damping: 30, stiffness: 300, mass: 0.8 }}
+          className={cn(
+            "relative flex h-full shrink-0 flex-col overflow-hidden",
+            "border-l border-border bg-bg-primary",
+            "focus-visible:outline-none",
+            className,
+          )}
+        >
+          <ResizeHandle onResize={handleResize} />
+          {panelContent}
+        </motion.aside>
       )}
     </AnimatePresence>
   );
