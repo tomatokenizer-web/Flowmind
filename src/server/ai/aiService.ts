@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { getAIProvider, type AIProvider } from "./provider";
 import { createSafetyGuard, type SafetyGuard } from "./safetyGuard";
 import { logger } from "../logger";
+import { sanitizeUserContent, PROMPT_INJECTION_GUARD } from "./utils";
 import {
   TypeSuggestionSchema,
   RelationSuggestionsSchema,
@@ -47,30 +48,6 @@ import type {
   DecompositionResult,
 } from "./types";
 
-// ─── Prompt Injection Sanitization ────────────────────────────────────────
-// DEC-2026-002 §B.3: All user-supplied text must be sanitized before
-// inclusion in AI prompts to prevent prompt injection attacks.
-
-/**
- * Sanitize user content before embedding in AI prompts.
- * - Escapes sequences that could be interpreted as prompt boundaries
- * - Truncates to maxLen to prevent context overflow
- * - Replaces common injection patterns
- */
-function sanitizeUserContent(text: string, maxLen = 500): string {
-  let sanitized = text.slice(0, maxLen);
-  // Escape triple-backtick blocks that could break prompt formatting
-  sanitized = sanitized.replace(/```/g, "'''");
-  // Escape XML-like tags that might be interpreted as system instructions
-  sanitized = sanitized.replace(/<\/?(?:system|assistant|user|human|prompt|instruction)[^>]*>/gi, "[tag removed]");
-  // Replace sequences that look like prompt boundary markers
-  sanitized = sanitized.replace(/---+/g, "—");
-  sanitized = sanitized.replace(/===+/g, "≡");
-  // Remove null bytes and control characters (except newlines/tabs)
-  sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-  return sanitized;
-}
-
 // ─── AI Service ───────────────────────────────────────────────────────────
 
 export function createAIService(db: PrismaClient) {
@@ -97,9 +74,11 @@ export function createAIService(db: PrismaClient) {
         throw new Error(check.error.message);
       }
 
-      const prompt = `Analyze the following text and determine its primary cognitive function.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Text: "${sanitizeUserContent(content, 500)}"
+Analyze the following text and determine its primary cognitive function.
+
+Text: "${sanitizeUserContent(content.slice(0, 500))}"
 
 Available unit types:
 - claim: An assertion or statement that could be true or false
@@ -186,13 +165,15 @@ Respond with the most appropriate unit type.`;
         .slice(0, 10)
         .map(
           (u, i) =>
-            `[${i}] (${u.unitType}) "${sanitizeUserContent(u.content, 100)}..." (id: ${u.id})`
+            `[${i}] (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 100))}..." (id: ${u.id})`
         )
         .join("\n");
 
-      const prompt = `Analyze the relationship between a new thought unit and existing units.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-New unit: "${sanitizeUserContent(newUnitContent, 300)}"
+Analyze the relationship between a new thought unit and existing units.
+
+New unit: "${sanitizeUserContent(newUnitContent.slice(0, 300))}"
 
 Existing units:
 ${existingUnitsDescription}
@@ -347,9 +328,11 @@ Suggest up to 3 most relevant relations from the new unit to existing units.`;
       }
 
       // ─── Step 1: Classify user purpose ─────────────────────────────────
-      const purposePrompt = `Analyze the following text and determine the user's primary cognitive purpose.
+      const purposePrompt = `${PROMPT_INJECTION_GUARD}
 
-Text: "${sanitizeUserContent(text, 1000)}"
+Analyze the following text and determine the user's primary cognitive purpose.
+
+Text: "${sanitizeUserContent(text.slice(0, 1000))}"
 
 Available purposes:
 - arguing: Building or defending a logical argument with claims and evidence
@@ -382,9 +365,11 @@ Respond with the most appropriate purpose.`;
       );
 
       // ─── Step 2: Propose decomposition boundaries ──────────────────────
-      const boundaryPrompt = `Split the following text into distinct thought units. Each unit should be a complete, self-contained thought.
+      const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
 
-Text: "${text}"
+Split the following text into distinct thought units. Each unit should be a complete, self-contained thought.
+
+Text: "${sanitizeUserContent(text.slice(0, 2000))}"
 
 Guidelines:
 - Maximum 3 units (focus on the most important divisions)
@@ -457,14 +442,16 @@ For each unit, provide:
       if (existingUnits.length > 0 && proposals.length > 0) {
         const existingUnitsDesc = existingUnits
           .slice(0, 10)
-          .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content, 100)}..."`)
+          .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 100))}..."`)
           .join("\n");
 
         const newUnitsDesc = proposals
           .map((p, i) => `[idx:${i}] (${p.proposedType}) "${p.content.slice(0, 100)}..."`)
           .join("\n");
 
-        const relationPrompt = `Analyze relationships between NEW units and EXISTING units in this context.
+        const relationPrompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze relationships between NEW units and EXISTING units in this context.
 
 NEW UNITS (use index as sourceIdx):
 ${newUnitsDesc}
@@ -583,11 +570,13 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
         })
         .join("\n");
 
-      const prompt = `A thought unit is being split into two parts. Help decide which part should inherit each existing relation.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+A thought unit is being split into two parts. Help decide which part should inherit each existing relation.
 
 ORIGINAL UNIT is being split into:
-Part A: "${sanitizeUserContent(contentA, 300)}"
-Part B: "${sanitizeUserContent(contentB, 300)}"
+Part A: "${sanitizeUserContent(contentA.slice(0, 300))}"
+Part B: "${sanitizeUserContent(contentB.slice(0, 300))}"
 
 EXISTING RELATIONS:
 ${relationsDesc}
@@ -636,9 +625,11 @@ For each relation, determine which part (A or B) should inherit it based on sema
       currentType: string,
       _ctx: AIServiceContext
     ): Promise<AlternativeFraming[]> {
-      const prompt = `Suggest alternative ways to frame or express this thought unit.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Content: "${sanitizeUserContent(content, 500)}"
+Suggest alternative ways to frame or express this thought unit.
+
+Content: "${sanitizeUserContent(content.slice(0, 500))}"
 Current type: ${currentType}
 
 Generate 2-3 alternative framings that:
@@ -690,9 +681,11 @@ Generate 2-3 alternative framings that:
       unitType: string,
       _ctx: AIServiceContext
     ): Promise<CounterArgument[]> {
-      const prompt = `Generate thoughtful counter-arguments or challenges to this thought unit.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Content: "${sanitizeUserContent(content, 500)}"
+Generate thoughtful counter-arguments or challenges to this thought unit.
+
+Content: "${sanitizeUserContent(content.slice(0, 500))}"
 Type: ${unitType}
 
 Generate 2-3 counter-arguments that:
@@ -740,9 +733,11 @@ Generate 2-3 counter-arguments that:
       content: string,
       _ctx: AIServiceContext
     ): Promise<IdentifiedAssumption[]> {
-      const prompt = `Identify the underlying assumptions in this thought unit.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Content: "${sanitizeUserContent(content, 500)}"
+Identify the underlying assumptions in this thought unit.
+
+Content: "${sanitizeUserContent(content.slice(0, 500))}"
 
 Find both explicit and implicit assumptions that:
 - The argument depends on to be valid
@@ -792,10 +787,12 @@ Find both explicit and implicit assumptions that:
       if (units.length < 2) return [];
 
       const unitsDesc = units
-        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content, 150)}"`)
+        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 150))}"`)
         .join("\n");
 
-      const prompt = `Analyze these thought units for contradictions or tensions.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze these thought units for contradictions or tensions.
 
 Units:
 ${unitsDesc}
@@ -849,10 +846,12 @@ Identify pairs that:
       if (units.length < 2) return [];
 
       const unitsDesc = units
-        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content, 150)}"`)
+        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 150))}"`)
         .join("\n");
 
-      const prompt = `Analyze these thought units for potential merges.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze these thought units for potential merges.
 
 Units:
 ${unitsDesc}
@@ -907,10 +906,12 @@ Identify groups that:
       _ctx: AIServiceContext
     ): Promise<CompletenessAnalysis> {
       const unitsDesc = units
-        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content, 150)}"`)
+        .map((u) => `[${u.id}] (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 150))}"`)
         .join("\n");
 
-      const prompt = `Analyze the completeness of this set of thought units as an argument or analysis.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze the completeness of this set of thought units as an argument or analysis.
 
 Units:
 ${unitsDesc}
@@ -960,10 +961,12 @@ Also identify missing elements and suggest improvements.`;
       _ctx: AIServiceContext
     ): Promise<ContextSummary> {
       const unitsDesc = units
-        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content, 150)}`)
+        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content.slice(0, 150))}`)
         .join("\n");
 
-      const prompt = `Summarize the following set of thought units into a coherent context summary.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Summarize the following set of thought units into a coherent context summary.
 
 Units:
 ${unitsDesc}
@@ -1002,10 +1005,12 @@ Provide:
       _ctx: AIServiceContext
     ): Promise<GeneratedQuestion[]> {
       const unitsDesc = units
-        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content, 150)}`)
+        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content.slice(0, 150))}`)
         .join("\n");
 
-      const prompt = `Generate probing questions to deepen understanding of these thought units.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Generate probing questions to deepen understanding of these thought units.
 
 Units:
 ${unitsDesc}
@@ -1054,10 +1059,12 @@ Generate questions that:
       _ctx: AIServiceContext
     ): Promise<NextStepSuggestion[]> {
       const unitsDesc = units
-        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content, 150)}`)
+        .map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content.slice(0, 150))}`)
         .join("\n");
 
-      const prompt = `Suggest actionable next steps for developing this argument or analysis.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Suggest actionable next steps for developing this argument or analysis.
 
 Units:
 ${unitsDesc}
@@ -1106,9 +1113,11 @@ Suggest steps that:
     ): Promise<ExtractedTerm[]> {
       const allContent = units.map((u) => u.content).join(" ");
 
-      const prompt = `Extract key terms from this content that may need definition or clarification.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Content: ${allContent.slice(0, 1500)}
+Extract key terms from this content that may need definition or clarification.
+
+Content: ${sanitizeUserContent(allContent.slice(0, 1500))}
 
 Identify terms that:
 - Are central to the argument
@@ -1155,11 +1164,13 @@ Identify terms that:
       targetContent: string,
       _ctx: AIServiceContext
     ): Promise<StanceClassification> {
-      const prompt = `Classify the stance of one thought unit relative to another.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Unit A: ${unitContent.slice(0, 400)}
+Classify the stance of one thought unit relative to another.
 
-Unit B (target): ${targetContent.slice(0, 400)}
+Unit A: ${sanitizeUserContent(unitContent.slice(0, 400))}
+
+Unit B (target): ${sanitizeUserContent(targetContent.slice(0, 400))}
 
 Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit B's position.`;
 
@@ -1200,15 +1211,17 @@ Determine whether Unit A supports, opposes, is neutral to, or is exploring Unit 
 
       const sample = existingUnits
         .slice(0, 10)
-        .map((u) => `- (${u.unitType}) "${sanitizeUserContent(u.content, 100)}"`)
+        .map((u) => `- (${u.unitType}) "${sanitizeUserContent(u.content.slice(0, 100))}"`)
         .join("\n");
 
-      const prompt = `You are analyzing whether a new thought belongs to the same topic as an existing set of thoughts.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+You are analyzing whether a new thought belongs to the same topic as an existing set of thoughts.
 
 EXISTING THOUGHTS (sample):
 ${sample}
 
-NEW TEXT: "${sanitizeUserContent(text, 300)}"
+NEW TEXT: "${sanitizeUserContent(text.slice(0, 300))}"
 
 Determine:
 1. What topic/scope do the existing thoughts cover? (currentScope — concise phrase)
@@ -1255,9 +1268,11 @@ Determine:
       query: string,
       _ctx: AIServiceContext
     ): Promise<{ keywords: string[]; unitTypes?: string[]; summary: string }> {
-      const prompt = `Extract search intent from this natural language query about a knowledge base of thought units.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Query: "${sanitizeUserContent(query, 300)}"
+Extract search intent from this natural language query about a knowledge base of thought units.
+
+Query: "${sanitizeUserContent(query.slice(0, 300))}"
 
 Thought unit types available: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
 

@@ -335,21 +335,35 @@ function DecomposeSection({
   const handleAccept = async () => {
     if (!decomposeMutation.data) return;
     const accepted = decomposeMutation.data.proposals.filter((_, i) => selected.has(i));
+    let created = 0;
     for (const p of accepted) {
       if (onAddAsUnit) {
         onAddAsUnit(p.content);
+        created++;
       } else {
-        await createUnit.mutateAsync({
-          content: p.content,
-          unitType: p.proposedType as "claim" | "question" | "evidence" | "counterargument" | "observation" | "idea" | "definition" | "assumption" | "action",
-          lifecycle: "draft",
-          originType: "ai_generated",
-          sourceSpan: { derivedFrom: unitId },
-          projectId,
-        });
+        try {
+          await createUnit.mutateAsync({
+            content: p.content,
+            unitType: p.proposedType as "claim" | "question" | "evidence" | "counterargument" | "observation" | "idea" | "definition" | "assumption" | "action",
+            lifecycle: "draft",
+            originType: "ai_generated",
+            sourceSpan: { derivedFrom: unitId },
+            projectId,
+          });
+          created++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          if (msg.includes("duplicate") || msg.includes("identical")) {
+            toast.error(`Skipped duplicate: "${p.content.slice(0, 40)}..."`);
+          } else {
+            toast.error(`Failed to create unit: ${msg}`);
+          }
+        }
       }
     }
-    toast.success(`${accepted.length} units created from decomposition`);
+    if (created > 0) {
+      toast.success(`${created} units created from decomposition`);
+    }
     decomposeMutation.reset();
   };
 

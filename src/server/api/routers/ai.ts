@@ -5,6 +5,7 @@ import { createAIService, generateSessionId, createSafetyGuard, enforceRateLimit
 import { TRPCError } from "@trpc/server";
 import { getContextUnits } from "@/server/api/helpers/context-units";
 import { handleAIError } from "@/server/api/helpers/ai-error";
+import { sanitizeUserContent, PROMPT_INJECTION_GUARD } from "@/server/ai/utils";
 import type {
   DecompositionResult,
   SplitReattributionResult,
@@ -192,16 +193,20 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      const suggestion = await aiService.suggestUnitType(input.content, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        const suggestion = await aiService.suggestUnitType(input.content, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
 
-      return {
-        suggestion,
-        aiTrustLevel: "inferred" as const,
-      };
+        return {
+          suggestion,
+          aiTrustLevel: "inferred" as const,
+        };
+      } catch (error: unknown) {
+        handleAIError(error, "Unit type suggestion");
+      }
     }),
 
   suggestRelations: rateLimitedProcedure
@@ -226,27 +231,35 @@ export const aiRouter = createTRPCRouter({
         });
       }
 
-      const suggestions = await aiService.suggestRelations(
-        input.content,
-        existingUnits,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-          contextId: input.contextId,
-        }
-      );
+      try {
+        const suggestions = await aiService.suggestRelations(
+          input.content,
+          existingUnits,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          }
+        );
 
-      return {
-        suggestions,
-        aiTrustLevel: "inferred" as const,
-      };
+        return {
+          suggestions,
+          aiTrustLevel: "inferred" as const,
+        };
+      } catch (error: unknown) {
+        handleAIError(error, "Relation suggestion");
+      }
     }),
 
   getContributionRatio: rateLimitedProcedure
     .input(contributionRatioSchema)
     .query(async ({ ctx, input }) => {
       const aiService = createAIService(ctx.db);
-      return aiService.getContributionRatio(input.contextId);
+      try {
+        return await aiService.getContributionRatio(input.contextId);
+      } catch (error: unknown) {
+        handleAIError(error, "Contribution ratio");
+      }
     }),
 
   /**
@@ -333,15 +346,19 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      return aiService.proposeSplitReattribution(
-        input.unitId,
-        input.contentA,
-        input.contentB,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-        }
-      );
+      try {
+        return await aiService.proposeSplitReattribution(
+          input.unitId,
+          input.contentA,
+          input.contentB,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+          }
+        );
+      } catch (error: unknown) {
+        handleAIError(error, "Split reattribution proposal");
+      }
     }),
 
   // ─── Story 5.5: Alternative Framing ─────────────────────────────────────
@@ -355,15 +372,19 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      return aiService.generateAlternativeFraming(
-        input.content,
-        input.currentType,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-          contextId: input.contextId,
-        }
-      );
+      try {
+        return await aiService.generateAlternativeFraming(
+          input.content,
+          input.currentType,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          }
+        );
+      } catch (error: unknown) {
+        handleAIError(error, "Alternative framing generation");
+      }
     }),
 
   // ─── Story 5.6: Counter-Arguments ───────────────────────────────────────
@@ -377,15 +398,19 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      return aiService.suggestCounterArguments(
-        input.content,
-        input.unitType,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-          contextId: input.contextId,
-        }
-      );
+      try {
+        return await aiService.suggestCounterArguments(
+          input.content,
+          input.unitType,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          }
+        );
+      } catch (error: unknown) {
+        handleAIError(error, "Counter-argument suggestion");
+      }
     }),
 
   // ─── Story 5.7: Assumption Identification ───────────────────────────────
@@ -399,11 +424,15 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      return aiService.identifyAssumptions(input.content, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.identifyAssumptions(input.content, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Assumption identification");
+      }
     }),
 
   // ─── Story 5.8: Contradiction Detection ─────────────────────────────────
@@ -419,11 +448,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 30);
 
-      return aiService.detectContradictions(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.detectContradictions(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Contradiction detection");
+      }
     }),
 
   // ─── Story 5.9: Merge Suggestion ────────────────────────────────────────
@@ -439,11 +472,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 30);
 
-      return aiService.suggestMerge(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.suggestMerge(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Merge suggestion");
+      }
     }),
 
   // ─── Story 5.10: Completeness Analysis ──────────────────────────────────
@@ -459,11 +496,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 30);
 
-      return aiService.analyzeCompleteness(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.analyzeCompleteness(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Completeness analysis");
+      }
     }),
 
   // ─── Story 5.11: Context Summary ────────────────────────────────────────
@@ -479,11 +520,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 50);
 
-      return aiService.summarizeContext(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.summarizeContext(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Context summarization");
+      }
     }),
 
   // ─── Story 5.12: Question Generation ────────────────────────────────────
@@ -499,11 +544,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 30);
 
-      return aiService.generateQuestions(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.generateQuestions(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Question generation");
+      }
     }),
 
   // ─── Story 5.13: Next Steps ─────────────────────────────────────────────
@@ -519,11 +568,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 30);
 
-      return aiService.suggestNextSteps(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.suggestNextSteps(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Next step suggestion");
+      }
     }),
 
   // ─── Story 5.14: Key Term Extraction ────────────────────────────────────
@@ -539,11 +592,15 @@ export const aiRouter = createTRPCRouter({
 
       const units = await getContextUnits(ctx.db, input.contextId, 50);
 
-      return aiService.extractKeyTerms(units, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.extractKeyTerms(units, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Key term extraction");
+      }
     }),
 
   // ─── Story 5.15: Stance Classification ──────────────────────────────────
@@ -557,15 +614,19 @@ export const aiRouter = createTRPCRouter({
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      return aiService.classifyStance(
-        input.unitContent,
-        input.targetContent,
-        {
-          userId: ctx.session.user.id!,
-          sessionId,
-          contextId: input.contextId,
-        }
-      );
+      try {
+        return await aiService.classifyStance(
+          input.unitContent,
+          input.targetContent,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          }
+        );
+      } catch (error: unknown) {
+        handleAIError(error, "Stance classification");
+      }
     }),
 
   // ─── Full metadata classification ──────────────────────────────────
@@ -598,9 +659,11 @@ export const aiRouter = createTRPCRouter({
           scope: string | null;
           stance: string | null;
         }>(
-          `Analyze this thought unit and classify ALL its metadata fields.
+          `${PROMPT_INJECTION_GUARD}
 
-Text: "${input.content.slice(0, 500)}"
+Analyze this thought unit and classify ALL its metadata fields.
+
+Text: ${sanitizeUserContent(input.content.slice(0, 500))}
 
 Classify each field:
 - unitType: The cognitive function (claim, question, evidence, counterargument, observation, idea, definition, assumption, action)
@@ -652,7 +715,9 @@ Classify each field:
         const provider = getAIProvider();
 
         const result = await provider.generateStructured<{ directions: { prompt: string; expectedType: string }[] }>(
-          `Given this thought unit (type: ${unit.unitType}): "${unit.content.slice(0, 300)}"
+          `${PROMPT_INJECTION_GUARD}
+
+Given this thought unit (type: ${unit.unitType}): ${sanitizeUserContent(unit.content.slice(0, 300))}
 Suggest 2-3 specific exploration directions that would help develop this thought further.`,
           {
             temperature: 0.7,
@@ -679,7 +744,8 @@ Suggest 2-3 specific exploration directions that would help develop this thought
           }
         );
         return result;
-      } catch {
+      } catch (error: unknown) {
+        console.error("suggestExplorationDirections AI call failed:", error);
         // Fallback directions when AI unavailable
         const fallbacks: Record<string, { prompt: string; expectedType: string }[]> = {
           claim: [
@@ -731,7 +797,7 @@ Suggest 2-3 specific exploration directions that would help develop this thought
           orderBy: { createdAt: "desc" },
         });
         if (siblings.length > 0) {
-          contextSnippet = `\n\nOther units in the same context:\n${siblings.map((s) => `- [${s.unitType}] ${s.content.slice(0, 120)}`).join("\n")}`;
+          contextSnippet = `\n\nOther units in the same context:\n${siblings.map((s) => `- [${s.unitType}] ${sanitizeUserContent(s.content.slice(0, 120))}`).join("\n")}`;
         }
       }
 
@@ -747,8 +813,10 @@ Suggest 2-3 specific exploration directions that would help develop this thought
             rationale: string;
           }[];
         }>(
-          `You are a thinking assistant. Given the following thought unit (type: ${unit.unitType}):
-"${unit.content.slice(0, 500)}"${contextSnippet}
+          `${PROMPT_INJECTION_GUARD}
+
+You are a thinking assistant. Given the following thought unit (type: ${unit.unitType}):
+${sanitizeUserContent(unit.content.slice(0, 500))}${contextSnippet}
 
 Suggest 3-4 specific new thought units the user could derive from this one to deepen their thinking. Each suggestion should:
 - Be a concrete, self-contained thought (not a vague prompt). Keep content under 300 characters.
@@ -903,7 +971,7 @@ Prioritize diversity: suggest different types and relationships, not just more o
 
             const allUnits = [newUnit, ...siblings];
             const unitDescriptions = allUnits
-              .map((u, i) => `[${i}] (${u.unitType}) "${u.content.slice(0, 120)}"`)
+              .map((u, i) => `[${i}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 120))}`)
               .join("\n");
 
             try {
@@ -911,7 +979,9 @@ Prioritize diversity: suggest different types and relationships, not just more o
               const provider = getAIProvider();
 
               const raw = await provider.generateText(
-                `Analyze these thought units and find relations FROM unit [0] (the new unit) TO others.
+                `${PROMPT_INJECTION_GUARD}
+
+Analyze these thought units and find relations FROM unit [0] (the new unit) TO others.
 Focus only on relations involving [0].
 
 Units:
@@ -976,8 +1046,10 @@ Only include relations where sourceIndex=0 or targetIndex=0.`,
     .input(z.object({ unitId: z.string().uuid(), content: z.string().min(1) }))
     .mutation(async ({ ctx: _ctx, input }) => {
       try {
-        const prompt = `Refine this thought for clarity and coherence. Preserve the core meaning.
-Original: "${input.content}"
+        const prompt = `${PROMPT_INJECTION_GUARD}
+
+Refine this thought for clarity and coherence. Preserve the core meaning.
+Original: ${sanitizeUserContent(input.content)}
 Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
 
         const getProvider = (await import("@/server/ai/provider")).getAIProvider;
@@ -1109,11 +1181,15 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
         orderBy: { createdAt: "desc" },
       });
 
-      return aiService.detectScopeJump(input.text, existingUnits, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
+      try {
+        return await aiService.detectScopeJump(input.text, existingUnits, {
+          userId: ctx.session.user.id!,
+          sessionId,
+          contextId: input.contextId,
+        });
+      } catch (error: unknown) {
+        handleAIError(error, "Scope jump detection");
+      }
     }),
 
   // ─── Story 5.7: Branch Potential Score ───────────────────────────────────
@@ -1234,45 +1310,49 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
       const aiService = createAIService(ctx.db);
       const sessionId = resolveSessionId(input.sessionId);
 
-      // Step 1: Extract intent from natural language
-      const intent = await aiService.extractNLQIntent(input.query, {
-        userId: ctx.session.user.id!,
-        sessionId,
-        contextId: input.contextId,
-      });
-
-      if (intent.keywords.length === 0) {
-        return { intent, results: [] };
-      }
-
-      // Step 2: Run text search with extracted keywords
-      const { createSearchService } = await import("@/server/services/searchService");
-      const searchService = createSearchService(ctx.db);
-
-      const searchQuery = intent.keywords.join(" ");
-      const rawResults = await searchService.search(
-        searchQuery,
-        {
-          projectId: input.projectId,
+      try {
+        // Step 1: Extract intent from natural language
+        const intent = await aiService.extractNLQIntent(input.query, {
+          userId: ctx.session.user.id!,
+          sessionId,
           contextId: input.contextId,
-          layers: ["text"],
-          limit: 20,
-        },
-        intent.unitTypes?.length
-          ? { unitTypes: intent.unitTypes as UnitType[] }
-          : undefined,
-      );
+        });
 
-      // Step 3: Annotate results with relevance summary (simple — no extra AI call)
-      const results = rawResults.slice(0, 10).map((r) => ({
-        unitId: r.unitId,
-        content: r.content,
-        unitType: r.unitType,
-        relevanceSummary: `Matched "${intent.keywords.slice(0, 3).join(", ")}" in ${r.matchLayer} layer`,
-        score: r.score,
-      }));
+        if (intent.keywords.length === 0) {
+          return { intent, results: [] };
+        }
 
-      return { intent, results };
+        // Step 2: Run text search with extracted keywords
+        const { createSearchService } = await import("@/server/services/searchService");
+        const searchService = createSearchService(ctx.db);
+
+        const searchQuery = intent.keywords.join(" ");
+        const rawResults = await searchService.search(
+          searchQuery,
+          {
+            projectId: input.projectId,
+            contextId: input.contextId,
+            layers: ["text"],
+            limit: 20,
+          },
+          intent.unitTypes?.length
+            ? { unitTypes: intent.unitTypes as UnitType[] }
+            : undefined,
+        );
+
+        // Step 3: Annotate results with relevance summary (simple — no extra AI call)
+        const results = rawResults.slice(0, 10).map((r) => ({
+          unitId: r.unitId,
+          content: r.content,
+          unitType: r.unitType,
+          relevanceSummary: `Matched "${intent.keywords.slice(0, 3).join(", ")}" in ${r.matchLayer} layer`,
+          score: r.score,
+        }));
+
+        return { intent, results };
+      } catch (error: unknown) {
+        handleAIError(error, "Natural language query");
+      }
     }),
 
   // ─── Story 5.10: Epistemic Humility / Controversial Topic Detection ──────────
@@ -1494,7 +1574,7 @@ Focus on academic, scientific, or well-established knowledge sources.`,
 
       // Build the unit list for the prompt
       const unitDescriptions = units
-        .map((u, i) => `[${i}] id:${u.id} (${u.unitType}) "${u.content.slice(0, 120)}"`)
+        .map((u, i) => `[${i}] id:${u.id} (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 120))}`)
         .join("\n");
 
       const { getAIProvider } = await import("@/server/ai/provider");
@@ -1505,7 +1585,9 @@ Focus on academic, scientific, or well-established knowledge sources.`,
         "references", "exemplifies", "defines", "questions",
       ]);
 
-      const prompt = `Analyze ALL the following thought units and identify meaningful relations between them.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze ALL the following thought units and identify meaningful relations between them.
 Find as many genuine relations as possible — aim for comprehensive coverage.
 
 Units:
@@ -1606,7 +1688,7 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`;
       });
 
       const unitSummary = units
-        .map((u) => `(${u.unitType}) "${u.content.slice(0, 80)}"`)
+        .map((u) => `(${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 80))}`)
         .join("\n");
 
       const { getAIProvider } = await import("@/server/ai/provider");
@@ -1614,7 +1696,9 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`;
 
       try {
         const raw = await provider.generateText(
-          `You are naming a context (a thematic grouping of thought units).
+          `${PROMPT_INJECTION_GUARD}
+
+You are naming a context (a thematic grouping of thought units).
 Based on these ${units.length} units, generate a concise, descriptive title (3-8 words, English).
 The title should capture the overarching theme or topic.
 
@@ -1686,7 +1770,7 @@ Return ONLY the title text, nothing else.`,
       });
 
       const unitDescriptions = units
-        .map((u, i) => `[${i}] id:${u.id} (${u.unitType}) "${u.content.slice(0, 120)}"`)
+        .map((u, i) => `[${i}] id:${u.id} (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 120))}`)
         .join("\n");
 
       const { getAIProvider } = await import("@/server/ai/provider");
@@ -1699,7 +1783,9 @@ Return ONLY the title text, nothing else.`,
 
       try {
         const raw = await provider.generateText(
-          `Analyze ALL the following thought units and identify meaningful relations between them.
+          `${PROMPT_INJECTION_GUARD}
+
+Analyze ALL the following thought units and identify meaningful relations between them.
 Find as many genuine relations as possible — aim for comprehensive coverage.
 
 Units:
@@ -1800,16 +1886,18 @@ Be thorough — even weak relations (0.3+) are valuable for navigation.`,
 
       const contextDescriptions = contexts.map((c, i) => {
         const samples = c.unitContexts
-          .map((uc) => `  [${uc.unit.unitType}] ${uc.unit.content.slice(0, 80)}`)
+          .map((uc) => `  [${uc.unit.unitType}] ${sanitizeUserContent(uc.unit.content.slice(0, 80))}`)
           .join("\n");
-        return `[${i}] id:${c.id} "${c.name}"${c.description ? ` — ${c.description}` : ""}\n${samples || "  (empty)"}`;
+        return `[${i}] id:${c.id} ${sanitizeUserContent(c.name)}${c.description ? ` — ${sanitizeUserContent(c.description)}` : ""}\n${samples || "  (empty)"}`;
       }).join("\n\n");
 
       try {
         const { getAIProvider } = await import("@/server/ai/provider");
         const provider = getAIProvider();
 
-        const prompt = `Analyze these contexts from a knowledge project and suggest which ones should be merged (overlapping themes) or split (too broad/mixed topics).
+        const prompt = `${PROMPT_INJECTION_GUARD}
+
+Analyze these contexts from a knowledge project and suggest which ones should be merged (overlapping themes) or split (too broad/mixed topics).
 
 Contexts:
 ${contextDescriptions}
@@ -1914,7 +2002,7 @@ Rules:
       const units = unitLinks.map((ul, i) => ({
         index: i,
         id: ul.unit.id,
-        summary: `(${ul.unit.unitType}) "${ul.unit.content.slice(0, 100)}"`,
+        summary: `(${ul.unit.unitType}) ${sanitizeUserContent(ul.unit.content.slice(0, 100))}`,
       }));
 
       const { getAIProvider } = await import("@/server/ai/provider");
@@ -1922,9 +2010,11 @@ Rules:
 
       try {
         const response = await provider.generateText(
-          `You are splitting the context "${context.name}" into two sub-contexts:
-- Group A: "${input.nameA}"
-- Group B: "${input.nameB}"
+          `${PROMPT_INJECTION_GUARD}
+
+You are splitting the context ${sanitizeUserContent(context.name)} into two sub-contexts:
+- Group A: ${sanitizeUserContent(input.nameA)}
+- Group B: ${sanitizeUserContent(input.nameB)}
 
 Assign each unit to group A, B, or "parent" (keep in original).
 
@@ -2014,9 +2104,9 @@ Return ONLY a JSON array (no other text):
 
         const contextDescriptions = contexts.map((c, i) => {
           const sampleContent = c.unitContexts
-            .map((uc) => `[${uc.unit.unitType}] ${uc.unit.content.slice(0, 80)}`)
+            .map((uc) => `[${uc.unit.unitType}] ${sanitizeUserContent(uc.unit.content.slice(0, 80))}`)
             .join("\n  ");
-          return `[${i}] "${c.name}"${c.description ? ` — ${c.description}` : ""}\n  Sample units:\n  ${sampleContent || "(empty)"}`;
+          return `[${i}] ${sanitizeUserContent(c.name)}${c.description ? ` — ${sanitizeUserContent(c.description)}` : ""}\n  Sample units:\n  ${sampleContent || "(empty)"}`;
         }).join("\n\n");
 
         const ContextSuggestionSchema = (await import("zod")).z.object({
@@ -2034,7 +2124,9 @@ Return ONLY a JSON array (no other text):
           matches: Array<{ contextIndex: number; confidence: number; reason: string }>;
           newContextName: string | null;
         }>(
-          `Given this unit (${unit.unitType}): "${unit.content.slice(0, 300)}"
+          `${PROMPT_INJECTION_GUARD}
+
+Given this unit (${unit.unitType}): ${sanitizeUserContent(unit.content.slice(0, 300))}
 
 Which of these contexts should it belong to? Rate each relevant context.
 If none fit well (all < 0.5 confidence), suggest a new context name.
@@ -2080,7 +2172,8 @@ ${contextDescriptions}`,
           }));
 
         return { suggestions, newContextName: result.newContextName };
-      } catch {
+      } catch (error: unknown) {
+        console.error("suggestContextForUnit AI call failed:", error);
         // Fallback: no AI — return empty
         return { suggestions: [], newContextName: null };
       }
@@ -2118,7 +2211,7 @@ ${contextDescriptions}`,
         const { getAIProvider } = await import("@/server/ai/provider");
         const provider = getAIProvider();
 
-        const unitList = units.map((u) => `[${u.unitType}] ${u.content.slice(0, 100)}`).join("\n");
+        const unitList = units.map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content.slice(0, 100))}`).join("\n");
 
         const ContextNameSchema = (await import("zod")).z.object({
           name: (await import("zod")).z.string(),
@@ -2126,7 +2219,9 @@ ${contextDescriptions}`,
         });
 
         const result = await provider.generateStructured<{ name: string; description: string }>(
-          `These thought units seem related. Suggest a concise context name (max 60 chars) and brief description (max 200 chars) that captures their shared theme.
+          `${PROMPT_INJECTION_GUARD}
+
+These thought units seem related. Suggest a concise context name (max 60 chars) and brief description (max 200 chars) that captures their shared theme.
 
 Units:
 ${unitList}`,
@@ -2147,7 +2242,8 @@ ${unitList}`,
         );
         contextName = result.name;
         contextDescription = result.description;
-      } catch {
+      } catch (error: unknown) {
+        console.error("autoCreateContext AI call failed:", error);
         // Fallback: use first unit content as name
         contextName = units[0]!.content.slice(0, 50).replace(/[?!.,;:]+$/, "").trim();
         contextDescription = `Auto-created from ${units.length} unit(s)`;
@@ -2197,10 +2293,12 @@ ${unitList}`,
       const { getAIProvider } = await import("@/server/ai/provider");
       const provider = getAIProvider();
 
-      const prompt = `Given the following thought unit, generate 4-6 follow-up questions that would deepen understanding of this topic. Each question should explore a different angle: supporting evidence, counterarguments, implications, definitions, related concepts, or practical applications.
+      const prompt = `${PROMPT_INJECTION_GUARD}
+
+Given the following thought unit, generate 4-6 follow-up questions that would deepen understanding of this topic. Each question should explore a different angle: supporting evidence, counterarguments, implications, definitions, related concepts, or practical applications.
 
 Unit type: ${input.unitType ?? "observation"}
-Content: "${input.content}"
+Content: ${sanitizeUserContent(input.content)}
 
 Return ONLY a JSON object with this exact format:
 {"questions":[{"text":"The question text","angle":"evidence|counter|implication|definition|related|application","priority":"high|medium"}]}
@@ -2256,11 +2354,13 @@ Make questions specific and thought-provoking, not generic.`;
       const { getAIProvider } = await import("@/server/ai/provider");
       const provider = getAIProvider();
 
-      const prompt = `You are analyzing a thought unit and answering a follow-up question about it. Your answer should be comprehensive and well-structured.
+      const prompt = `${PROMPT_INJECTION_GUARD}
 
-Original unit (${unit.unitType}): "${unit.content}"
+You are analyzing a thought unit and answering a follow-up question about it. Your answer should be comprehensive and well-structured.
 
-Question: "${input.question}"
+Original unit (${unit.unitType}): ${sanitizeUserContent(unit.content)}
+
+Question: ${sanitizeUserContent(input.question)}
 
 Provide a thorough answer, then decompose it into discrete thought units. Each unit should be a single, self-contained idea.
 
@@ -2445,7 +2545,7 @@ Rules:
       // Build ordered step descriptions
       const stepDescriptions = nav.path.map((id, i) => {
         const u = unitMap.get(id);
-        return `${i}. [${u?.unitType ?? "unknown"}] ${u?.content.slice(0, 120) ?? "Unknown unit"}`;
+        return `${i}. [${u?.unitType ?? "unknown"}] ${u ? sanitizeUserContent(u.content.slice(0, 120)) : "Unknown unit"}`;
       }).join("\n");
 
       try {
@@ -2467,7 +2567,9 @@ Rules:
             priority: "high" | "medium" | "low";
           }>;
         }>(
-          `You are analyzing a reading path for conceptual coherence and completeness. Here are the steps:
+          `${PROMPT_INJECTION_GUARD}
+
+You are analyzing a reading path for conceptual coherence and completeness. Here are the steps:
 
 ${stepDescriptions}
 
@@ -2782,10 +2884,12 @@ For each completeness suggestion, specify:
           suggestedContextId: string | null;
           suggestedContextName: string | null;
         }>(
-          `A user derived a new thought unit while reading a navigation path.
+          `${PROMPT_INJECTION_GUARD}
 
-Derived unit: [${derivedUnit.unitType}] "${derivedUnit.content.slice(0, 200)}"
-Origin unit: [${originUnit.unitType}] "${originUnit.content.slice(0, 200)}"
+A user derived a new thought unit while reading a navigation path.
+
+Derived unit: [${derivedUnit.unitType}] ${sanitizeUserContent(derivedUnit.content.slice(0, 200))}
+Origin unit: [${originUnit.unitType}] ${sanitizeUserContent(originUnit.content.slice(0, 200))}
 
 Current path (${currentNav.name}):
 ${pathDescription}
@@ -2836,7 +2940,8 @@ Decide:
           },
         );
         return result;
-      } catch {
+      } catch (error: unknown) {
+        console.error("suggestDerivationPlacement AI call failed:", error);
         // Heuristic fallback: insert right after origin in current path
         const originIdx = currentNav.path.indexOf(input.originUnitId);
         return {
@@ -2960,13 +3065,15 @@ Decide:
 
       try {
         const response = await provider.generateText(
-          `You are analyzing thought units in the context "${context.name}" to build reasoning chains.
+          `${PROMPT_INJECTION_GUARD}
+
+You are analyzing thought units in the context ${sanitizeUserContent(context.name)} to build reasoning chains.
 
 A reasoning chain is a logical argument: premises → inferences → conclusions.
 Between existing units, there may be logical gaps. When the reasoning jump between two consecutive steps is too large or unnatural, create a BRIDGE unit to fill the gap.
 
 Units:
-${units.map((u) => `[${u.index}] (${u.type}) "${u.content}"`).join("\n")}${relDesc}
+${units.map((u) => `[${u.index}] (${u.type}) ${sanitizeUserContent(u.content)}`).join("\n")}${relDesc}
 
 Find 1-3 reasoning chains. For each chain:
 - Give it a descriptive name (3-8 words) and a goal/thesis

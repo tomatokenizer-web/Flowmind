@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { jsPDF } from "jspdf";
+import type { jsPDF as JsPDFType } from "jspdf";
 import { logger } from "@/server/logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -76,7 +76,8 @@ export function createExportService(db: PrismaClient) {
   ): Promise<Buffer> {
     const data = await getAssemblyData(assemblyId, userId);
 
-    const doc = new jsPDF({
+    const { jsPDF } = await import("jspdf");
+    const doc: JsPDFType = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: "a4",

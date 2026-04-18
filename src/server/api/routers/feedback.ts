@@ -168,15 +168,17 @@ export const feedbackRouter = createTRPCRouter({
       });
 
       // Add units to new context
-      for (const unitId of input.unitIds) {
-        await ctx.db.unitContext.upsert({
-          where: { unitId_contextId: { unitId, contextId: newContext.id } },
-          create: { unitId, contextId: newContext.id },
-          update: {},
-        });
-        // Reset drift score
-        await ctx.db.unit.update({ where: { id: unitId }, data: { driftScore: 0 } });
-      }
+      await ctx.db.$transaction(async (tx) => {
+        for (const unitId of input.unitIds) {
+          await tx.unitContext.upsert({
+            where: { unitId_contextId: { unitId, contextId: newContext.id } },
+            create: { unitId, contextId: newContext.id },
+            update: {},
+          });
+          // Reset drift score
+          await tx.unit.update({ where: { id: unitId }, data: { driftScore: 0 } });
+        }
+      });
 
       return { newProject, newContext };
     }),

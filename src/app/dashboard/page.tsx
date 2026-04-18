@@ -12,10 +12,10 @@ import { usePanelStore } from "~/stores/panel-store";
 import { cn } from "~/lib/utils";
 import { CreateContextDialog } from "~/components/context/CreateContextDialog";
 import { CompletenessCompass } from "~/components/project/CompletenessCompass";
-import { RAGSearchPanel } from "~/components/search/RAGSearchPanel";
-import { ProactiveInsightsFeed } from "~/components/dashboard/ProactiveInsightsFeed";
-import { DecisionJournalPanel } from "~/components/dashboard/DecisionJournalPanel";
-import { RuleViolationsPanel } from "~/components/dashboard/RuleViolationsPanel";
+const RAGSearchPanel = React.lazy(() => import("~/components/search/RAGSearchPanel").then(m => ({ default: m.RAGSearchPanel })));
+const ProactiveInsightsFeed = React.lazy(() => import("~/components/dashboard/ProactiveInsightsFeed").then(m => ({ default: m.ProactiveInsightsFeed })));
+const DecisionJournalPanel = React.lazy(() => import("~/components/dashboard/DecisionJournalPanel").then(m => ({ default: m.DecisionJournalPanel })));
+const RuleViolationsPanel = React.lazy(() => import("~/components/dashboard/RuleViolationsPanel").then(m => ({ default: m.RuleViolationsPanel })));
 
 // ─── Lazy-loaded heavy views (code splitting) ────────────────────────
 const GraphView = React.lazy(() => import("~/components/graph/GraphView").then(m => ({ default: m.GraphView })));
@@ -499,7 +499,9 @@ export default function DashboardPage() {
           {/* Completeness Compass + Rule Check — top bar of the context view */}
           <div className="flex items-start justify-between gap-4 px-4 pt-3">
             <div className="flex-1 min-w-0">
-              <RuleViolationsPanel projectId={projectId} contextId={activeContextId} />
+              <React.Suspense fallback={<ViewFallback />}>
+                <RuleViolationsPanel projectId={projectId} contextId={activeContextId} />
+              </React.Suspense>
             </div>
             <CompletenessCompass />
           </div>
@@ -514,17 +516,19 @@ export default function DashboardPage() {
             projectId={projectId}
             onCreateContext={() => setCreateContextOpen(true)}
           />
-          <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-xl border border-border bg-bg-primary p-4">
-              <RAGSearchPanel projectId={projectId} onSelectUnit={(id) => usePanelStore.getState().openPanel(id)} />
+          <React.Suspense fallback={<ViewFallback />}>
+            <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="rounded-xl border border-border bg-bg-primary p-4">
+                <RAGSearchPanel projectId={projectId} onSelectUnit={(id) => usePanelStore.getState().openPanel(id)} />
+              </div>
+              <div className="rounded-xl border border-border bg-bg-primary p-4">
+                <ProactiveInsightsFeed />
+              </div>
+              <div className="rounded-xl border border-border bg-bg-primary p-4 lg:col-span-2">
+                <DecisionJournalPanel projectId={projectId} />
+              </div>
             </div>
-            <div className="rounded-xl border border-border bg-bg-primary p-4">
-              <ProactiveInsightsFeed />
-            </div>
-            <div className="rounded-xl border border-border bg-bg-primary p-4 lg:col-span-2">
-              <DecisionJournalPanel projectId={projectId} />
-            </div>
-          </div>
+          </React.Suspense>
         </>
       )}
 

@@ -181,8 +181,14 @@ export const contextRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       await verifyContextOwnership(ctx.db, input.contextId, ctx.session.user.id!);
-      for (const uid of input.unitIds) {
-        await verifyUnitOwnership(ctx.db, uid, ctx.session.user.id!);
+      const ownedUnits = await ctx.db.unit.findMany({
+        where: { id: { in: input.unitIds }, project: { userId: ctx.session.user.id! } },
+        select: { id: true },
+      });
+      const ownedIds = new Set(ownedUnits.map(u => u.id));
+      const unauthorized = input.unitIds.filter(id => !ownedIds.has(id));
+      if (unauthorized.length > 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Units not found: ${unauthorized.join(", ")}` });
       }
       const service = createContextService(ctx.db);
       const results = await Promise.all(

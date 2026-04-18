@@ -434,6 +434,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
   @@map("accounts")
 }
 
@@ -444,6 +445,7 @@ model Session {
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("sessions")
 }
 
@@ -635,6 +637,8 @@ model Unit {
   @@index([primaryType])
   @@index([primaryEpistemicAct])
   @@index([salienceTier])
+  @@index([incubating])
+  @@index([salienceScore])
   @@map("units")
 }
 
@@ -853,6 +857,7 @@ model AssemblyItem {
   unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
   @@index([assemblyId])
+  @@index([unitId])
   @@map("assembly_items")
 }
 
@@ -1164,6 +1169,7 @@ model Proposal {
   @@index([userId, status])
   @@index([kind, status])
   @@index([evalTick])
+  @@index([targetUnitId, kind, status])
   @@map("proposals")
 }
 

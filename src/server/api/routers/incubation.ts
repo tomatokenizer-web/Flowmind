@@ -26,6 +26,7 @@ export const incubationRouter = createTRPCRouter({
         incubating: true,
       },
       orderBy: { createdAt: "desc" },
+      take: 100,
       include: {
         project: {
           select: { id: true, name: true },
