@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen, Clock, Trash2 } from "lucide-react";
+import { Plus, BookOpen, GitCompare, Wand2, Layers, GitMerge, Network, Zap, FolderOpen, Clock, Trash2, ChevronRight, Search, Sparkles, FileText, ShieldCheck, Target } from "lucide-react";
 import { api } from "~/trpc/react";
 import { useLayoutStore } from "~/stores/layout-store";
 import { useProjectId, useProjectLoading } from "~/contexts/project-context";
@@ -400,6 +400,85 @@ function ContextOverviewGrid({ projectId, onCreateContext }: { projectId: string
   );
 }
 
+// ─── Dashboard tools (collapsible) ──────────────────────────────────
+
+function DashboardToolsSection({ projectId }: { projectId: string }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <div className="px-6 pb-6">
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
+      >
+        <ChevronRight className={cn("h-4 w-4 transition-transform duration-fast", expanded && "rotate-90")} />
+        <span>Tools</span>
+        <div className="flex items-center gap-1.5 ml-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] text-text-tertiary">
+            <Search className="h-2.5 w-2.5" /> Search
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] text-text-tertiary">
+            <Sparkles className="h-2.5 w-2.5" /> Insights
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary px-2 py-0.5 text-[10px] text-text-tertiary">
+            <FileText className="h-2.5 w-2.5" /> Decisions
+          </span>
+        </div>
+      </button>
+      {expanded && (
+        <React.Suspense fallback={<ViewFallback />}>
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-border bg-bg-primary p-4">
+              <RAGSearchPanel projectId={projectId} onSelectUnit={(id) => usePanelStore.getState().openPanel(id)} />
+            </div>
+            <div className="rounded-xl border border-border bg-bg-primary p-4">
+              <ProactiveInsightsFeed />
+            </div>
+            <div className="rounded-xl border border-border bg-bg-primary p-4 lg:col-span-2">
+              <DecisionJournalPanel projectId={projectId} />
+            </div>
+          </div>
+        </React.Suspense>
+      )}
+    </div>
+  );
+}
+
+// ─── Context health bar (compact toggle for rule checks + completeness) ─
+
+function ContextHealthBar({ projectId, contextId }: { projectId: string; contextId: string }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <div className="px-4 pt-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-bg-secondary/50 px-3 py-2 text-sm transition-colors hover:bg-bg-hover"
+      >
+        <ShieldCheck className="h-3.5 w-3.5 text-accent-primary" />
+        <span className="text-text-secondary font-medium">Health Check</span>
+        <Target className="h-3.5 w-3.5 text-text-tertiary ml-1" />
+        <span className="text-text-secondary font-medium">Completeness</span>
+        <ChevronRight className={cn("h-3.5 w-3.5 text-text-tertiary ml-auto transition-transform duration-fast", expanded && "rotate-90")} />
+      </button>
+      {expanded && (
+        <div className="mt-2 flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <React.Suspense fallback={<ViewFallback />}>
+              <RuleViolationsPanel projectId={projectId} contextId={contextId} />
+            </React.Suspense>
+          </div>
+          <CompletenessCompass />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ──────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const viewMode = useLayoutStore((s) => s.viewMode);
   const setViewMode = useLayoutStore((s) => s.setViewMode);
@@ -496,39 +575,19 @@ export default function DashboardPage() {
 
       {activeContextId ? (
         <>
-          {/* Completeness Compass + Rule Check — top bar of the context view */}
-          <div className="flex items-start justify-between gap-4 px-4 pt-3">
-            <div className="flex-1 min-w-0">
-              <React.Suspense fallback={<ViewFallback />}>
-                <RuleViolationsPanel projectId={projectId} contextId={activeContextId} />
-              </React.Suspense>
-            </div>
-            <CompletenessCompass />
-          </div>
+          <ContextHealthBar projectId={projectId} contextId={activeContextId} />
           <React.Suspense fallback={<ViewFallback />}>
             <ContextView projectId={projectId} />
           </React.Suspense>
         </>
       ) : (
-        /* No context selected — show context overview grid + dashboard widgets */
+        /* No context selected — show context overview grid + collapsible tools */
         <>
           <ContextOverviewGrid
             projectId={projectId}
             onCreateContext={() => setCreateContextOpen(true)}
           />
-          <React.Suspense fallback={<ViewFallback />}>
-            <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="rounded-xl border border-border bg-bg-primary p-4">
-                <RAGSearchPanel projectId={projectId} onSelectUnit={(id) => usePanelStore.getState().openPanel(id)} />
-              </div>
-              <div className="rounded-xl border border-border bg-bg-primary p-4">
-                <ProactiveInsightsFeed />
-              </div>
-              <div className="rounded-xl border border-border bg-bg-primary p-4 lg:col-span-2">
-                <DecisionJournalPanel projectId={projectId} />
-              </div>
-            </div>
-          </React.Suspense>
+          <DashboardToolsSection projectId={projectId} />
         </>
       )}
 
