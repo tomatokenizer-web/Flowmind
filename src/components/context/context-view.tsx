@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { ChevronDown, ChevronRight, Layers, Loader2, Merge, Scissors, Search, Sparkles, Wand2, X } from "lucide-react";
+import { Layers, Loader2, Merge, Scissors, Search, Sparkles, Wand2, X } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
@@ -11,6 +11,7 @@ import { useContextBriefing } from "~/hooks/use-context-briefing";
 
 import { useViewStatePreservation } from "~/hooks/use-view-state-preservation";
 import { usePanelStore } from "~/stores/panel-store";
+import { useAIPanelStore } from "~/stores/ai-panel-store";
 import type { LifecycleState } from "~/components/unit/lifecycle-indicator";
 import { type UnitCardUnit } from "~/components/unit/unit-card";
 import { UnitCardSkeleton } from "~/components/unit/unit-card-skeleton";
@@ -18,9 +19,6 @@ import { UnitCardList } from "~/components/unit/unit-card-list";
 import { EmptyState } from "~/components/shared/empty-state";
 import { BulkApprovalBar } from "~/components/unit/bulk-approval-bar";
 import { Button } from "~/components/ui/button";
-import { AIInsightsPanel } from "~/components/ai/AIInsightsPanel";
-import { SuggestionQueuePanel } from "~/components/ai/SuggestionQueuePanel";
-import { ReasoningChainPanel } from "~/components/assembly/ReasoningChainPanel";
 import { PromptGeneratorDialog } from "~/components/ai/PromptGeneratorDialog";
 import { ContextHeader, ContextHeaderSkeleton } from "./context-header";
 import { ContextBriefing } from "./context-briefing";
@@ -28,21 +26,13 @@ import { AddUnitToContext } from "./add-unit-to-context";
 import { ContextSplitDialog } from "./context-split-dialog";
 import { ContextMergeDialog } from "./context-merge-dialog";
 import { MissingArgumentAlert } from "~/components/feedback/MissingArgumentAlert";
-import { ContextStatsPanel } from "~/components/dashboard/ContextStatsPanel";
 import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
 
-// ─── Insights Accordion ─────────────────────────────────────────────
+// ─── AI Status Bar ─────────────────────────────────────────────────
 
-function InsightsSection({
-  children,
-  contextId,
-}: {
-  children: React.ReactNode;
-  contextId: string;
-}) {
-  const [expanded, setExpanded] = React.useState(false);
+function AIStatusBar({ contextId }: { contextId: string }) {
+  const toggleAIPanel = useAIPanelStore((s) => s.toggleAIPanel);
 
-  // Piggyback on the same query MissingArgumentAlert runs — React Query deduplicates
   const { data: missingArgs } = api.ai.detectMissingArguments.useQuery(
     { contextId },
     { enabled: !!contextId, retry: false },
@@ -50,35 +40,28 @@ function InsightsSection({
   const gapCount = missingArgs?.gaps?.length ?? 0;
 
   return (
-    <div className="mx-4 mt-3">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover transition-colors"
-      >
-        <ChevronRight className={cn("h-4 w-4 transition-transform duration-fast ease-default", expanded && "rotate-90")} />
-        <span className="flex items-center gap-1.5">
-          Insights & Analysis
-          {!expanded && gapCount > 0 && (
-            <span className="inline-flex items-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
-              {gapCount}
-            </span>
-          )}
-          {!expanded && gapCount === 0 && (
-            <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-          )}
-        </span>
-      </button>
-      {expanded && (
-        <div className="mt-2 space-y-3">
-          {children}
-        </div>
+    <button
+      type="button"
+      onClick={toggleAIPanel}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+        "border border-border/60 bg-bg-secondary/50 hover:bg-bg-hover",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
       )}
-    </div>
+    >
+      <Sparkles className="h-3.5 w-3.5 text-accent-primary" />
+      <span className="text-text-secondary font-medium">AI Insights</span>
+      {gapCount > 0 && (
+        <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+          {gapCount} gap{gapCount !== 1 ? "s" : ""}
+        </span>
+      )}
+      <span className="ml-auto text-xs text-text-tertiary">Open panel</span>
+    </button>
   );
 }
 
-// ─── Props ───────────────────────────────────────────────────────────
+// ─── Props ──���────────────────────────────���───────────────────────────
 
 interface ContextViewProps {
   projectId: string | undefined;
@@ -239,8 +222,6 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   // Progressive disclosure: track which unit is expanded inline (level 2)
   const [expandedUnitId, setExpandedUnitId] = React.useState<string | null>(null);
-
-  const [showAiInsights, setShowAiInsights] = React.useState(false);
 
   // Search / filter state for units in this context
   const [unitSearch, setUnitSearch] = React.useState("");
@@ -570,11 +551,10 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       )}
 
 
-      {/* Insights & Analysis — collapsed accordion to avoid pushing unit list down */}
+      {/* AI status bar + inline alerts — replaces heavy InsightsSection accordion */}
       {activeContextId && !isLoading && (
-        <InsightsSection contextId={activeContextId}>
-          <ContextStatsPanel contextId={activeContextId} />
-
+        <div className="space-y-2">
+          <AIStatusBar contextId={activeContextId} />
           <MissingArgumentAlert
             contextId={activeContextId}
             onCreateUnit={(content, unitType) => {
@@ -586,50 +566,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
               });
             }}
           />
-
-          <ReasoningChainPanel contextId={activeContextId} />
-
-          <div className="border border-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setShowAiInsights((p) => !p)}
-              className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-secondary transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4" />
-                AI Insights
-              </span>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 transition-transform duration-fast ease-default",
-                  showAiInsights && "rotate-180",
-                )}
-              />
-            </button>
-            {showAiInsights && (
-              <AIInsightsPanel
-                contextId={activeContextId}
-                onNavigateToUnit={(unitId) => {
-                  openPanel(unitId);
-                }}
-                onCreateUnit={(content, unitType) => {
-                  if (!projectId) return;
-                  createUnitMutation.mutate({
-                    content,
-                    unitType: unitType as Parameters<typeof createUnitMutation.mutate>[0]["unitType"],
-                    projectId,
-                  });
-                }}
-              />
-            )}
-          </div>
-
-          {projectId && (
-            <SuggestionQueuePanel
-              contextId={activeContextId}
-              projectId={projectId}
-            />
-          )}
-        </InsightsSection>
+        </div>
       )}
 
       {/* Unit list */}
