@@ -155,30 +155,41 @@ export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTa
 
 function AIAutoFillButton({
   unit,
-  onMetadataChange,
 }: {
   unit: UnitDetailData;
   onMetadataChange?: (field: keyof MetadataValues, value: string | null) => void;
 }) {
   const utils = api.useUtils();
 
+  const updateMutation = api.unit.update.useMutation({
+    onSuccess: () => {
+      void utils.unit.getById.invalidate({ id: unit.id });
+    },
+  });
+
   const classifyMutation = api.ai.classifyFullMetadata.useMutation({
     onSuccess: (result) => {
-      if (!onMetadataChange) return;
-      // Apply all fields
       const fields: (keyof MetadataValues)[] = [
         "unitType", "certainty", "completeness", "evidenceDomain", "scope", "stance",
       ];
+      const updates: Record<string, string | undefined> = {};
       let changed = 0;
       for (const field of fields) {
         const newVal = result[field];
         if (newVal !== undefined) {
-          onMetadataChange(field, newVal);
+          updates[field] = newVal ?? undefined;
           changed++;
         }
       }
-      void utils.unit.getById.invalidate({ id: unit.id });
-      toast.success(`AI classified ${changed} fields`);
+      if (changed > 0) {
+        updateMutation.mutate(
+          { id: unit.id, ...updates },
+          {
+            onSuccess: () => toast.success(`AI classified ${changed} fields`),
+            onError: (err) => toast.error("Failed to save classification", { description: err.message }),
+          },
+        );
+      }
     },
     onError: (err) => {
       toast.error("AI classification failed", { description: err.message });

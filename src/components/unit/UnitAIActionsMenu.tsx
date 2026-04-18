@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   AlertCircle,
   Info,
+  Scissors,
 } from "lucide-react";
 import type {
   AlternativeFraming,
@@ -44,26 +45,32 @@ interface UnitAIActionsMenuProps {
     id: string;
     content: string;
     unitType: string;
+    projectId?: string;
   };
   contextId?: string;
+  projectId?: string;
   targetUnit?: {
     id: string;
     content: string;
   };
   onCreateUnit?: (content: string, type: string) => void;
   onUpdateUnit?: (id: string, updates: { content?: string; unitType?: string }) => void;
+  onDecomposeComplete?: () => void;
 }
 
-type DialogType = "framing" | "counter" | "assumptions" | "stance" | "rules" | null;
+type DialogType = "framing" | "counter" | "assumptions" | "stance" | "rules" | "decompose" | null;
 
 export function UnitAIActionsMenu({
   unit,
   contextId,
+  projectId,
   targetUnit,
   onCreateUnit,
   onUpdateUnit,
+  onDecomposeComplete,
 }: UnitAIActionsMenuProps) {
   const [activeDialog, setActiveDialog] = React.useState<DialogType>(null);
+  const resolvedProjectId = projectId ?? unit.projectId;
 
   // Mutations
   const utils = api.useUtils();
@@ -78,6 +85,22 @@ export function UnitAIActionsMenu({
       void utils.proactive.getBudgetStatus.invalidate();
     },
   });
+
+  const decomposeMutation = api.ai.decomposeUnit.useMutation({
+    onSuccess: () => {
+      void utils.unit.list.invalidate();
+    },
+  });
+
+  const handleDecompose = () => {
+    if (!resolvedProjectId) return;
+    setActiveDialog("decompose");
+    decomposeMutation.mutate({
+      unitId: unit.id,
+      projectId: resolvedProjectId,
+      contextId,
+    });
+  };
 
   const handleFraming = () => {
     setActiveDialog("framing");
@@ -159,6 +182,12 @@ export function UnitAIActionsMenu({
             <DropdownMenuItem onClick={handleStance}>
               <Scale className="mr-2 h-4 w-4" />
               Classify Stance
+            </DropdownMenuItem>
+          )}
+          {resolvedProjectId && unit.content.length > 100 && (
+            <DropdownMenuItem onClick={handleDecompose}>
+              <Scissors className="mr-2 h-4 w-4" />
+              Decompose into Units
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
@@ -265,6 +294,35 @@ export function UnitAIActionsMenu({
         </DialogContent>
       </Dialog>
 
+      {/* Decompose Dialog */}
+      <Dialog open={activeDialog === "decompose"} onOpenChange={(open) => !open && setActiveDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5" />
+              Decompose Unit
+            </DialogTitle>
+            <DialogDescription>
+              Split this unit into smaller, focused thought units
+            </DialogDescription>
+          </DialogHeader>
+          <DecomposeResults
+            data={decomposeMutation.data}
+            isLoading={decomposeMutation.isPending}
+            error={decomposeMutation.error?.message}
+            onAccept={async (proposals) => {
+              for (const p of proposals) {
+                onCreateUnit?.(p.content, p.proposedType);
+              }
+              // Archive the original unit
+              onUpdateUnit?.(unit.id, { content: unit.content });
+              onDecomposeComplete?.();
+              setActiveDialog(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
       {/* Epistemic Rules Dialog */}
       <Dialog open={activeDialog === "rules"} onOpenChange={(open) => !open && setActiveDialog(null)}>
         <DialogContent className="max-w-lg">
@@ -289,6 +347,88 @@ export function UnitAIActionsMenu({
 }
 
 // ─── Result Components ────────────────────────────────────────────────────
+
+function DecomposeResults({
+  data,
+  isLoading,
+  error,
+  onAccept,
+}: {
+  data?: { proposals: { content: string; proposedType: string; rationale?: string }[] };
+  isLoading: boolean;
+  error?: string;
+  onAccept: (proposals: { content: string; proposedType: string }[]) => void;
+}) {
+  const [selected, setSelected] = React.useState<Set<number>>(new Set());
+
+  React.useEffect(() => {
+    if (data?.proposals) {
+      setSelected(new Set(data.proposals.map((_, i) => i)));
+    }
+  }, [data]);
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
+  if (!data || data.proposals.length === 0) return <EmptyState />;
+
+  const toggle = (idx: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="max-h-[400px] overflow-auto space-y-2">
+        {data.proposals.map((p, i) => (
+          <label
+            key={i}
+            className={`flex gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+              selected.has(i)
+                ? "border-accent bg-accent/5"
+                : "border-border bg-bg-secondary opacity-60"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(i)}
+              onChange={() => toggle(i)}
+              className="mt-0.5 accent-accent"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent">
+                  {p.proposedType}
+                </span>
+              </div>
+              <p className="text-sm">{p.content}</p>
+              {p.rationale && (
+                <p className="text-xs text-text-secondary mt-1">{p.rationale}</p>
+              )}
+            </div>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center justify-between pt-2 border-t border-border">
+        <span className="text-xs text-text-secondary">
+          {selected.size}/{data.proposals.length} selected
+        </span>
+        <Button
+          size="sm"
+          disabled={selected.size === 0}
+          onClick={() => {
+            const accepted = data.proposals.filter((_, i) => selected.has(i));
+            onAccept(accepted);
+          }}
+        >
+          Accept & Create Units
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function FramingResults({
   data,

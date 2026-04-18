@@ -175,7 +175,19 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
     [setText, handleScopeJumpCheck],
   );
 
-  // ── Keyboard ─────────────────────────────────────────────────────────────
+  // ── Global ESC handler (works even when textarea isn't focused) ──────────
+  React.useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [close]);
+
+  // ── Keyboard (textarea-specific) ────────────────────────────────────────
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Escape") {

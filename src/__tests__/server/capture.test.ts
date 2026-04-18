@@ -64,6 +64,8 @@ const mockUnit = {
 
 // ─── Mock Prisma ───────────────────────────────────────────────────
 
+const TEST_CONTEXT_ID = "c0000000-0000-0000-0000-000000000001";
+
 function createMockPrisma() {
   return {
     unit: {
@@ -77,6 +79,12 @@ function createMockPrisma() {
     unitVersion: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "v1", version: 1, content: "old" }),
+    },
+    context: {
+      findFirst: vi.fn().mockResolvedValue({ id: TEST_CONTEXT_ID }),
+    },
+    unitContext: {
+      create: vi.fn().mockResolvedValue({ unitId: TEST_UNIT_ID, contextId: TEST_CONTEXT_ID }),
     },
   } as unknown as PrismaClient;
 }

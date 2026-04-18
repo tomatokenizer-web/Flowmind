@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 import { ExternalKnowledgePanel } from "~/components/ai/ExternalKnowledgePanel";
 import { toast } from "~/lib/toast";
 import { useAIIntensity, isAtLeastBalanced, isProactive } from "~/hooks/useAIIntensity";
-import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight, Telescope, MessageCircleQuestion, Sparkles, ChevronRight, Layers } from "lucide-react";
+import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight, Telescope, MessageCircleQuestion, Sparkles, ChevronRight, Layers, Scissors } from "lucide-react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 import { useAITabCacheStore } from "~/stores/aiTabCacheStore";
@@ -229,6 +229,17 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
         )}
       </div>
 
+      {/* Decompose — split long unit into smaller focused units */}
+      {projectId && content.length > 100 && (
+        <DecomposeSection
+          unitId={unitId}
+          content={content}
+          projectId={projectId}
+          contextId={activeContextId ?? undefined}
+          onAddAsUnit={onAddAsUnit}
+        />
+      )}
+
       {/* Branch potential — only shown in proactive mode */}
       {showBranchPotential && (
         <div className="flex items-center justify-between rounded-xl border border-border p-3">
@@ -276,6 +287,150 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
         unitContent={content}
         onAddAsUnit={onAddAsUnit}
       />
+    </div>
+  );
+}
+
+// ─── Decompose Sub-component ──────────────────────────────────────────
+
+function DecomposeSection({
+  unitId,
+  content,
+  projectId,
+  contextId,
+  onAddAsUnit,
+}: {
+  unitId: string;
+  content: string;
+  projectId: string;
+  contextId?: string;
+  onAddAsUnit?: (content: string) => void;
+}) {
+  const [selected, setSelected] = React.useState<Set<number>>(new Set());
+  const utils = api.useUtils();
+
+  const decomposeMutation = api.ai.decomposeUnit.useMutation({
+    onSuccess: (data) => {
+      setSelected(new Set(data.proposals.map((_, i) => i)));
+    },
+    onError: (err) => {
+      toast.error("Decomposition failed", { description: err.message });
+    },
+  });
+
+  const createUnit = api.unit.create.useMutation({
+    onSuccess: () => {
+      void utils.unit.list.invalidate();
+    },
+  });
+
+  const toggle = (idx: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+
+  const handleAccept = async () => {
+    if (!decomposeMutation.data) return;
+    const accepted = decomposeMutation.data.proposals.filter((_, i) => selected.has(i));
+    for (const p of accepted) {
+      if (onAddAsUnit) {
+        onAddAsUnit(p.content);
+      } else {
+        await createUnit.mutateAsync({
+          content: p.content,
+          unitType: p.proposedType as "claim" | "question" | "evidence" | "counterargument" | "observation" | "idea" | "definition" | "assumption" | "action",
+          lifecycle: "draft",
+          originType: "ai_generated",
+          sourceSpan: { derivedFrom: unitId },
+          projectId,
+        });
+      }
+    }
+    toast.success(`${accepted.length} units created from decomposition`);
+    decomposeMutation.reset();
+  };
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium text-text-secondary uppercase tracking-wide flex items-center gap-1.5">
+          <Scissors className="h-3.5 w-3.5" />
+          Decompose
+        </p>
+        <span className="text-[10px] text-text-tertiary">
+          {content.length} chars
+        </span>
+      </div>
+
+      {decomposeMutation.data ? (
+        <div className="space-y-2">
+          <div className="max-h-[300px] overflow-auto space-y-1.5">
+            {decomposeMutation.data.proposals.map((p, i) => (
+              <label
+                key={i}
+                className={cn(
+                  "flex gap-2 p-2 rounded-lg border cursor-pointer transition-colors text-sm",
+                  selected.has(i)
+                    ? "border-accent-primary/40 bg-accent-primary/5"
+                    : "border-border bg-bg-secondary opacity-60",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(i)}
+                  onChange={() => toggle(i)}
+                  className="mt-0.5 accent-accent-primary"
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-accent-primary/10 text-accent-primary">
+                    {p.proposedType}
+                  </span>
+                  <p className="text-xs mt-1 line-clamp-3">{p.content}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <span className="text-[10px] text-text-tertiary">
+              {selected.size}/{decomposeMutation.data.proposals.length} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => decomposeMutation.reset()}
+                className="text-xs text-text-tertiary hover:text-text-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAccept}
+                disabled={selected.size === 0 || createUnit.isPending}
+                className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-2 py-1 text-xs text-accent-primary hover:bg-accent-primary/20 disabled:opacity-50"
+              >
+                <Check className="h-3 w-3" />
+                Create {selected.size} units
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => decomposeMutation.mutate({ unitId, projectId, contextId })}
+          disabled={decomposeMutation.isPending}
+          className="text-sm text-accent-primary hover:underline disabled:opacity-50"
+        >
+          {decomposeMutation.isPending ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Decomposing...
+            </span>
+          ) : (
+            "Split into smaller thought units"
+          )}
+        </button>
+      )}
     </div>
   );
 }

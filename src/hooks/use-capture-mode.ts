@@ -109,9 +109,12 @@ export function useCaptureMode({
       });
     } else {
       // In capture mode, direct submission
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validCtxId = contextId && uuidRegex.test(contextId) ? contextId : undefined;
       await submitMutation.mutateAsync({
         content: text,
         projectId,
+        contextId: validCtxId,
         mode: currentMode,
       });
     }

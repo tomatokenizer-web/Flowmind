@@ -309,7 +309,8 @@ export function UnitCard({
             {variant !== "compact" && (
               <span onClick={(e) => e.stopPropagation()}>
                 <UnitAIActionsMenu
-                  unit={{ id: unit.id, content: unit.content, unitType: unit.unitType }}
+                  unit={{ id: unit.id, content: unit.content, unitType: unit.unitType, projectId }}
+                  projectId={projectId}
                   contextId={activeContextId ?? undefined}
                   onCreateUnit={(content, type) => {
                     if (!projectId) return;

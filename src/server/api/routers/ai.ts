@@ -280,6 +280,48 @@ export const aiRouter = createTRPCRouter({
       }
     }),
 
+  /**
+   * Decompose an existing unit into multiple sub-units.
+   * Returns proposals for review — same as decomposeText but sourced from an existing unit.
+   * On user acceptance, the original unit can be archived.
+   */
+  decomposeUnit: rateLimitedProcedure
+    .input(z.object({
+      unitId: z.string().uuid(),
+      projectId: z.string().uuid(),
+      contextId: z.string().uuid().optional(),
+      sessionId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ ctx, input }): Promise<DecompositionResult> => {
+      // Fetch the unit and verify ownership
+      const unit = await ctx.db.unit.findFirst({
+        where: { id: input.unitId, userId: ctx.session.user.id! },
+        select: { id: true, content: true, projectId: true },
+      });
+      if (!unit) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Unit not found" });
+      }
+
+      const aiService = createAIService(ctx.db);
+      const sessionId = resolveSessionId(input.sessionId);
+      const existingUnits = await getContextUnits(ctx.db, input.contextId, 20);
+
+      try {
+        return await aiService.decomposeText(
+          unit.content,
+          input.contextId ?? "",
+          existingUnits,
+          {
+            userId: ctx.session.user.id!,
+            sessionId,
+            contextId: input.contextId,
+          },
+        );
+      } catch (error: unknown) {
+        handleAIError(error, "AI unit decomposition");
+      }
+    }),
+
   // ─── Story 5.4: Unit Split with Relation Re-attribution ─────────────────
 
   /**

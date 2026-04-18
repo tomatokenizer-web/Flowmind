@@ -10,6 +10,8 @@ import type { UnitType } from "@prisma/client";
 const captureSubmitSchema = z.object({
   content: z.string().min(1, "Content is required"),
   projectId: z.string().uuid(),
+  /** Optional context to link the unit to (for Thread/Canvas views) */
+  contextId: z.string().uuid().optional(),
   /** "capture" stores as-is, "organize" flags for AI decomposition (Epic 5) */
   mode: z.enum(["capture", "organize"]).default("capture"),
 });
@@ -46,44 +48,20 @@ export const captureRouter = createTRPCRouter({
           ctx.session.user.id!,
         );
 
-        // Fire-and-forget: upgrade classification with AI if available
-        void (async () => {
-          try {
-            const { getAIProvider } = await import("@/server/ai/provider");
-            const provider = getAIProvider();
-            const result = await provider.generateStructured<{
-              unitType: string;
-              confidence: number;
-              reasoning: string;
-            }>(
-              `Analyze this text and determine its primary cognitive function.\n\nText: "${input.content.slice(0, 500)}"\n\nAvailable types: claim, question, evidence, counterargument, observation, idea, definition, assumption, action`,
-              {
-                temperature: 0.3,
-                maxTokens: 256,
-                zodSchema: (await import("@/server/ai/schemas")).TypeSuggestionSchema,
-                schema: {
-                  name: "TypeSuggestion",
-                  description: "AI unit type classification",
-                  properties: {
-                    unitType: { type: "string", enum: ["claim", "question", "evidence", "counterargument", "observation", "idea", "definition", "assumption", "action"] },
-                    confidence: { type: "number", minimum: 0, maximum: 1 },
-                    reasoning: { type: "string", maxLength: 200 },
-                  },
-                  required: ["unitType", "confidence", "reasoning"],
-                },
-              },
-            );
-            // Only upgrade if AI is confident and suggests a different type
-            if (result.confidence >= 0.7 && result.unitType !== classifiedType) {
-              await ctx.db.unit.update({
-                where: { id: unit.id },
-                data: { unitType: result.unitType as UnitType },
-              });
-            }
-          } catch {
-            // AI unavailable — heuristic classification stands
-          }
-        })();
+        // Link to context only if user explicitly provided one.
+        // Otherwise the unit stays orphan — visible in Attention View
+        // until the user assigns it or AI suggests a context.
+        if (input.contextId) {
+          await ctx.db.unitContext.create({
+            data: {
+              unitId: unit.id,
+              contextId: input.contextId,
+            },
+          });
+        }
+
+        // AI type upgrade is deferred to explicit user action (classifyFullMetadata)
+        // to conserve rate limit budget. Heuristic classification from inferUnitType() is used.
 
         return unit;
       } catch (error) {

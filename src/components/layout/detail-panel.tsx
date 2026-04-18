@@ -25,10 +25,11 @@ export function DetailPanel({ className }: DetailPanelProps) {
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
 
   // Fetch real unit data when a unit is selected
-  const { data: unitData, isLoading } = api.unit.getById.useQuery(
+  const { data: unitData, isLoading, isFetching } = api.unit.getById.useQuery(
     { id: selectedUnitId! },
     { enabled: !!selectedUnitId },
   );
+  const showLoading = isLoading || (!!selectedUnitId && !unitData && isFetching);
   const unit: UnitDetailData | null = unitData
     ? {
         id: unitData.id,
@@ -177,7 +178,7 @@ export function DetailPanel({ className }: DetailPanelProps) {
   const panelContent = (
     <UnitDetailPanel
       unit={unit}
-      isLoading={isLoading}
+      isLoading={showLoading}
       onClose={handleClose}
       onContentChange={handleContentChange}
       onMetadataChange={handleMetadataChange}
