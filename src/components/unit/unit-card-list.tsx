@@ -16,7 +16,11 @@ export interface UnitCardListProps {
   gap?: number;
   /** Passed through to each UnitCard */
   selectedUnitIds?: Set<string>;
+  /** ID of the unit currently expanded inline (progressive disclosure level 2) */
+  expandedUnitId?: string | null;
   onUnitClick?: (unit: UnitCardUnit, event?: React.MouseEvent) => void;
+  /** Open the full detail panel for a unit (progressive disclosure level 3) */
+  onOpenDetail?: (unitId: string) => void;
   onLifecycleAction?: UnitCardProps["onLifecycleAction"];
   getOnRemoveFromContext?: (unit: UnitCardUnit) => (() => void) | undefined;
   getOnDelete?: (unit: UnitCardUnit) => (() => void) | undefined;
@@ -42,7 +46,9 @@ export function UnitCardList({
   estimatedRowHeight = 120,
   gap = 12,
   selectedUnitIds,
+  expandedUnitId,
   onUnitClick,
+  onOpenDetail,
   onLifecycleAction,
   getOnRemoveFromContext,
   getOnDelete,
@@ -111,10 +117,12 @@ export function UnitCardList({
             >
               <UnitCard
                 unit={unit}
+                variant={expandedUnitId === unit.id ? "expanded" : "standard"}
                 selected={selectedUnitIds?.has(unit.id) ?? false}
                 onClick={() => {
                   /* handled by parent div for event access */
                 }}
+                onOpenDetail={onOpenDetail}
                 onLifecycleAction={onLifecycleAction}
                 projectId={projectId}
                 onRemoveFromContext={getOnRemoveFromContext?.(unit)}

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles, Bell } from "lucide-react";
+import { Layout, GitBranch, List, Menu, Maximize2, Minimize2, BookOpen, Search, Layers, FileText, Compass, Sparkles, Bell, ChevronDown } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { useLayoutStore, type ViewMode } from "~/stores/layout-store";
 import { useSidebarStore } from "~/stores/sidebar-store";
@@ -15,14 +15,95 @@ import { openCommandPalette } from "~/components/search";
 import { api } from "~/trpc/react";
 import { ProactiveBudgetHUD } from "~/components/layout/ProactiveBudgetHUD";
 
-const VIEW_MODES: { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
+type ViewModeEntry = { mode: ViewMode; icon: React.ComponentType<{ className?: string }>; label: string };
+
+const PRIMARY_VIEW_MODES: ViewModeEntry[] = [
   { mode: "canvas", icon: Layout, label: "Canvas" },
   { mode: "graph", icon: GitBranch, label: "Graph" },
   { mode: "thread", icon: List, label: "Thread" },
+];
+
+const SECONDARY_VIEW_MODES: ViewModeEntry[] = [
   { mode: "assembly", icon: BookOpen, label: "Assembly" },
   { mode: "navigate", icon: Compass, label: "Navigate" },
   { mode: "attention", icon: Bell, label: "Attention" },
 ];
+
+const VIEW_MODES: ViewModeEntry[] = [...PRIMARY_VIEW_MODES, ...SECONDARY_VIEW_MODES];
+
+function ViewModeOverflow({
+  modes,
+  activeMode,
+  onSelect,
+}: {
+  modes: ViewModeEntry[];
+  activeMode: ViewMode;
+  onSelect: (mode: ViewMode) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const isSecondaryActive = modes.some((m) => m.mode === activeMode);
+  const activeEntry = modes.find((m) => m.mode === activeMode);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", handleClick);
+    return () => document.removeEventListener("pointerdown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="More views"
+        aria-expanded={open}
+        onClick={() => setOpen((p) => !p)}
+        className={cn(
+          "inline-flex items-center gap-space-1 rounded-md px-space-2 py-space-1",
+          "text-xs font-medium transition-all duration-fast ease-default",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2",
+          isSecondaryActive
+            ? "bg-bg-primary text-text-primary shadow-resting"
+            : "text-text-secondary hover:text-text-primary",
+        )}
+      >
+        {isSecondaryActive && activeEntry ? (
+          <>
+            <activeEntry.icon className="h-4 w-4" />
+            <span className="hidden sm:inline">{activeEntry.label}</span>
+          </>
+        ) : (
+          <ChevronDown className="h-4 w-4" />
+        )}
+        {isSecondaryActive && <ChevronDown className="h-3 w-3 opacity-50" />}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-border bg-bg-primary p-1 shadow-modal">
+          {modes.map(({ mode, icon: Icon, label }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => { onSelect(mode); setOpen(false); }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium",
+                "transition-colors duration-fast",
+                activeMode === mode
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ToolbarProps {
   className?: string;
@@ -160,14 +241,14 @@ export function Toolbar({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* View switcher — hidden in focus mode */}
+      {/* View switcher — primary modes always visible, secondary in overflow */}
       {!focusMode && (
         <div
           role="radiogroup"
           aria-label="View mode"
           className="flex items-center gap-space-1 rounded-lg bg-bg-secondary p-space-1"
         >
-          {VIEW_MODES.map(({ mode, icon: Icon, label }) => (
+          {PRIMARY_VIEW_MODES.map(({ mode, icon: Icon, label }) => (
             <button
               key={mode}
               type="button"
@@ -190,6 +271,11 @@ export function Toolbar({
               <span className="hidden sm:inline">{label}</span>
             </button>
           ))}
+          <ViewModeOverflow
+            modes={SECONDARY_VIEW_MODES}
+            activeMode={viewMode}
+            onSelect={setViewMode}
+          />
         </div>
       )}
 

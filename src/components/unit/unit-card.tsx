@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
 import { motion } from "framer-motion";
-import { GripVertical, Link2, Clock, History, ExternalLink, X, Scissors, Pin, Trash2 } from "lucide-react";
+import { GripVertical, Link2, Clock, History, ExternalLink, Layers, X, Scissors, Pin, Trash2 } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { NudgeBadge } from "./NudgeBadge";
 import { BranchPotentialPopover, BranchPotentialDots } from "./BranchPotentialPopover";
@@ -57,6 +57,8 @@ export interface UnitCardProps {
   variant?: UnitCardVariant;
   selected?: boolean;
   onClick?: (unit: UnitCardUnit) => void;
+  /** Open the full detail panel for this unit */
+  onOpenDetail?: (unitId: string) => void;
   onLifecycleAction?: (unitId: string, action: "approve" | "reject" | "reset") => void;
   /** When provided, shows "Remove from Context" in the context menu */
   onRemoveFromContext?: () => void;
@@ -141,6 +143,7 @@ export function UnitCard({
   variant = "standard",
   selected = false,
   onClick,
+  onOpenDetail,
   onLifecycleAction,
   onRemoveFromContext,
   onDelete,
@@ -151,7 +154,6 @@ export function UnitCard({
   const [splitDialogOpen, setSplitDialogOpen] = React.useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const selectedUnitId = usePanelStore((s) => s.selectedUnitId);
-  const openPanel = usePanelStore((s) => s.openPanel);
   const openSpotlight = usePanelStore((s) => s.openSpotlight);
   const activeContextId = useSidebarStore((s) => s.activeContextId);
   const isSelected = selectedUnitId === unit.id;
@@ -245,12 +247,16 @@ export function UnitCard({
       role="article"
       aria-label={ariaLabel}
       tabIndex={0}
-      onClick={() => { openPanel(unit.id); onClick?.(unit); }}
+      onClick={() => onClick?.(unit)}
+      onDoubleClick={() => onOpenDetail?.(unit.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          openPanel(unit.id);
-          onClick?.(unit);
+          if (e.shiftKey) {
+            onOpenDetail?.(unit.id);
+          } else {
+            onClick?.(unit);
+          }
         } else if (e.key === " ") {
           e.preventDefault();
           openSpotlight(unit.id);
@@ -534,13 +540,26 @@ export function UnitCard({
 
             {/* Action buttons row */}
             <div className="flex items-center gap-3">
+              {/* Open full detail panel */}
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs font-medium text-accent-primary hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenDetail?.(unit.id);
+                }}
+              >
+                <Layers className="h-3 w-3" aria-hidden="true" />
+                Open detail
+              </button>
+
               {/* Version history — opens detail panel on history tab */}
               <button
                 type="button"
-                className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline"
+                className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-accent-primary hover:underline"
                 onClick={(e) => {
                   e.stopPropagation();
-                  openPanel(unit.id);
+                  onOpenDetail?.(unit.id);
                 }}
               >
                 <History className="h-3 w-3" aria-hidden="true" />

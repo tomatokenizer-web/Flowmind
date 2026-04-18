@@ -237,6 +237,9 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewStateId]);
 
+  // Progressive disclosure: track which unit is expanded inline (level 2)
+  const [expandedUnitId, setExpandedUnitId] = React.useState<string | null>(null);
+
   const [showAiInsights, setShowAiInsights] = React.useState(false);
 
   // Search / filter state for units in this context
@@ -343,11 +346,13 @@ export function ContextView({ projectId, className }: ContextViewProps) {
     };
   }, []);
 
-  // Handle unit click - Shift+click for multi-select, normal click opens panel
+  // Handle unit click — progressive disclosure:
+  // Single click = toggle inline expansion (level 2)
+  // Shift+click = multi-select for bulk ops
+  // Double-click or "Open detail" button = open side panel (level 3)
   const handleUnitClick = React.useCallback(
     (unit: UnitCardUnit, event?: React.MouseEvent) => {
       if (event?.shiftKey) {
-        // Shift+click: toggle selection
         setSelectedUnitIds((prev) => {
           const next = new Set(prev);
           if (next.has(unit.id)) {
@@ -358,10 +363,16 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           return next;
         });
       } else {
-        // Normal click: clear multi-select and open panel
         setSelectedUnitIds(new Set());
-        openPanel(unit.id);
+        setExpandedUnitId((prev) => (prev === unit.id ? null : unit.id));
       }
+    },
+    [],
+  );
+
+  const handleOpenDetail = React.useCallback(
+    (unitId: string) => {
+      openPanel(unitId);
     },
     [openPanel],
   );
@@ -655,7 +666,9 @@ export function ContextView({ projectId, className }: ContextViewProps) {
           <UnitCardList
             units={visibleUnits}
             selectedUnitIds={selectedUnitIds}
+            expandedUnitId={expandedUnitId}
             onUnitClick={handleUnitClick}
+            onOpenDetail={handleOpenDetail}
             onLifecycleAction={handleLifecycleAction}
             projectId={projectId}
             getOnRemoveFromContext={
