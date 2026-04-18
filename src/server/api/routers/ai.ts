@@ -1174,7 +1174,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
 
       const existingUnits = await ctx.db.unit.findMany({
         where: {
-          perspectives: { some: { contextId: input.contextId } },
+          unitContexts: { some: { contextId: input.contextId } },
         },
         select: { content: true, unitType: true },
         take: 15,
@@ -1252,7 +1252,7 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
     }> => {
       const units = await ctx.db.unit.findMany({
         where: {
-          perspectives: { some: { contextId: input.contextId } },
+          unitContexts: { some: { contextId: input.contextId } },
         },
         select: { unitType: true },
         take: 100,
