@@ -3,11 +3,9 @@ import type { SafetyGuard } from "./safetyGuard";
 import { z } from "zod";
 import { logger } from "../logger";
 import {
-  PurposeClassificationSchema,
   DecompositionBoundariesSchema,
   DecompositionRelationProposalsSchema,
 } from "./schemas";
-import { sanitizeUserContent, PROMPT_INJECTION_GUARD } from "./utils";
 import type {
   UserPurpose,
   DecompositionBoundary,
@@ -118,52 +116,53 @@ ${text}
     "AI refinement + type classification + decomposition judgment"
   );
 
+  // Map unitType to purpose for the result
+  const purposeFromType: Record<string, UserPurpose> = {
+    claim: "arguing", counterargument: "arguing",
+    idea: "brainstorming",
+    evidence: "researching", observation: "researching", question: "researching",
+    definition: "defining", assumption: "defining",
+    action: "other",
+  };
+  const purpose = purposeFromType[judgment.unitType] ?? "other";
+
   // ─── No decomposition needed: return refined text as single unit ───
   if (!judgment.shouldDecompose) {
-    const classifiedType = judgment.unitType;
-    const purposeResult = await classifyPurpose(provider, refinedText);
-
     const tempId = `temp-${Date.now()}-0`;
     return {
-      purpose: purposeResult.purpose,
+      purpose,
       proposals: [
         {
           id: tempId,
           content: refinedText,
-          proposedType: classifiedType,
-          confidence: purposeResult.confidence,
+          proposedType: judgment.unitType,
+          confidence: 0.8,
           startChar: 0,
           endChar: refinedText.length,
           lifecycle: "draft",
           originType: "ai_generated",
         },
       ],
-      relationProposals: await proposeRelations(provider, [{ content: refinedText, proposedType: classifiedType }], existingUnits),
+      relationProposals: existingUnits.length > 0
+        ? await proposeRelations(provider, [{ content: refinedText, proposedType: judgment.unitType }], existingUnits)
+        : [],
     };
   }
 
-  // ─── Decomposition warranted: full pipeline on refined text ────────
-
-  // Step 1: Classify purpose
-  const purposeResult = await classifyPurpose(provider, refinedText);
-
-  // Step 2: Propose boundaries on the REFINED text
+  // ─── Decomposition warranted: split into boundaries ────────
   const proposals = await proposeBoundaries(provider, refinedText);
 
-  // Step 3: Propose relations
-  const relationProposals = await proposeRelations(provider, proposals, existingUnits);
+  const relationProposals = existingUnits.length > 0
+    ? await proposeRelations(provider, proposals, existingUnits)
+    : [];
 
   logger.info(
-    {
-      purpose: purposeResult.purpose,
-      proposalCount: proposals.length,
-      relationCount: relationProposals.length,
-    },
+    { purpose, proposalCount: proposals.length, relationCount: relationProposals.length },
     "AI decomposition completed"
   );
 
   return {
-    purpose: purposeResult.purpose,
+    purpose,
     proposals: proposals.map((p, idx) => ({
       ...p,
       id: `temp-${Date.now()}-${idx}`,
@@ -172,49 +171,6 @@ ${text}
     })),
     relationProposals,
   };
-}
-
-// ─── Helper: Classify Purpose ─────────────────────────────────────────────
-
-async function classifyPurpose(
-  provider: AIProvider,
-  text: string,
-): Promise<{ purpose: UserPurpose; confidence: number }> {
-  const purposePrompt = `${PROMPT_INJECTION_GUARD}
-
-Analyze the following text and determine the user's primary cognitive purpose.
-
-Text: ${sanitizeUserContent(text.slice(0, 1000))}
-
-Available purposes:
-- arguing: Building or defending a logical argument with claims and evidence
-- brainstorming: Generating ideas, possibilities, exploring options
-- researching: Gathering information, noting observations, collecting evidence
-- defining: Clarifying concepts, explaining terms, establishing meaning
-- other: General note-taking, mixed purposes, or unclear intent
-
-Respond with the most appropriate purpose.`;
-
-  return provider.generateStructured<{ purpose: UserPurpose; confidence: number }>(
-    purposePrompt,
-    {
-      temperature: 0.3,
-      maxTokens: 128,
-      zodSchema: PurposeClassificationSchema,
-      schema: {
-        name: "PurposeClassification",
-        description: "Classification of user's cognitive purpose",
-        properties: {
-          purpose: {
-            type: "string",
-            enum: ["arguing", "brainstorming", "researching", "defining", "other"],
-          },
-          confidence: { type: "number", minimum: 0, maximum: 1 },
-        },
-        required: ["purpose", "confidence"],
-      },
-    }
-  );
 }
 
 // ─── Helper: Propose Boundaries ───────────────────────────────────────────
