@@ -77,7 +77,14 @@ export async function decomposeText(
   }
 
   // ─── Step 0: Refine text + judge decomposition need ────────────────
-  const refinePrompt = `You are a writing assistant. The user wrote the following text. Rewrite it for clarity (fix grammar, sharpen phrasing, preserve all ideas). Then classify it and decide if it should be split.
+  const refinePrompt = `You are a thought management tool processing raw user input.
+
+Refine: Clarify what the user intends to express. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all content — same details, same length. Refinement improves expression, not reduces it.
+
+Classify: Pick the single cognitive type that best fits this text.
+Types: question, claim, evidence, counterargument, observation, idea, definition, assumption, action
+
+Decompose: Should this text be split into multiple units? Say yes when the text contains multiple independent ideas that each function as a different cognitive type. Longer text with distinct topics or arguments should generally be decomposed. Say no when the text is one coherent thought.
 
 """
 ${text}
@@ -179,7 +186,13 @@ async function proposeBoundaries(
   provider: AIProvider,
   text: string,
 ): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
-  const boundaryPrompt = `Split this text into self-contained thought units at natural topic boundaries. Use as many units as needed. Each unit's content must be the exact text from that segment. Units must not overlap and must cover the entire text.
+  const boundaryPrompt = `Split this text into self-contained thought units at natural topic boundaries.
+
+Rules:
+- Each unit gets a type: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
+- Content must be the exact text from the original segment, not a summary
+- Units must not overlap and must cover the entire text
+- Provide character positions (0-based startChar, exclusive endChar)
 
 """
 ${text}
