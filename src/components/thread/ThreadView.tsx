@@ -17,6 +17,7 @@ import { api } from "~/trpc/react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { usePanelStore } from "~/stores/panel-store";
 import { UnitTypeBadge } from "~/components/unit/unit-type-badge";
+import { UnitAIActionsMenu } from "~/components/unit/UnitAIActionsMenu";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import {
@@ -142,6 +143,7 @@ interface ThreadUnit {
   createdAt: string | Date;
   originType?: string | null;
   relationCount: number;
+  projectId?: string;
 }
 
 // ─── Thread Item ──────────────────────────────────────────────────────
@@ -211,9 +213,17 @@ function ThreadItem({
                 </span>
               )}
             </div>
-            <span className="text-xs text-text-tertiary">
-              {formatDistanceToNow(createdAt, { addSuffix: true })}
-            </span>
+            <div className="flex items-center gap-2">
+              <span onClick={(e) => e.stopPropagation()}>
+                <UnitAIActionsMenu
+                  unit={{ id: unit.id, content: unit.content, unitType: unit.unitType, projectId: unit.projectId }}
+                  projectId={unit.projectId}
+                />
+              </span>
+              <span className="text-xs text-text-tertiary">
+                {formatDistanceToNow(createdAt, { addSuffix: true })}
+              </span>
+            </div>
           </div>
 
           {/* Content */}
@@ -409,10 +419,11 @@ export function ThreadView({
         lifecycle: u.lifecycle,
         createdAt: u.createdAt,
         originType: u.originType,
+        projectId: u.projectId ?? projectId,
         relationCount:
           (relationsMap.get(u.id)?.length ?? 0) + (forkCounts.get(u.id) ?? 0),
       })),
-    [filteredUnits, relationsMap, forkCounts],
+    [filteredUnits, relationsMap, forkCounts, projectId],
   );
 
   // Scroll to selected unit
