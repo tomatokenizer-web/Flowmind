@@ -81,37 +81,17 @@ export async function decomposeText(
   // ─── Step 0: Refine text + judge decomposition need ────────────────
   const refinePrompt = `${PROMPT_INJECTION_GUARD}
 
-You are processing raw user input for a thought management tool. Do THREE things:
+You are a thought management tool processing raw user input.
 
-1. REFINE the text using intention-based refinement:
-   - Understand what the user is TRYING to express, then clarify the expression.
-   - Fix grammar, sharpen vague phrasing, untangle convoluted sentences, make implicit logic explicit.
-   - CRITICAL: The refined text MUST preserve ALL details, examples, names, arguments, and evidence from the original. Do NOT summarize. Do NOT condense. Do NOT remove content. The refined version should be roughly the SAME LENGTH as the original — you are improving clarity of expression, not reducing word count.
-   - If the text is already clear, make only minimal surface corrections.
+Refine: Clarify what the user intends to express. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all content — same details, same length. Refinement improves expression, not reduces it.
 
-2. CLASSIFY the cognitive type that best fits the OVERALL text:
-   question, claim, evidence, counterargument, observation, idea, definition, assumption, action
+Classify: Pick the single cognitive type that best fits this text.
+Types: question, claim, evidence, counterargument, observation, idea, definition, assumption, action
 
-3. JUDGE whether this text should be DECOMPOSED into multiple thought units.
+Decompose: Should this text be split into multiple units? Say yes when the text contains multiple independent ideas that each function as a different cognitive type. Longer text with distinct topics or arguments should generally be decomposed. Say no when the text is one coherent thought.
 
-   For SHORT text (under ~500 characters): Decompose ONLY if it contains genuinely distinct cognitive types (e.g., a claim + a question about an unrelated topic).
-
-   For LONG text (over ~500 characters): Decompose when the text covers multiple distinct topics, arguments, or ideas that each stand alone as independent thoughts. Long text almost always contains multiple decomposable units. Look for:
-   - Different historical periods, movements, or subjects discussed in sequence
-   - Multiple claims, each with their own supporting evidence
-   - A question followed by analysis followed by a conclusion
-   - Several independent observations or arguments
-
-   When decomposing, each unit should PRESERVE the full detail of its section from the original text — do not summarize the segments.
-
-Text to process (${text.length} characters):
-${sanitizeUserContent(text)}
-
-Respond with:
-- refined: the full refined text (same level of detail as original)
-- unitType: the cognitive type that best fits the overall text
-- shouldDecompose: true if the text contains multiple distinct ideas/topics (especially for longer texts)
-- reason: brief explanation of your judgment`;
+Text (${text.length} chars):
+${sanitizeUserContent(text)}`;
 
   const judgment = await provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
     refinePrompt,
@@ -253,27 +233,15 @@ async function proposeBoundaries(
 ): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
   const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
 
-Split the following text into distinct thought units. Each unit should be a complete, self-contained thought that can stand alone.
+Split this text into 2-6 self-contained thought units at natural topic boundaries.
 
-Text (${text.length} characters): ${sanitizeUserContent(text)}
+Rules:
+- Each unit gets a type: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
+- Content must be the exact text from the original segment, not a summary
+- Units must not overlap and must cover the entire text
+- Provide character positions (0-based startChar, exclusive endChar)
 
-Guidelines:
-- Split into 2-6 units based on the natural topic/argument boundaries in the text
-- Each unit should have a clear cognitive function (claim, question, evidence, etc.)
-- Units MUST be meaningfully different in type or topic
-- CRITICAL: Each unit's content must contain the FULL text of that segment — do NOT summarize or shorten. Copy the exact text from the original for each segment.
-- Preserve the exact character positions for boundaries
-- Units should not overlap
-- Cover the entire text — every part of the original must appear in exactly one unit
-
-Available unit types: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
-
-For each unit, provide:
-- startChar: starting character index (0-based)
-- endChar: ending character index (exclusive)
-- content: the exact text content of this segment (full, not summarized)
-- proposedType: the suggested unit type
-- confidence: how confident you are in this split (0-1)`;
+Text (${text.length} chars): ${sanitizeUserContent(text)}`;
 
   const boundaryResult = await provider.generateStructured<{ boundaries: DecompositionBoundary[] }>(
     boundaryPrompt,
