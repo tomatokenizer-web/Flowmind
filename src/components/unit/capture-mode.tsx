@@ -230,7 +230,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg-primary/97 backdrop-blur-xl"
+      className="fixed inset-0 z-50 flex flex-col items-center bg-bg-primary/97 backdrop-blur-xl overflow-y-auto"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -275,7 +275,10 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
       </div>
 
       {/* ── Content ── */}
-      <div className="w-full max-w-2xl px-8">
+      <div className={cn(
+        "w-full max-w-2xl px-8",
+        phase === "input" ? "my-auto" : "mt-20 mb-8",
+      )}>
         <AnimatePresence mode="wait">
           {/* Input phase */}
           {phase === "input" && (
