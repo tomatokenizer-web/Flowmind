@@ -8,10 +8,17 @@ import {
   ScopeJumpSchema,
   SalienceScoreSchema,
   IntegrityCheckSchema,
-  DecompositionBoundariesSchema,
 } from "@/server/ai/schemas";
+import { sanitizeUserContent, PROMPT_INJECTION_GUARD } from "@/server/ai/utils";
 import { createUnitService, DuplicateUnitContentError } from "@/server/services/unitService";
 import { eventBus } from "@/server/events/eventBus";
+import { z } from "zod";
+
+const RefinementJudgmentSchema = z.object({
+  refined: z.string(),
+  shouldDecompose: z.boolean(),
+  reason: z.string(),
+});
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -79,43 +86,55 @@ export function createPipelineService(db: PrismaClient) {
       const passes: PassResult[] = [];
       const isQuick = input.mode === "quick";
 
-      // ── Pass 1: Decomposition ─────────────────────────────────
-      // For single-unit input, skip decomposition
-      const sentenceCount = input.content.split(/[.!?]+/).filter(Boolean).length;
-      let unitContents: string[];
+      // ── Pass 1: Refinement ──────────────────────────────────
+      // Refine the raw text for clarity and coherence. Decomposition
+      // (segmenting into multiple units) is handled exclusively by
+      // the organize-mode flow (ai.decomposeText → DecompositionReview)
+      // where the user reviews proposals before any units are created.
+      let primaryContent: string;
 
-      if (sentenceCount > 3 && !isQuick) {
-        const decomp = await runPass("decomposition", async () => {
-          return provider.generateStructured<{ boundaries: Array<{ content: string; proposedType: string; confidence: number }> }>(
-            `Detect atomic knowledge unit boundaries in this text. Each boundary should be a self-contained thought.\n\nText: "${input.content.slice(0, 2000)}"`,
+      if (!isQuick && input.content.length >= 80) {
+        const refineResult = await runPass("decomposition", async () => {
+          return provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
+            `${PROMPT_INJECTION_GUARD}
+
+You are processing raw user input for a thought management tool.
+
+REFINE the text: fix grammar, improve clarity, tighten prose. Preserve the original meaning and voice. Do not add new ideas or remove existing ones.
+
+Text to process:
+${sanitizeUserContent(input.content.slice(0, 2000))}
+
+Respond with:
+- refined: the cleaned-up version of the full text
+- shouldDecompose: always false (decomposition is handled separately by user review)
+- reason: brief note on what you refined`,
             {
               temperature: 0.3,
-              maxTokens: 1024,
-              zodSchema: DecompositionBoundariesSchema,
+              maxTokens: 2048,
+              zodSchema: RefinementJudgmentSchema,
               schema: {
-                name: "DecompositionBoundaries",
-                description: "Detect boundaries between atomic knowledge units",
-                properties: {},
-                required: ["boundaries"],
+                name: "RefinementJudgment",
+                description: "Refined text",
+                properties: {
+                  refined: { type: "string" },
+                  shouldDecompose: { type: "boolean" },
+                  reason: { type: "string", maxLength: 200 },
+                },
+                required: ["refined", "shouldDecompose", "reason"],
               },
             },
           );
         });
-        passes.push(decomp);
+        passes.push(refineResult);
 
-        if (decomp.status === "completed" && decomp.data && decomp.data.boundaries.length > 1) {
-          unitContents = decomp.data.boundaries.map((b) => b.content);
-        } else {
-          unitContents = [input.content];
-        }
+        primaryContent = refineResult.status === "completed" && refineResult.data
+          ? refineResult.data.refined
+          : input.content;
       } else {
         passes.push({ pass: "decomposition", status: "skipped", durationMs: 0 });
-        unitContents = [input.content];
+        primaryContent = input.content;
       }
-
-      // Process first unit (primary). Additional units from decomposition
-      // are created as separate units linked to the primary.
-      const primaryContent = unitContents[0]!;
 
       // ── Pass 2: Type Classification ───────────────────────────
       let classifiedType: UnitType = "observation";
@@ -466,32 +485,6 @@ export function createPipelineService(db: PrismaClient) {
         }
       } else {
         passes.push({ pass: "integrity", status: "skipped", durationMs: 0 });
-      }
-
-      // ── Create additional units from decomposition ────────────
-      // Each child goes through unitService → fires unit.created event
-      if (unitContents.length > 1) {
-        for (let i = 1; i < unitContents.length; i++) {
-          try {
-            await unitService.create(
-              {
-                content: unitContents[i]!,
-                unitType: "observation",
-                lifecycle: "draft",
-                lifecycleState: "draft",
-                originType: "direct_write",
-                voice: "original",
-                aiTrustLevel: "user_authored",
-                projectId: input.projectId,
-                parentInputId: unit.id,
-              },
-              userId,
-            );
-          } catch (error) {
-            if (!(error instanceof DuplicateUnitContentError)) throw error;
-            // Skip duplicate decomposition children silently
-          }
-        }
       }
 
       const allPassed = passes.every((p) => p.status === "completed" || p.status === "skipped");
