@@ -24,6 +24,7 @@ import { UnitSplitDialog } from "./UnitSplitDialog";
 import { LinkToDialog } from "./LinkToDialog";
 import type { SplitReattributionProposal } from "~/server/ai";
 import { DerivationSuggestions } from "./DerivationSuggestions";
+import { TagChips } from "./TagChips";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export interface UnitCardUnit {
   stance?: Stance | null;
   /** Perspective importance within the active context (0-1) */
   perspectiveImportance?: number | null;
+  tags?: Array<{ id: string; name: string; color: string | null }>;
 }
 
 export interface UnitCardProps {
@@ -494,6 +496,16 @@ export function UnitCard({
                 {ctx}
               </span>
             ))}
+
+            {/* Unit tags */}
+            {(unit.tags ?? []).length > 0 && (
+              <TagChips
+                unitId={unit.id}
+                projectId={projectId}
+                tags={unit.tags ?? []}
+                compact
+              />
+            )}
           </div>
         )}
 
@@ -543,6 +555,11 @@ export function UnitCard({
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Tags — full editor in expanded mode */}
+            <div className="border-t border-border pt-3">
+              <TagChips unitId={unit.id} projectId={projectId} tags={unit.tags ?? []} />
             </div>
 
             {/* Action buttons row */}

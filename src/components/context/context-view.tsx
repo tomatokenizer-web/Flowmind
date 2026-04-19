@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { Layers, Loader2, Merge, Scissors, Search, Sparkles, Wand2, X } from "lucide-react";
+import { Layers, Loader2, Merge, Scissors, Search, Sparkles, Wand2, X, Download } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { toast, useToastStore } from "~/lib/toast";
@@ -62,6 +62,92 @@ function AIStatusBar({ contextId }: { contextId: string }) {
 }
 
 // ─── Props ──���────────────────────────────���───────────────────────────
+
+// ─── Export Button ──────────────────────────────────────────────────
+
+function ExportContextButton({
+  contextName,
+  units,
+}: {
+  contextName: string;
+  units: Array<{ content: string; unitType: string; lifecycle: string }>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", handleClick);
+    return () => document.removeEventListener("pointerdown", handleClick);
+  }, [open]);
+
+  const exportAs = React.useCallback(
+    (format: "markdown" | "json" | "text") => {
+      let content: string;
+      let filename: string;
+      let mime: string;
+      const safeName = contextName.replace(/[^a-zA-Z0-9-_ ]/g, "").trim() || "export";
+
+      if (format === "markdown") {
+        content = `# ${contextName}\n\n${units.map((u) => `## [${u.unitType}] (${u.lifecycle})\n\n${u.content}\n`).join("\n---\n\n")}`;
+        filename = `${safeName}.md`;
+        mime = "text/markdown";
+      } else if (format === "json") {
+        content = JSON.stringify({ context: contextName, exportedAt: new Date().toISOString(), units: units.map((u) => ({ content: u.content, type: u.unitType, lifecycle: u.lifecycle })) }, null, 2);
+        filename = `${safeName}.json`;
+        mime = "application/json";
+      } else {
+        content = `${contextName}\n${"=".repeat(contextName.length)}\n\n${units.map((u) => `[${u.unitType}] ${u.content}`).join("\n\n")}`;
+        filename = `${safeName}.txt`;
+        mime = "text/plain";
+      }
+
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setOpen(false);
+    },
+    [contextName, units],
+  );
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((p) => !p)}
+        className="gap-1.5 text-text-secondary"
+        title="Export this context"
+      >
+        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+        Export
+      </Button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[130px] rounded-lg border border-border bg-bg-primary p-1 shadow-modal">
+          {(["markdown", "json", "text"] as const).map((fmt) => (
+            <button
+              key={fmt}
+              type="button"
+              onClick={() => exportAs(fmt)}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-hover transition-colors"
+            >
+              {fmt === "markdown" ? "Markdown" : fmt === "json" ? "JSON" : "Plain Text"}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Props ───────────────────────────────────────────────────────────
 
 interface ContextViewProps {
   projectId: string | undefined;
@@ -225,6 +311,12 @@ export function ContextView({ projectId, className }: ContextViewProps) {
 
   // Search / filter state for units in this context
   const [unitSearch, setUnitSearch] = React.useState("");
+  const [filterTagId, setFilterTagId] = React.useState<string | null>(null);
+
+  const { data: projectTags = [] } = api.tag.list.useQuery(
+    { projectId: projectId! },
+    { enabled: !!projectId },
+  );
 
   // Split / Merge / Prompt dialog state
   const [splitOpen, setSplitOpen] = React.useState(false);
@@ -399,6 +491,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
         driftScore: (unit as { driftScore?: number }).driftScore,
         stance: perspectiveTyped?.stance as UnitCardUnit["stance"] ?? null,
         perspectiveImportance: perspectiveTyped?.importance ?? null,
+        tags: (unit as { unitTags?: Array<{ tag: { id: string; name: string; color: string | null } }> }).unitTags?.map((t) => t.tag) ?? [],
       };
     });
   }, [units, perspectiveMap, activeContextId]);
@@ -413,8 +506,11 @@ export function ContextView({ projectId, className }: ContextViewProps) {
       const q = unitSearch.trim().toLowerCase();
       filtered = filtered.filter((u) => u.content.toLowerCase().includes(q));
     }
+    if (filterTagId) {
+      filtered = filtered.filter((u) => u.tags?.some((t) => t.id === filterTagId));
+    }
     return filtered;
-  }, [cardUnits, pendingRemovalIds, unitSearch]);
+  }, [cardUnits, pendingRemovalIds, unitSearch, filterTagId]);
 
   return (
     <ComponentErrorBoundary>
@@ -458,6 +554,12 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                   <Wand2 className="h-3.5 w-3.5" aria-hidden="true" />
                   AI Prompt
                 </Button>
+
+                {/* Export context */}
+                <ExportContextButton
+                  contextName={context?.name ?? "context"}
+                  units={visibleUnits}
+                />
 
                 {/* Merge — only available when there are other contexts */}
                 {siblingContexts.length > 0 && (
@@ -526,6 +628,26 @@ export function ContextView({ projectId, className }: ContextViewProps) {
                   </button>
                 )}
               </div>
+
+              {/* Tag filter */}
+              {projectTags.length > 0 && (
+                <select
+                  aria-label="Filter by tag"
+                  value={filterTagId ?? ""}
+                  onChange={(e) => setFilterTagId(e.target.value || null)}
+                  className={cn(
+                    "h-8 cursor-pointer rounded-md border border-border bg-bg-primary py-1 px-2",
+                    "text-xs text-text-secondary outline-none transition-colors duration-fast",
+                    "focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20",
+                    filterTagId && "border-accent-primary/40 text-accent-primary",
+                  )}
+                >
+                  <option value="">All tags</option>
+                  {projectTags.map((tag: { id: string; name: string }) => (
+                    <option key={tag.id} value={tag.id}>{tag.name}</option>
+                  ))}
+                </select>
+              )}
 
               {/* Add Unit to Context button */}
               {projectId && (

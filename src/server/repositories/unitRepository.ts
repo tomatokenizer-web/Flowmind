@@ -69,6 +69,11 @@ export function createUnitRepository(db: PrismaClient) {
           incubating: true,
           projectId: true,
           userId: true,
+          unitTags: {
+            select: {
+              tag: { select: { id: true, name: true, color: true } },
+            },
+          },
           ...(contextId
             ? {
                 perspectives: {
