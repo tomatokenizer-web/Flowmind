@@ -25,6 +25,8 @@ export interface UnitCardListProps {
   getOnRemoveFromContext?: (unit: UnitCardUnit) => (() => void) | undefined;
   getOnDelete?: (unit: UnitCardUnit) => (() => void) | undefined;
   projectId?: string;
+  /** Called when Escape is pressed to collapse expanded unit */
+  onCollapseExpanded?: () => void;
   /** aria-label for the scroll container */
   listLabel?: string;
 }
@@ -54,8 +56,33 @@ export function UnitCardList({
   getOnDelete,
   projectId,
   listLabel = "Unit list",
+  onCollapseExpanded,
 }: UnitCardListProps) {
   const parentRef = React.useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const card = target.closest("[role='article']") as HTMLElement | null;
+      if (!card) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const listItem = card.closest("[role='listitem']");
+        const next = listItem?.nextElementSibling?.querySelector("[role='article']") as HTMLElement | null;
+        next?.focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const listItem = card.closest("[role='listitem']");
+        const prev = listItem?.previousElementSibling?.querySelector("[role='article']") as HTMLElement | null;
+        prev?.focus();
+      } else if (e.key === "Escape" && expandedUnitId) {
+        e.preventDefault();
+        onCollapseExpanded?.();
+      }
+    },
+    [expandedUnitId, onCollapseExpanded],
+  );
 
   const virtualizer = useVirtualizer({
     count: units.length,
@@ -80,6 +107,7 @@ export function UnitCardList({
       ref={parentRef}
       role="list"
       aria-label={listLabel}
+      onKeyDown={handleKeyDown}
       style={{
         height: height ?? "clamp(300px, calc(100vh - 16rem), calc(100vh - 8rem))",
         overflowY: "auto",

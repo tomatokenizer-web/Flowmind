@@ -24,7 +24,7 @@ export function CaptureBar() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1], delay: 0.4 }}
     >
-      <div className="flex items-center gap-1.5 rounded-2xl border border-border/60 bg-bg-surface/95 p-1.5 shadow-lg backdrop-blur-xl">
+      <div className="flex items-center gap-1.5 rounded-2xl border border-accent-primary/20 bg-bg-surface/95 p-1.5 shadow-[0_0_20px_rgba(var(--accent-primary-rgb,0,113,227),0.06)] backdrop-blur-xl transition-shadow hover:shadow-[0_0_30px_rgba(var(--accent-primary-rgb,0,113,227),0.1)]">
         {/* Main capture button */}
         <button
           onClick={() => {

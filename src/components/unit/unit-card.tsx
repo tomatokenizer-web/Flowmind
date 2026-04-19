@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UnitType } from "@prisma/client";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { GripVertical, Link2, Clock, History, ExternalLink, Layers, X, Scissors, Pin, Trash2 } from "lucide-react";
 import { FlowAlertBadge } from "./FlowAlertBadge";
 import { NudgeBadge } from "./NudgeBadge";
@@ -518,9 +518,16 @@ export function UnitCard({
           </div>
         )}
 
-        {/* Expanded-only sections */}
+        {/* Expanded-only sections — animated */}
+        <AnimatePresence>
         {variant === "expanded" && (
-          <>
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
             {/* Provenance */}
             <div className="border-t border-border pt-3 space-y-2">
               <div className="flex flex-wrap items-center gap-3 text-xs text-text-tertiary">
@@ -626,8 +633,9 @@ export function UnitCard({
                 );
               }}
             />
-          </>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
 
       {/* Importance score bar — subtle indicator at bottom of card */}

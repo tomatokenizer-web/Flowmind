@@ -606,6 +606,7 @@ export function ContextView({ projectId, className }: ContextViewProps) {
             expandedUnitId={expandedUnitId}
             onUnitClick={handleUnitClick}
             onOpenDetail={handleOpenDetail}
+            onCollapseExpanded={() => setExpandedUnitId(null)}
             onLifecycleAction={handleLifecycleAction}
             projectId={projectId}
             getOnRemoveFromContext={
