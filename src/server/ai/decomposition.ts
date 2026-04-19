@@ -84,51 +84,40 @@ export async function decomposeText(
 You are processing raw user input for a thought management tool. Do THREE things:
 
 1. REFINE the text using intention-based refinement:
-   - First, understand what the user is TRYING to express — their core intent, not just their words.
-   - Then restructure and clarify the text so it expresses that intent more precisely.
-   - This goes beyond grammar correction: untangle convoluted sentences, sharpen vague phrasing, make implicit logic explicit, and reorganize for coherence.
-   - Preserve the user's original meaning, voice, and scope. Do not add new ideas or remove existing ones.
-   - If the text is already clear and well-structured, make only minimal surface corrections.
+   - Understand what the user is TRYING to express, then clarify the expression.
+   - Fix grammar, sharpen vague phrasing, untangle convoluted sentences, make implicit logic explicit.
+   - CRITICAL: The refined text MUST preserve ALL details, examples, names, arguments, and evidence from the original. Do NOT summarize. Do NOT condense. Do NOT remove content. The refined version should be roughly the SAME LENGTH as the original — you are improving clarity of expression, not reducing word count.
+   - If the text is already clear, make only minimal surface corrections.
 
-2. CLASSIFY the cognitive type of this text. Choose the single best fit:
-   - question: asks something, seeks information or definition
-   - claim: asserts a position, makes an argument
-   - evidence: presents data, citations, or supporting material
-   - counterargument: challenges or opposes another position
-   - observation: notes a pattern, describes what is seen/noticed
-   - idea: proposes something new, speculative or creative
-   - definition: clarifies or establishes meaning of a concept
-   - assumption: states something taken as given/presupposed
-   - action: describes a task, plan, or next step
+2. CLASSIFY the cognitive type that best fits the OVERALL text:
+   question, claim, evidence, counterargument, observation, idea, definition, assumption, action
 
 3. JUDGE whether this text should be DECOMPOSED into multiple thought units.
 
-Decomposition is ONLY warranted when the text contains genuinely DISTINCT ideas that belong as separate units — for example:
-- A claim AND its supporting evidence (different cognitive functions)
-- A question AND an observation about a different topic
-- Multiple independent ideas mixed in one block of text
-- An argument with a counterargument embedded in it
+   For SHORT text (under ~500 characters): Decompose ONLY if it contains genuinely distinct cognitive types (e.g., a claim + a question about an unrelated topic).
 
-Decomposition is NOT warranted when:
-- The text is a single coherent thought, even if it's multiple sentences
-- The text is one paragraph exploring one idea from different angles
-- Splitting would create fragments that don't stand on their own
-- The text is short (under ~200 characters) unless it clearly mixes distinct types
+   For LONG text (over ~500 characters): Decompose when the text covers multiple distinct topics, arguments, or ideas that each stand alone as independent thoughts. Long text almost always contains multiple decomposable units. Look for:
+   - Different historical periods, movements, or subjects discussed in sequence
+   - Multiple claims, each with their own supporting evidence
+   - A question followed by analysis followed by a conclusion
+   - Several independent observations or arguments
 
-Text to process:
+   When decomposing, each unit should PRESERVE the full detail of its section from the original text — do not summarize the segments.
+
+Text to process (${text.length} characters):
 ${sanitizeUserContent(text)}
 
 Respond with:
-- refined: the intention-clarified version of the full text
-- unitType: the cognitive type that best fits this text
-- shouldDecompose: true only if the text contains genuinely distinct unit types
+- refined: the full refined text (same level of detail as original)
+- unitType: the cognitive type that best fits the overall text
+- shouldDecompose: true if the text contains multiple distinct ideas/topics (especially for longer texts)
 - reason: brief explanation of your judgment`;
 
   const judgment = await provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
     refinePrompt,
     {
       temperature: 0.3,
-      maxTokens: 2048,
+      maxTokens: 4096,
       zodSchema: RefinementJudgmentSchema,
       schema: {
         name: "RefinementJudgment",
@@ -266,22 +255,23 @@ async function proposeBoundaries(
 
 Split the following text into distinct thought units. Each unit should be a complete, self-contained thought that can stand alone.
 
-Text: ${sanitizeUserContent(text)}
+Text (${text.length} characters): ${sanitizeUserContent(text)}
 
 Guidelines:
-- Maximum 3 units (focus on the most important divisions)
+- Split into 2-6 units based on the natural topic/argument boundaries in the text
 - Each unit should have a clear cognitive function (claim, question, evidence, etc.)
-- Units MUST be meaningfully different in type or topic — do not split a single coherent argument into arbitrary pieces
+- Units MUST be meaningfully different in type or topic
+- CRITICAL: Each unit's content must contain the FULL text of that segment — do NOT summarize or shorten. Copy the exact text from the original for each segment.
 - Preserve the exact character positions for boundaries
 - Units should not overlap
-- Cover the entire text
+- Cover the entire text — every part of the original must appear in exactly one unit
 
 Available unit types: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
 
 For each unit, provide:
 - startChar: starting character index (0-based)
 - endChar: ending character index (exclusive)
-- content: the exact text content
+- content: the exact text content of this segment (full, not summarized)
 - proposedType: the suggested unit type
 - confidence: how confident you are in this split (0-1)`;
 
@@ -289,7 +279,7 @@ For each unit, provide:
     boundaryPrompt,
     {
       temperature: 0.4,
-      maxTokens: 1024,
+      maxTokens: 4096,
       zodSchema: DecompositionBoundariesSchema,
       schema: {
         name: "DecompositionBoundaries",
@@ -297,7 +287,7 @@ For each unit, provide:
         properties: {
           boundaries: {
             type: "array",
-            maxItems: 3,
+            maxItems: 6,
             items: {
               type: "object",
               properties: {
@@ -364,7 +354,7 @@ Available relation types:
 - questions: Raises doubt about the target
 
 For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
-- sourceIdx: index of the new unit (0, 1, or 2)
+- sourceIdx: index of the new unit (0-based)
 - targetUnitId: ID of the existing unit
 - relationType: type of relationship
 - strength: relationship strength (0-1)
@@ -391,7 +381,7 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
           items: {
             type: "object",
             properties: {
-              sourceIdx: { type: "number", minimum: 0, maximum: 2 },
+              sourceIdx: { type: "number", minimum: 0, maximum: 5 },
               targetUnitId: { type: "string" },
               relationType: {
                 type: "string",
