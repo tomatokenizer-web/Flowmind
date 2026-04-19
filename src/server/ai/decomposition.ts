@@ -81,17 +81,16 @@ export async function decomposeText(
   // ─── Step 0: Refine text + judge decomposition need ────────────────
   const refinePrompt = `${PROMPT_INJECTION_GUARD}
 
-You are a thought management tool processing raw user input.
+Process the user's text below. Return JSON with these fields:
 
-Refine: Clarify what the user intends to express. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all ideas and details — don't drop content, but the refined text can be shorter or longer than the original as needed for clarity.
+- refined: The user's text rewritten for clarity. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all ideas and details but the length can change. Do not return instructions or meta-text — return the actual refined content.
+- unitType: The cognitive type (question, claim, evidence, counterargument, observation, idea, definition, assumption, action)
+- shouldDecompose: true if the text contains multiple independent ideas with different cognitive types. Longer text with distinct topics should generally be decomposed.
+- reason: Brief explanation.
 
-Classify: Pick the single cognitive type that best fits this text.
-Types: question, claim, evidence, counterargument, observation, idea, definition, assumption, action
-
-Decompose: Should this text be split into multiple units? Say yes when the text contains multiple independent ideas that each function as a different cognitive type. Longer text with distinct topics or arguments should generally be decomposed. Say no when the text is one coherent thought.
-
-Text (${text.length} chars):
-${sanitizeUserContent(text)}`;
+<user_input>
+${sanitizeUserContent(text)}
+</user_input>`;
 
   const judgment = await provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
     refinePrompt,
@@ -233,15 +232,15 @@ async function proposeBoundaries(
 ): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
   const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
 
-Split this text into self-contained thought units at natural topic boundaries. Use as many units as the content requires.
+Split the user's text into self-contained thought units at natural topic boundaries. Use as many units as the content requires.
 
-Rules:
-- Each unit gets a type: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
-- Content must be the exact text from the original segment, not a summary
-- Units must not overlap and must cover the entire text
-- Provide character positions (0-based startChar, exclusive endChar)
+Each unit needs: startChar (0-based), endChar (exclusive), content (exact text from that segment, not a summary), proposedType (claim/question/evidence/counterargument/observation/idea/definition/assumption/action), confidence (0-1).
 
-Text (${text.length} chars): ${sanitizeUserContent(text)}`;
+Units must not overlap and must cover the entire text.
+
+<user_input>
+${sanitizeUserContent(text)}
+</user_input>`;
 
   const boundaryResult = await provider.generateStructured<{ boundaries: DecompositionBoundary[] }>(
     boundaryPrompt,
