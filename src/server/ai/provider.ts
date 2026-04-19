@@ -55,10 +55,11 @@ function execClaude(args: string[], prompt: string): Promise<string> {
   const cmd = `claude ${escapedArgs.join(" ")} < "${promptFile}"`;
 
   return execAsync(cmd, {
-    env: childEnv,
+    env: { ...childEnv, PYTHONIOENCODING: "utf-8" },
     cwd: tmpdir(),
     timeout: 300_000,
     maxBuffer: 2 * 1024 * 1024,
+    encoding: "utf8",
   }).then(({ stdout }) => {
     try { unlinkSync(promptFile); } catch {}
     return stdout;
