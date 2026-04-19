@@ -12,6 +12,7 @@ import { ResourceAttachmentStrip } from "~/components/unit/resource-attachment";
 import { ResourceUploadZone } from "~/components/unit/resource-upload";
 import { AudioDetailView } from "~/components/unit/audio-detail-view";
 import { EpistemicHumilityBanner } from "~/components/feedback/EpistemicHumilityBanner";
+import { UnitAIActionsMenu } from "~/components/unit/UnitAIActionsMenu";
 import { toast } from "~/lib/toast";
 import type { UnitDetailData } from "~/components/panels/UnitDetailPanel";
 
@@ -109,10 +110,17 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
 
   return (
     <div className="space-y-4">
-      {/* Unit type — clickable to change */}
+      {/* Unit type + AI actions */}
       <div className="flex items-center gap-2">
         <UnitTypeSelector unitId={unit.id} currentType={unit.unitType} />
         <AILifecycleBadge lifecycle={unit.lifecycle as "draft" | "pending" | "confirmed"} size="sm" />
+        <div className="ml-auto">
+          <UnitAIActionsMenu
+            unit={{ id: unit.id, content: unit.content, unitType: unit.unitType, projectId: unit.projectId }}
+            projectId={unit.projectId}
+            onDecomposeComplete={() => void utils.unit.getById.invalidate({ id: unit.id })}
+          />
+        </div>
       </div>
 
       {/* Audio detail view — shown when unit has audio resources */}
