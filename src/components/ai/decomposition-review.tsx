@@ -7,6 +7,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { UNIT_TYPE_COLORS } from "~/lib/unit-types";
 import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
 import type { UnitProposal, DecompositionRelationProposal, UserPurpose } from "~/server/ai";
 
@@ -138,8 +139,10 @@ export function DecompositionReview({
           projectId,
           unitType,
           originType: "ai_generated",
-          lifecycle: "pending",
+          lifecycle: "draft",
         });
+
+        toast.success("Unit created", { description: `${unitType} saved` });
 
         setProposalStates((prev) =>
           prev.map((p, i) =>
@@ -162,15 +165,18 @@ export function DecompositionReview({
           }
         }
 
-        await utils.unit.list.invalidate();
+        void utils.unit.list.invalidate();
+        void utils.unit.getById.invalidate({ id: unit.id });
       } catch (error) {
         console.error("Failed to create unit:", error);
         const errMsg = error instanceof Error ? error.message : String(error);
-        // Auto-reject duplicates
         if (errMsg.includes("duplicate") || errMsg.includes("CONFLICT") || errMsg.includes("identical content")) {
+          toast.error("Duplicate content", { description: "A unit with this content already exists" });
           setProposalStates((prev) =>
             prev.map((p, i) => (i === index ? { ...p, status: "rejected" } : p))
           );
+        } else {
+          toast.error("Failed to create unit", { description: errMsg });
         }
       }
     },
