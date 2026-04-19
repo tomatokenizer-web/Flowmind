@@ -79,18 +79,11 @@ export async function decomposeText(
   }
 
   // ─── Step 0: Refine text + judge decomposition need ────────────────
-  const refinePrompt = `${PROMPT_INJECTION_GUARD}
+  const refinePrompt = `You are a writing assistant. The user wrote the following text. Rewrite it for clarity (fix grammar, sharpen phrasing, preserve all ideas). Then classify it and decide if it should be split.
 
-Process the user's text below. Return JSON with these fields:
-
-- refined: The user's text rewritten for clarity. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all ideas and details but the length can change. Do not return instructions or meta-text — return the actual refined content.
-- unitType: The cognitive type (question, claim, evidence, counterargument, observation, idea, definition, assumption, action)
-- shouldDecompose: true if the text contains multiple independent ideas with different cognitive types. Longer text with distinct topics should generally be decomposed.
-- reason: Brief explanation.
-
-<user_input>
-${sanitizeUserContent(text)}
-</user_input>`;
+"""
+${text}
+"""`;
 
   const judgment = await provider.generateStructured<z.infer<typeof RefinementJudgmentSchema>>(
     refinePrompt,
@@ -230,17 +223,11 @@ async function proposeBoundaries(
   provider: AIProvider,
   text: string,
 ): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
-  const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
+  const boundaryPrompt = `Split this text into self-contained thought units at natural topic boundaries. Use as many units as needed. Each unit's content must be the exact text from that segment. Units must not overlap and must cover the entire text.
 
-Split the user's text into self-contained thought units at natural topic boundaries. Use as many units as the content requires.
-
-Each unit needs: startChar (0-based), endChar (exclusive), content (exact text from that segment, not a summary), proposedType (claim/question/evidence/counterargument/observation/idea/definition/assumption/action), confidence (0-1).
-
-Units must not overlap and must cover the entire text.
-
-<user_input>
-${sanitizeUserContent(text)}
-</user_input>`;
+"""
+${text}
+"""`;
 
   const boundaryResult = await provider.generateStructured<{ boundaries: DecompositionBoundary[] }>(
     boundaryPrompt,
@@ -292,16 +279,14 @@ async function proposeRelations(
 
   const existingUnitsDesc = existingUnits
     .slice(0, 10)
-    .map((u) => `[${u.id}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
+    .map((u) => `[${u.id}] (${u.unitType}) ${u.content.slice(0, 100)}`)
     .join("\n");
 
   const newUnitsDesc = proposals
-    .map((p, i) => `[idx:${i}] (${p.proposedType}) ${sanitizeUserContent(p.content.slice(0, 100))}`)
+    .map((p, i) => `[idx:${i}] (${p.proposedType}) ${p.content.slice(0, 100)}`)
     .join("\n");
 
-  const relationPrompt = `${PROMPT_INJECTION_GUARD}
-
-Analyze relationships between NEW units and EXISTING units in this context.
+  const relationPrompt = `Analyze relationships between NEW units and EXISTING units in this context.
 
 NEW UNITS (use index as sourceIdx):
 ${newUnitsDesc}
