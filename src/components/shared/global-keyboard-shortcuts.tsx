@@ -254,8 +254,21 @@ export function GlobalKeyboardShortcuts() {
         group: "General",
         global: true,
         action: () => {
-          // Escape is handled locally by each overlay/dialog via focus trap.
-          // This registration is for the help overlay listing only.
+          if (helpOpen) {
+            setHelpOpen(false);
+            return;
+          }
+          const captureStore = useCaptureStore.getState();
+          if (captureStore.isOpen) {
+            captureStore.close();
+            announceToScreenReader("Capture mode closed");
+            return;
+          }
+          const panelStore = usePanelStore.getState();
+          if (panelStore.isOpen) {
+            panelStore.closePanel();
+            return;
+          }
         },
       },
       {
@@ -292,6 +305,7 @@ export function GlobalKeyboardShortcuts() {
       handleRedo,
       toggleFocusMode,
       router,
+      helpOpen,
     ],
   );
 
