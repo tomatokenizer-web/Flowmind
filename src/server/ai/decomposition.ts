@@ -83,7 +83,7 @@ export async function decomposeText(
 
 You are a thought management tool processing raw user input.
 
-Refine: Clarify what the user intends to express. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all content — same details, same length. Refinement improves expression, not reduces it.
+Refine: Clarify what the user intends to express. Fix grammar, untangle convoluted sentences, sharpen vague phrasing. Preserve all ideas and details — don't drop content, but the refined text can be shorter or longer than the original as needed for clarity.
 
 Classify: Pick the single cognitive type that best fits this text.
 Types: question, claim, evidence, counterargument, observation, idea, definition, assumption, action
@@ -233,7 +233,7 @@ async function proposeBoundaries(
 ): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
   const boundaryPrompt = `${PROMPT_INJECTION_GUARD}
 
-Split this text into 2-6 self-contained thought units at natural topic boundaries.
+Split this text into self-contained thought units at natural topic boundaries. Use as many units as the content requires.
 
 Rules:
 - Each unit gets a type: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
@@ -255,7 +255,6 @@ Text (${text.length} chars): ${sanitizeUserContent(text)}`;
         properties: {
           boundaries: {
             type: "array",
-            maxItems: 6,
             items: {
               type: "object",
               properties: {
@@ -349,7 +348,7 @@ For each meaningful relationship from a NEW unit to an EXISTING unit, provide:
           items: {
             type: "object",
             properties: {
-              sourceIdx: { type: "number", minimum: 0, maximum: 5 },
+              sourceIdx: { type: "number", minimum: 0 },
               targetUnitId: { type: "string" },
               relationType: {
                 type: "string",

@@ -81,13 +81,13 @@ export const DecompositionBoundariesSchema = z.object({
       proposedType: unitTypeEnum,
       confidence: z.number().min(0).max(1),
     })
-  ).max(6),
+  ),
 });
 
 export const DecompositionRelationProposalsSchema = z.object({
   relations: z.array(
     z.object({
-      sourceIdx: z.number().min(0).max(5),
+      sourceIdx: z.number().min(0),
       targetUnitId: z.string(),
       relationType: relationTypeEnum,
       strength: z.number().min(0).max(1),
