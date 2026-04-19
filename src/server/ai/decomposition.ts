@@ -19,6 +19,10 @@ import type {
 
 const RefinementJudgmentSchema = z.object({
   refined: z.string(),
+  unitType: z.enum([
+    "claim", "question", "evidence", "counterargument",
+    "observation", "idea", "definition", "assumption", "action",
+  ]),
   shouldDecompose: z.boolean(),
   reason: z.string(),
 });
@@ -77,11 +81,27 @@ export async function decomposeText(
   // ─── Step 0: Refine text + judge decomposition need ────────────────
   const refinePrompt = `${PROMPT_INJECTION_GUARD}
 
-You are processing raw user input for a thought management tool. Do TWO things:
+You are processing raw user input for a thought management tool. Do THREE things:
 
-1. REFINE the text: fix grammar, improve clarity, tighten prose. Preserve the original meaning and voice. Do not add new ideas or remove existing ones.
+1. REFINE the text using intention-based refinement:
+   - First, understand what the user is TRYING to express — their core intent, not just their words.
+   - Then restructure and clarify the text so it expresses that intent more precisely.
+   - This goes beyond grammar correction: untangle convoluted sentences, sharpen vague phrasing, make implicit logic explicit, and reorganize for coherence.
+   - Preserve the user's original meaning, voice, and scope. Do not add new ideas or remove existing ones.
+   - If the text is already clear and well-structured, make only minimal surface corrections.
 
-2. JUDGE whether this text should be DECOMPOSED into multiple thought units.
+2. CLASSIFY the cognitive type of this text. Choose the single best fit:
+   - question: asks something, seeks information or definition
+   - claim: asserts a position, makes an argument
+   - evidence: presents data, citations, or supporting material
+   - counterargument: challenges or opposes another position
+   - observation: notes a pattern, describes what is seen/noticed
+   - idea: proposes something new, speculative or creative
+   - definition: clarifies or establishes meaning of a concept
+   - assumption: states something taken as given/presupposed
+   - action: describes a task, plan, or next step
+
+3. JUDGE whether this text should be DECOMPOSED into multiple thought units.
 
 Decomposition is ONLY warranted when the text contains genuinely DISTINCT ideas that belong as separate units — for example:
 - A claim AND its supporting evidence (different cognitive functions)
@@ -99,7 +119,8 @@ Text to process:
 ${sanitizeUserContent(text)}
 
 Respond with:
-- refined: the cleaned-up version of the full text
+- refined: the intention-clarified version of the full text
+- unitType: the cognitive type that best fits this text
 - shouldDecompose: true only if the text contains genuinely distinct unit types
 - reason: brief explanation of your judgment`;
 
@@ -111,13 +132,20 @@ Respond with:
       zodSchema: RefinementJudgmentSchema,
       schema: {
         name: "RefinementJudgment",
-        description: "Refined text with decomposition judgment",
+        description: "Refined text with type classification and decomposition judgment",
         properties: {
           refined: { type: "string" },
+          unitType: {
+            type: "string",
+            enum: [
+              "claim", "question", "evidence", "counterargument",
+              "observation", "idea", "definition", "assumption", "action",
+            ],
+          },
           shouldDecompose: { type: "boolean" },
           reason: { type: "string", maxLength: 200 },
         },
-        required: ["refined", "shouldDecompose", "reason"],
+        required: ["refined", "unitType", "shouldDecompose", "reason"],
       },
     }
   );
@@ -125,22 +153,14 @@ Respond with:
   const refinedText = judgment.refined;
 
   logger.info(
-    { shouldDecompose: judgment.shouldDecompose, reason: judgment.reason, originalLen: text.length, refinedLen: refinedText.length },
-    "AI refinement + decomposition judgment"
+    { shouldDecompose: judgment.shouldDecompose, unitType: judgment.unitType, reason: judgment.reason, originalLen: text.length, refinedLen: refinedText.length },
+    "AI refinement + type classification + decomposition judgment"
   );
 
   // ─── No decomposition needed: return refined text as single unit ───
   if (!judgment.shouldDecompose) {
-    // Still classify the purpose for metadata
+    const classifiedType = judgment.unitType;
     const purposeResult = await classifyPurpose(provider, refinedText);
-
-    const typeMap: Record<UserPurpose, string> = {
-      arguing: "claim",
-      brainstorming: "idea",
-      researching: "observation",
-      defining: "definition",
-      other: "observation",
-    };
 
     const tempId = `temp-${Date.now()}-0`;
     return {
@@ -149,7 +169,7 @@ Respond with:
         {
           id: tempId,
           content: refinedText,
-          proposedType: typeMap[purposeResult.purpose] ?? "observation",
+          proposedType: classifiedType,
           confidence: purposeResult.confidence,
           startChar: 0,
           endChar: refinedText.length,
@@ -157,7 +177,7 @@ Respond with:
           originType: "ai_generated",
         },
       ],
-      relationProposals: await proposeRelations(provider, [{ content: refinedText, proposedType: typeMap[purposeResult.purpose] ?? "observation" }], existingUnits),
+      relationProposals: await proposeRelations(provider, [{ content: refinedText, proposedType: classifiedType }], existingUnits),
     };
   }
 

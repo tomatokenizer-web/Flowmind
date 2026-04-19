@@ -100,13 +100,18 @@ export function createPipelineService(db: PrismaClient) {
 
 You are processing raw user input for a thought management tool.
 
-REFINE the text: fix grammar, improve clarity, tighten prose. Preserve the original meaning and voice. Do not add new ideas or remove existing ones.
+REFINE the text using intention-based refinement:
+- First, understand what the user is TRYING to express — their core intent, not just their words.
+- Then restructure and clarify the text so it expresses that intent more precisely.
+- This goes beyond grammar correction: untangle convoluted sentences, sharpen vague phrasing, make implicit logic explicit, and reorganize for coherence.
+- Preserve the user's original meaning, voice, and scope. Do not add new ideas or remove existing ones.
+- If the text is already clear and well-structured, make only minimal surface corrections.
 
 Text to process:
 ${sanitizeUserContent(input.content.slice(0, 2000))}
 
 Respond with:
-- refined: the cleaned-up version of the full text
+- refined: the intention-clarified version of the full text
 - shouldDecompose: always false (decomposition is handled separately by user review)
 - reason: brief note on what you refined`,
             {
