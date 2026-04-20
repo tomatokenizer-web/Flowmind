@@ -75,11 +75,11 @@ export const PurposeClassificationSchema = z.object({
 export const DecompositionBoundariesSchema = z.object({
   boundaries: z.array(
     z.object({
-      startChar: z.number().min(0),
-      endChar: z.number().min(0),
-      content: z.string(),
+      startMarker: z.string(),
       proposedType: unitTypeEnum,
       confidence: z.number().min(0).max(1),
+      discourseRole: z.string().optional(),
+      rationale: z.string(),
     })
   ),
 });

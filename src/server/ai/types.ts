@@ -135,6 +135,7 @@ export interface DecompositionBoundary {
   content: string;
   proposedType: string;
   confidence: number;
+  discourseRole?: string;
 }
 
 export interface DecompositionRelationProposal {
@@ -156,12 +157,16 @@ export interface UnitProposal {
   endChar: number;
   lifecycle: "draft";
   originType: "ai_generated";
+  discourseRole?: string;
+  orderInSource?: number;
 }
 
 export interface DecompositionResult {
   purpose: UserPurpose;
   proposals: UnitProposal[];
   relationProposals: DecompositionRelationProposal[];
+  isStructuredDiscourse: boolean;
+  originalText?: string;
 }
 
 // ─── Story 5.11: Scope Jump Detection ────────────────────────────────────────

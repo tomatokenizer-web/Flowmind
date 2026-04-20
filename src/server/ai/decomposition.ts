@@ -61,6 +61,7 @@ export async function decomposeText(
         },
       ],
       relationProposals: [],
+      isStructuredDiscourse: false,
     };
   }
 
@@ -153,6 +154,7 @@ ${text}
       relationProposals: existingUnits.length > 0
         ? await proposeRelations(provider, [{ content: refinedText, proposedType: judgment.unitType }], existingUnits)
         : [],
+      isStructuredDiscourse: false,
     };
   }
 
@@ -168,6 +170,8 @@ ${text}
     "AI decomposition completed"
   );
 
+  const isStructuredDiscourse = proposals.length >= 3;
+
   return {
     purpose,
     proposals: proposals.map((p, idx) => ({
@@ -175,8 +179,12 @@ ${text}
       id: `temp-${Date.now()}-${idx}`,
       lifecycle: "draft" as const,
       originType: "ai_generated" as const,
+      orderInSource: idx,
+      discourseRole: (p as { discourseRole?: string }).discourseRole,
     })),
     relationProposals,
+    isStructuredDiscourse,
+    originalText: isStructuredDiscourse ? refinedText : undefined,
   };
 }
 
@@ -185,24 +193,26 @@ ${text}
 async function proposeBoundaries(
   provider: AIProvider,
   text: string,
-): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number }>> {
-  const boundaryPrompt = `Split this text into self-contained thought units at natural topic boundaries.
+): Promise<Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number; discourseRole?: string }>> {
+  const boundaryPrompt = `Split this text into self-contained thought units. Each unit should hold one coherent idea that can stand on its own.
 
-Rules:
-- Each unit gets a type: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
-- Content must be the exact text from the original segment, not a summary
-- Units must not overlap and must cover the entire text
-- Provide character positions (0-based startChar, exclusive endChar)
+For each unit, provide:
+- startMarker: the first 8-10 words of that unit (exact quote from the text)
+- proposedType: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
+- confidence: 0-1
+- discourseRole: the role this unit plays in the overall text (e.g. "thesis", "case study", "supporting evidence", "synthesis", "conclusion", "counterpoint", "transition")
+- rationale: brief reason for this split and type
 
 """
 ${text}
 """`;
 
-  const boundaryResult = await provider.generateStructured<{ boundaries: DecompositionBoundary[] }>(
+  type BoundaryItem = { startMarker: string; proposedType: string; confidence: number; rationale: string; discourseRole?: string };
+  const boundaryResult = await provider.generateStructured<{ boundaries: BoundaryItem[] }>(
     boundaryPrompt,
     {
       temperature: 0.4,
-      maxTokens: 4096,
+      maxTokens: 2048,
       zodSchema: DecompositionBoundariesSchema,
       schema: {
         name: "DecompositionBoundaries",
@@ -213,9 +223,7 @@ ${text}
             items: {
               type: "object",
               properties: {
-                startChar: { type: "number", minimum: 0 },
-                endChar: { type: "number", minimum: 0 },
-                content: { type: "string" },
+                startMarker: { type: "string", description: "First 8-10 words of this unit, exact quote" },
                 proposedType: {
                   type: "string",
                   enum: [
@@ -224,8 +232,10 @@ ${text}
                   ],
                 },
                 confidence: { type: "number", minimum: 0, maximum: 1 },
+                discourseRole: { type: "string", description: "Role in the overall text structure" },
+                rationale: { type: "string" },
               },
-              required: ["startChar", "endChar", "content", "proposedType", "confidence"],
+              required: ["startMarker", "proposedType", "confidence", "rationale"],
             },
           },
         },
@@ -234,7 +244,38 @@ ${text}
     }
   );
 
-  return boundaryResult.boundaries;
+  const boundaries = boundaryResult.boundaries;
+  const results: Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number; discourseRole?: string }> = [];
+
+  const normalize = (s: string) =>
+    s.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u2013\u2014]/g, "-").replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+
+  const normalizedText = normalize(text);
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i]!;
+    const normalizedMarker = normalize(b.startMarker);
+    const markerIdx = normalizedText.indexOf(normalizedMarker, results.length > 0 ? results[results.length - 1]!.startChar + 1 : 0);
+    const startChar = markerIdx >= 0 ? markerIdx : (results.length > 0 ? results[results.length - 1]!.endChar : 0);
+
+    const nextMarker = i + 1 < boundaries.length ? boundaries[i + 1]!.startMarker : null;
+    let endChar = text.length;
+    if (nextMarker) {
+      const nextIdx = normalizedText.indexOf(normalize(nextMarker), startChar + 1);
+      if (nextIdx >= 0) endChar = nextIdx;
+    }
+
+    results.push({
+      content: text.slice(startChar, endChar).trim(),
+      proposedType: b.proposedType,
+      confidence: b.confidence,
+      startChar,
+      endChar,
+      discourseRole: b.discourseRole,
+    });
+  }
+
+  return results;
 }
 
 // ─── Helper: Propose Relations ────────────────────────────────────────────

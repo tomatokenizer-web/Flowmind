@@ -57,7 +57,7 @@ function execClaude(args: string[], prompt: string): Promise<string> {
   return execAsync(cmd, {
     env: { ...childEnv, PYTHONIOENCODING: "utf-8" },
     cwd: tmpdir(),
-    timeout: 300_000,
+    timeout: 600_000,
     maxBuffer: 2 * 1024 * 1024,
     encoding: "utf8",
   }).then(({ stdout }) => {
@@ -65,6 +65,11 @@ function execClaude(args: string[], prompt: string): Promise<string> {
     return stdout;
   }).catch((err) => {
     try { unlinkSync(promptFile); } catch {}
+    const stderr = err?.stderr ? String(err.stderr).trim() : "";
+    if (stderr) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`${msg}\nClaude CLI stderr: ${stderr}`);
+    }
     throw err;
   });
 }
