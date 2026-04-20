@@ -20,6 +20,7 @@ interface DecompositionReviewProps {
   relationProposals: DecompositionRelationProposal[];
   projectId: string;
   contextId: string;
+  isStructuredDiscourse?: boolean;
   onComplete: (acceptedCount: number, rejectedCount: number) => void;
   onCancel: () => void;
   className?: string;
@@ -69,6 +70,7 @@ export function DecompositionReview({
   relationProposals,
   projectId,
   contextId: _contextId,
+  isStructuredDiscourse = false,
   onComplete,
   onCancel,
   className,
@@ -90,6 +92,8 @@ export function DecompositionReview({
   const utils = api.useUtils();
   const createUnitMutation = api.unit.create.useMutation();
   const createRelationMutation = api.relation.create.useMutation();
+  const createSourceGroupMutation = api.ai.createSourceGroup.useMutation();
+  const sourceGroupIdRef = React.useRef<string | null>(null);
 
   // Stats
   const acceptedCount = proposalStates.filter((p) => p.status === "accepted").length;
@@ -134,12 +138,28 @@ export function DecompositionReview({
       const unitType = state.editedType as UnitType;
 
       try {
+        // Create SourceGroup on first accept for structured discourse
+        if (isStructuredDiscourse && !sourceGroupIdRef.current) {
+          const group = await createSourceGroupMutation.mutateAsync({
+            projectId,
+            contextId: _contextId || undefined,
+            originalText,
+            unitCount: initialProposals.length,
+          });
+          sourceGroupIdRef.current = group.id;
+        }
+
         const unit = await createUnitMutation.mutateAsync({
           content,
           projectId,
           unitType,
           originType: "ai_generated",
           lifecycle: "draft",
+          ...(sourceGroupIdRef.current && {
+            sourceGroupId: sourceGroupIdRef.current,
+            orderInSource: state.proposal.orderInSource,
+            discourseRole: state.proposal.discourseRole,
+          }),
         });
 
         toast.success("Unit created", { description: `${unitType} saved` });

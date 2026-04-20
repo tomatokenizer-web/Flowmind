@@ -138,6 +138,10 @@ const createUnitSchema = z.object({
   stalenessAfter: z.string().max(100).optional(),
   falsificationCondition: z.string().max(2000).optional(),
   recurrencePeriod: z.string().max(100).optional(),
+  // Source Group: structured discourse origin
+  sourceGroupId: z.string().uuid().optional(),
+  orderInSource: z.number().int().min(0).optional(),
+  discourseRole: z.string().max(100).optional(),
 });
 
 const updateUnitSchema = z.object({

@@ -62,6 +62,7 @@ export function useCaptureMode({
         purpose: result.purpose,
         proposals: result.proposals,
         relationProposals: result.relationProposals,
+        isStructuredDiscourse: result.isStructuredDiscourse,
       });
       setPhase("reviewing");
     },

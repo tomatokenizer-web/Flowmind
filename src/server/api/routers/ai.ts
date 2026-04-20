@@ -293,6 +293,27 @@ export const aiRouter = createTRPCRouter({
       }
     }),
 
+  createSourceGroup: protectedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      contextId: z.string().uuid().optional(),
+      originalText: z.string().min(1).max(50000),
+      title: z.string().max(500).optional(),
+      unitCount: z.number().int().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.sourceGroup.create({
+        data: {
+          userId: ctx.session.user.id!,
+          projectId: input.projectId,
+          contextId: input.contextId,
+          originalText: input.originalText,
+          title: input.title,
+          unitCount: input.unitCount,
+        },
+      });
+    }),
+
   /**
    * Decompose an existing unit into multiple sub-units.
    * Returns proposals for review — same as decomposeText but sourced from an existing unit.

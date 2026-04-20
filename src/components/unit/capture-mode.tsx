@@ -456,6 +456,7 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
                 relationProposals={decompositionData.relationProposals}
                 projectId={projectId}
                 contextId={contextId}
+                isStructuredDiscourse={decompositionData.isStructuredDiscourse}
                 onComplete={(accepted, rejected) => {
                   handleDecompositionComplete(accepted, rejected);
                   close();

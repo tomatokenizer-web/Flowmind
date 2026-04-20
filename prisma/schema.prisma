@@ -414,6 +414,7 @@ model User {
   aiUsageLogs         AIUsageLog[]
   decisionJournals    DecisionJournal[]
   projectShares       ProjectShare[]
+  sourceGroups        SourceGroup[]
 
   @@map("users")
 }
@@ -482,6 +483,7 @@ model Project {
   pursuits            Pursuit[]
   shares              ProjectShare[]
   decisionJournals    DecisionJournal[]
+  sourceGroups        SourceGroup[]
 
   @@index([userId])
   @@map("projects")
@@ -500,6 +502,28 @@ model DomainTemplate {
   inquiries Inquiry[]
 
   @@map("domain_templates")
+}
+
+// ── Source Group: units decomposed from one structured text ─────────────
+model SourceGroup {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id")
+  projectId     String   @map("project_id") @db.Uuid
+  contextId     String?  @map("context_id") @db.Uuid
+  originalText  String   @map("original_text")
+  title         String?
+  unitCount     Int      @default(0) @map("unit_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  context Context? @relation(fields: [contextId], references: [id], onDelete: SetNull)
+  units   Unit[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([contextId])
+  @@map("source_groups")
 }
 
 model Unit {
@@ -601,6 +625,12 @@ model Unit {
   voice      Voice? // Replaces originType in Phase 1
   authoredBy String? @map("authored_by")
 
+  // Source Group: structured discourse origin
+  sourceGroupId  String?  @map("source_group_id") @db.Uuid
+  orderInSource  Int?     @map("order_in_source")
+  discourseRole  String?  @map("discourse_role") @db.VarChar(100)
+  sourceGroup    SourceGroup? @relation(fields: [sourceGroupId], references: [id], onDelete: SetNull)
+
   // AI Analysis (v3.14: reduced to 5)
   readabilityScore Float?  @map("readability_score")
   language         String? @db.VarChar(10)
@@ -639,6 +669,7 @@ model Unit {
   @@index([salienceTier])
   @@index([incubating])
   @@index([salienceScore])
+  @@index([sourceGroupId])
   @@map("units")
 }
 
@@ -770,6 +801,7 @@ model Context {
   sourceReferences ContextReference[] @relation("SourceReferences")
   targetReferences ContextReference[] @relation("TargetReferences")
   reasoningChains  ReasoningChain[]
+  sourceGroups     SourceGroup[]
 
   @@unique([name, parentId, projectId])
   @@index([projectId])

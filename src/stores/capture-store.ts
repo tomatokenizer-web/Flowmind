@@ -13,6 +13,7 @@ export interface DecompositionData {
   purpose: UserPurpose;
   proposals: UnitProposal[];
   relationProposals: DecompositionRelationProposal[];
+  isStructuredDiscourse: boolean;
 }
 
 interface CaptureState {
