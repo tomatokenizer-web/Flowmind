@@ -3,7 +3,6 @@ import type { SafetyGuard } from "./safetyGuard";
 import { z } from "zod";
 import { logger } from "../logger";
 import {
-  DecompositionBoundariesSchema,
   DecompositionRelationProposalsSchema,
 } from "./schemas";
 import type {
@@ -197,33 +196,45 @@ async function proposeBoundaries(
   const boundaryPrompt = `Split this text into self-contained thought units. Each unit should hold one coherent idea that can stand on its own.
 
 For each unit, provide:
-- startMarker: the first 8-10 words of that unit (exact quote from the text)
+- content: the exact text of that unit (do not summarize)
 - proposedType: claim, question, evidence, counterargument, observation, idea, definition, assumption, action
 - confidence: 0-1
-- discourseRole: the role this unit plays in the overall text (e.g. "thesis", "case study", "supporting evidence", "synthesis", "conclusion", "counterpoint", "transition")
-- rationale: brief reason for this split and type
+- discourseRole: the role this unit plays in the overall text
 
 """
 ${text}
 """`;
 
-  type BoundaryItem = { startMarker: string; proposedType: string; confidence: number; rationale: string; discourseRole?: string };
-  const boundaryResult = await provider.generateStructured<{ boundaries: BoundaryItem[] }>(
+  const DirectSplitSchema = z.object({
+    units: z.array(
+      z.object({
+        content: z.string(),
+        proposedType: z.enum([
+          "claim", "question", "evidence", "counterargument",
+          "observation", "idea", "definition", "assumption", "action",
+        ]),
+        confidence: z.number().min(0).max(1),
+        discourseRole: z.string().optional(),
+      })
+    ),
+  });
+
+  const result = await provider.generateStructured<z.infer<typeof DirectSplitSchema>>(
     boundaryPrompt,
     {
       temperature: 0.4,
-      maxTokens: 2048,
-      zodSchema: DecompositionBoundariesSchema,
+      maxTokens: 16384,
+      zodSchema: DirectSplitSchema,
       schema: {
-        name: "DecompositionBoundaries",
-        description: "Proposed boundaries for text decomposition",
+        name: "DirectSplit",
+        description: "Text split into self-contained thought units",
         properties: {
-          boundaries: {
+          units: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                startMarker: { type: "string", description: "First 8-10 words of this unit, exact quote" },
+                content: { type: "string" },
                 proposedType: {
                   type: "string",
                   enum: [
@@ -232,50 +243,32 @@ ${text}
                   ],
                 },
                 confidence: { type: "number", minimum: 0, maximum: 1 },
-                discourseRole: { type: "string", description: "Role in the overall text structure" },
-                rationale: { type: "string" },
+                discourseRole: { type: "string" },
               },
-              required: ["startMarker", "proposedType", "confidence", "rationale"],
+              required: ["content", "proposedType", "confidence"],
             },
           },
         },
-        required: ["boundaries"],
+        required: ["units"],
       },
     }
   );
 
-  const boundaries = boundaryResult.boundaries;
-  const results: Array<{ content: string; proposedType: string; confidence: number; startChar: number; endChar: number; discourseRole?: string }> = [];
-
-  const normalize = (s: string) =>
-    s.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u2013\u2014]/g, "-").replace(/[\u201C\u201D\u201E\u201F]/g, '"');
-
-  const normalizedText = normalize(text);
-
-  for (let i = 0; i < boundaries.length; i++) {
-    const b = boundaries[i]!;
-    const normalizedMarker = normalize(b.startMarker);
-    const markerIdx = normalizedText.indexOf(normalizedMarker, results.length > 0 ? results[results.length - 1]!.startChar + 1 : 0);
-    const startChar = markerIdx >= 0 ? markerIdx : (results.length > 0 ? results[results.length - 1]!.endChar : 0);
-
-    const nextMarker = i + 1 < boundaries.length ? boundaries[i + 1]!.startMarker : null;
-    let endChar = text.length;
-    if (nextMarker) {
-      const nextIdx = normalizedText.indexOf(normalize(nextMarker), startChar + 1);
-      if (nextIdx >= 0) endChar = nextIdx;
-    }
-
-    results.push({
-      content: text.slice(startChar, endChar).trim(),
-      proposedType: b.proposedType,
-      confidence: b.confidence,
+  let cursor = 0;
+  return result.units.map((u) => {
+    const idx = text.indexOf(u.content.slice(0, 40), cursor);
+    const startChar = idx >= 0 ? idx : cursor;
+    const endChar = idx >= 0 ? idx + u.content.length : startChar + u.content.length;
+    cursor = endChar;
+    return {
+      content: u.content,
+      proposedType: u.proposedType,
+      confidence: u.confidence,
       startChar,
       endChar,
-      discourseRole: b.discourseRole,
-    });
-  }
-
-  return results;
+      discourseRole: u.discourseRole,
+    };
+  });
 }
 
 // ─── Helper: Propose Relations ────────────────────────────────────────────
