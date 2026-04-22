@@ -333,7 +333,6 @@ export const feedbackRouter = createTRPCRouter({
           projectId: input.projectId,
           userId: ctx.session.user.id!,
           lifecycle: { notIn: ["archived", "discarded"] },
-          incubating: false,
           unitContexts: { none: {} },
           assemblyItems: { none: {} },
         },

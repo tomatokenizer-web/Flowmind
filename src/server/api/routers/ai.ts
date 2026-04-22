@@ -2115,7 +2115,27 @@ Return ONLY a JSON array (no other text):
       });
 
       if (contexts.length === 0) {
-        // No contexts exist — suggest creating one
+        try {
+          const { getAIProvider } = await import("@/server/ai/provider");
+          const provider = getAIProvider();
+          const raw = await provider.generateText(
+            `${PROMPT_INJECTION_GUARD}
+
+This thought unit has no context yet. Suggest a concise context name (max 60 chars) that captures its core topic or theme.
+
+Unit (${unit.unitType}): ${sanitizeUserContent(unit.content.slice(0, 300))}
+
+Return ONLY a JSON object: {"name": "..."}`,
+            { temperature: 0.5, maxTokens: 128 },
+          );
+          const jsonMatch = raw.match(/\{[\s\S]*"name"[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]) as { name: string };
+            return { suggestions: [], newContextName: parsed.name.slice(0, 60) };
+          }
+        } catch {
+          // fall through to simple fallback
+        }
         return {
           suggestions: [],
           newContextName: unit.content.slice(0, 60).replace(/[?!.,;:]+$/, "").trim(),
@@ -2140,58 +2160,30 @@ Return ONLY a JSON array (no other text):
           return `[${i}] ${sanitizeUserContent(c.name)}${c.description ? ` — ${sanitizeUserContent(c.description)}` : ""}\n  Sample units:\n  ${sampleContent || "(empty)"}`;
         }).join("\n\n");
 
-        const ContextSuggestionSchema = (await import("zod")).z.object({
-          matches: (await import("zod")).z.array(
-            (await import("zod")).z.object({
-              contextIndex: (await import("zod")).z.number(),
-              confidence: (await import("zod")).z.number(),
-              reason: (await import("zod")).z.string(),
-            })
-          ),
-          newContextName: (await import("zod")).z.string().nullable(),
-        });
-
-        const result = await provider.generateStructured<{
-          matches: Array<{ contextIndex: number; confidence: number; reason: string }>;
-          newContextName: string | null;
-        }>(
+        const raw = await provider.generateText(
           `${PROMPT_INJECTION_GUARD}
 
 Given this unit (${unit.unitType}): ${sanitizeUserContent(unit.content.slice(0, 300))}
 
-Which of these contexts should it belong to? Rate each relevant context.
+Which of these contexts should it belong to? Rate each relevant context with a confidence score (0-1).
 If none fit well (all < 0.5 confidence), suggest a new context name.
 
 Contexts:
-${contextDescriptions}`,
-          {
-            temperature: 0.3,
-            maxTokens: 512,
-            zodSchema: ContextSuggestionSchema,
-            schema: {
-              name: "ContextSuggestion",
-              description: "Suggest which contexts a unit belongs to",
-              properties: {
-                matches: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      contextIndex: { type: "number" },
-                      confidence: { type: "number", minimum: 0, maximum: 1 },
-                      reason: { type: "string", maxLength: 100 },
-                    },
-                    required: ["contextIndex", "confidence", "reason"],
-                  },
-                },
-                newContextName: { type: "string", nullable: true, description: "Suggested new context name if no existing context fits" },
-              },
-              required: ["matches", "newContextName"],
-            },
-          },
+${contextDescriptions}
+
+Return ONLY a JSON object: {"matches": [{"contextIndex": 0, "confidence": 0.8, "reason": "..."}], "newContextName": null}`,
+          { temperature: 0.3, maxTokens: 512 },
         );
 
-        const suggestions = result.matches
+        const jsonMatch = raw.match(/\{[\s\S]*"matches"[\s\S]*\}/);
+        if (!jsonMatch) return { suggestions: [], newContextName: null };
+
+        const result = JSON.parse(jsonMatch[0]) as {
+          matches: Array<{ contextIndex: number; confidence: number; reason: string }>;
+          newContextName: string | null;
+        };
+
+        const suggestions = (result.matches ?? [])
           .filter((m) => m.contextIndex >= 0 && m.contextIndex < contexts.length && m.confidence >= 0.4)
           .sort((a, b) => b.confidence - a.confidence)
           .map((m) => ({
@@ -2202,10 +2194,9 @@ ${contextDescriptions}`,
             alreadyLinked: linkedContextIds.has(contexts[m.contextIndex]!.id),
           }));
 
-        return { suggestions, newContextName: result.newContextName };
+        return { suggestions, newContextName: result.newContextName ?? null };
       } catch (error: unknown) {
         console.error("suggestContextForUnit AI call failed:", error);
-        // Fallback: no AI — return empty
         return { suggestions: [], newContextName: null };
       }
     }),
@@ -2234,7 +2225,6 @@ ${contextDescriptions}`,
       });
       if (units.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No units found" });
 
-      // Use AI to generate a context name and description
       let contextName: string;
       let contextDescription: string | undefined;
 
@@ -2244,38 +2234,29 @@ ${contextDescriptions}`,
 
         const unitList = units.map((u) => `[${u.unitType}] ${sanitizeUserContent(u.content.slice(0, 100))}`).join("\n");
 
-        const ContextNameSchema = (await import("zod")).z.object({
-          name: (await import("zod")).z.string(),
-          description: (await import("zod")).z.string(),
-        });
-
-        const result = await provider.generateStructured<{ name: string; description: string }>(
+        const raw = await provider.generateText(
           `${PROMPT_INJECTION_GUARD}
 
 These thought units seem related. Suggest a concise context name (max 60 chars) and brief description (max 200 chars) that captures their shared theme.
 
 Units:
-${unitList}`,
-          {
-            temperature: 0.5,
-            maxTokens: 256,
-            zodSchema: ContextNameSchema,
-            schema: {
-              name: "ContextName",
-              description: "Generate context name from units",
-              properties: {
-                name: { type: "string", maxLength: 60 },
-                description: { type: "string", maxLength: 200 },
-              },
-              required: ["name", "description"],
-            },
-          },
+${unitList}
+
+Return ONLY a JSON object: {"name": "...", "description": "..."}`,
+          { temperature: 0.5, maxTokens: 256 },
         );
-        contextName = result.name;
-        contextDescription = result.description;
+
+        const jsonMatch = raw.match(/\{[\s\S]*"name"[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]) as { name: string; description: string };
+          contextName = parsed.name.slice(0, 60);
+          contextDescription = parsed.description?.slice(0, 200);
+        } else {
+          contextName = units[0]!.content.slice(0, 50).replace(/[?!.,;:]+$/, "").trim();
+          contextDescription = `Auto-created from ${units.length} unit(s)`;
+        }
       } catch (error: unknown) {
         console.error("autoCreateContext AI call failed:", error);
-        // Fallback: use first unit content as name
         contextName = units[0]!.content.slice(0, 50).replace(/[?!.,;:]+$/, "").trim();
         contextDescription = `Auto-created from ${units.length} unit(s)`;
       }

@@ -141,12 +141,6 @@ export function OrphanCard({
           disabled={isActioning}
         />
         <ActionButton
-          icon={<Sparkles className="h-3.5 w-3.5" />}
-          label="Incubate"
-          onClick={() => onRecover("incubate")}
-          disabled={isActioning}
-        />
-        <ActionButton
           icon={<Archive className="h-3.5 w-3.5" />}
           label="Archive"
           onClick={() => onRecover("archive")}

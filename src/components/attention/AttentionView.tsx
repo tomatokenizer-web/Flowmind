@@ -45,19 +45,16 @@ interface AttentionViewProps {
 
 // ─── Tab type ────────────────────────────────────────────────────────
 
-type AttentionTab = "incubating" | "orphans" | "similar" | "drift" | "high_salience" | "stale" | "conflicting" | "unanswered" | "proactive" | "custom";
+type AttentionTab = "unassigned" | "similar" | "drift" | "high_salience" | "stale" | "conflicting" | "unanswered" | "proactive" | "custom";
 
 // ─── Main Component ─────────────────────────────────────────────────
 
 type ViewMode = "list" | "grid";
 
 export function AttentionView({ projectId }: AttentionViewProps) {
-  const [activeTab, setActiveTab] = React.useState<AttentionTab>("incubating");
+  const [activeTab, setActiveTab] = React.useState<AttentionTab>("unassigned");
   const [viewMode, setViewMode] = React.useState<ViewMode>("list");
   const openPanel = usePanelStore((s) => s.openPanel);
-
-  const { data: incubationUnits = [], isLoading: incLoading } =
-    api.incubation.list.useQuery();
 
   const { data: orphans = [], isLoading: orphLoading } =
     api.feedback.getOrphanUnits.useQuery(
@@ -101,19 +98,13 @@ export function AttentionView({ projectId }: AttentionViewProps) {
       { enabled: !!projectId },
     );
 
-  const filteredIncubation = React.useMemo(
-    () => incubationUnits.filter((u) => u.projectId === projectId),
-    [incubationUnits, projectId],
-  );
-
   const [dismissedPairs, setDismissedPairs] = React.useState<Set<string>>(new Set());
   const activeSimilarPairs = (similarData?.pairs ?? []).filter(
     (p) => !dismissedPairs.has(`${p.unitA.id}:${p.unitB.id}`),
   );
 
   const tabs: Array<{ key: AttentionTab; label: string; count: number; icon: React.ReactNode; loading: boolean }> = [
-    { key: "incubating", label: "Incubating", count: filteredIncubation.length, icon: <Sparkles className="h-4 w-4" />, loading: incLoading },
-    { key: "orphans", label: "Orphans", count: orphans.length, icon: <Unlink className="h-4 w-4" />, loading: orphLoading },
+    { key: "unassigned", label: "Unassigned", count: orphans.length, icon: <Unlink className="h-4 w-4" />, loading: orphLoading },
     { key: "high_salience", label: "High Salience", count: highSalienceUnits.length, icon: <Star className="h-4 w-4" />, loading: hsLoading },
     { key: "stale", label: "Stale", count: staleUnits.length, icon: <Hourglass className="h-4 w-4" />, loading: staleLoading },
     { key: "conflicting", label: "Conflicting", count: conflictingUnits.length, icon: <Swords className="h-4 w-4" />, loading: conflictLoading },
@@ -195,16 +186,7 @@ export function AttentionView({ projectId }: AttentionViewProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto max-w-3xl space-y-3">
-          {activeTab === "incubating" && (
-            <IncubatingList
-              units={filteredIncubation}
-              contexts={contexts}
-              projectId={projectId}
-              isLoading={incLoading}
-              onUnitClick={openPanel}
-            />
-          )}
-          {activeTab === "orphans" && (
+          {activeTab === "unassigned" && (
             <OrphanList
               orphans={orphans}
               projectId={projectId}
@@ -281,103 +263,7 @@ export function AttentionView({ projectId }: AttentionViewProps) {
   );
 }
 
-// ─── Incubating List ─────────────────────────────────────────────────
-
-function IncubatingList({
-  units,
-  contexts,
-  projectId,
-  isLoading,
-  onUnitClick,
-}: {
-  units: Array<{ id: string; content: string; unitType: string; createdAt: Date; projectId: string }>;
-  contexts: Array<{ id: string; name: string; parentId: string | null }>;
-  projectId: string;
-  isLoading: boolean;
-  onUnitClick: (id: string) => void;
-}) {
-  const utils = api.useUtils();
-  const promoteMutation = api.incubation.promote.useMutation({
-    onSuccess: () => {
-      void utils.incubation.list.invalidate();
-      void utils.context.list.invalidate({ projectId });
-      toast.success("Unit promoted to context");
-    },
-  });
-  const snoozeMutation = api.incubation.snooze.useMutation({
-    onSuccess: () => {
-      void utils.incubation.list.invalidate();
-      toast.success("Unit snoozed");
-    },
-  });
-  const discardMutation = api.incubation.discard.useMutation({
-    onSuccess: () => {
-      void utils.incubation.list.invalidate();
-      toast.success("Unit discarded");
-    },
-  });
-
-  const isActioning = promoteMutation.isPending || snoozeMutation.isPending || discardMutation.isPending;
-
-  if (isLoading) return <LoadingCards />;
-  if (units.length === 0) return <EmptyState icon={Sparkles} message="No incubating units. New ideas will appear here." />;
-
-  return (
-    <AnimatePresence initial={false}>
-      {units.map((unit) => (
-        <motion.div
-          key={unit.id}
-          layout
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          className={cn(
-            "rounded-xl border border-border bg-bg-primary p-4 transition-shadow hover:shadow-hover",
-            isActioning && "opacity-50 pointer-events-none",
-          )}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <UnitTypeBadge unitType={unit.unitType as UnitType} />
-            <span className="text-xs text-text-tertiary">
-              {formatDistanceToNow(new Date(unit.createdAt), { addSuffix: true })}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onUnitClick(unit.id)}
-            className="text-left w-full mb-3"
-          >
-            <p className="text-sm text-text-primary leading-relaxed line-clamp-3 hover:text-accent-primary transition-colors">
-              {unit.content}
-            </p>
-          </button>
-          <div className="flex items-center gap-2">
-            <ContextPicker
-              contexts={contexts}
-              onSelect={(ctxId) => promoteMutation.mutate({ unitId: unit.id, contextId: ctxId })}
-              disabled={isActioning}
-            />
-            <ActionButton
-              icon={<Clock className="h-3.5 w-3.5" />}
-              label="Snooze"
-              onClick={() => snoozeMutation.mutate({ unitId: unit.id })}
-              disabled={isActioning}
-            />
-            <ActionButton
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Discard"
-              onClick={() => discardMutation.mutate({ unitId: unit.id })}
-              disabled={isActioning}
-              danger
-            />
-          </div>
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  );
-}
-
-// ─── Orphan List ─────────────────────────────────────────────────────
+// ─── Unassigned List (merged Orphan + Incubating) ───────────────────
 
 function OrphanList({
   orphans,
