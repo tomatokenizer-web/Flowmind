@@ -35,6 +35,8 @@ interface CaptureState {
   batchMode: boolean;
   /** Texts queued for batch processing */
   batchTexts: string[];
+  /** Results arrived while overlay was closed */
+  pendingReview: boolean;
 
   open: () => void;
   close: () => void;
@@ -53,6 +55,8 @@ interface CaptureState {
   addBatchText: (text: string) => void;
   removeBatchText: (index: number) => void;
   clearBatch: () => void;
+  openPendingReview: () => void;
+  dismissPendingReview: () => void;
 }
 
 export const useCaptureStore = create<CaptureState>((set) => ({
@@ -65,15 +69,30 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   errorMessage: null,
   batchMode: false,
   batchTexts: [],
+  pendingReview: false,
 
-  open: () => set({ isOpen: true, phase: "input", showAudioRecorder: false, errorMessage: null }),
-  close: () => set({ isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [] }),
+  open: () => set((s) =>
+    s.pendingReview && s.decompositionData
+      ? { isOpen: true, phase: "reviewing", pendingReview: false, showAudioRecorder: false, errorMessage: null }
+      : { isOpen: true, phase: "input", showAudioRecorder: false, errorMessage: null }
+  ),
+  close: () => set((s) =>
+    s.phase === "decomposing"
+      ? { isOpen: false, showAudioRecorder: false, errorMessage: null }
+      : { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [], pendingReview: false }
+  ),
   toggle: () =>
-    set((s) =>
-      s.isOpen
-        ? { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [] }
-        : { isOpen: true, phase: "input", errorMessage: null }
-    ),
+    set((s) => {
+      if (s.isOpen) {
+        return s.phase === "decomposing"
+          ? { isOpen: false, showAudioRecorder: false, errorMessage: null }
+          : { isOpen: false, pendingText: "", phase: "input", decompositionData: null, showAudioRecorder: false, errorMessage: null, batchMode: false, batchTexts: [], pendingReview: false };
+      }
+      if (s.pendingReview && s.decompositionData) {
+        return { isOpen: true, phase: "reviewing", pendingReview: false, errorMessage: null };
+      }
+      return { isOpen: true, phase: "input", errorMessage: null };
+    }),
   toggleMode: () =>
     set((s) => ({ mode: s.mode === "capture" ? "organize" : "capture", errorMessage: null })),
   setMode: (mode) => set({ mode }),
@@ -81,7 +100,7 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   clearText: () => set({ pendingText: "" }),
   setPhase: (phase) => set({ phase }),
   setDecompositionData: (data) => set({ decompositionData: data }),
-  resetToInput: () => set({ phase: "input", decompositionData: null, pendingText: "", errorMessage: null }),
+  resetToInput: () => set({ phase: "input", decompositionData: null, pendingText: "", errorMessage: null, pendingReview: false }),
   openWithAudio: () => set({ isOpen: true, phase: "input", showAudioRecorder: true, errorMessage: null }),
   hideAudioRecorder: () => set({ showAudioRecorder: false }),
   setErrorMessage: (msg) => set({ errorMessage: msg }),
@@ -89,4 +108,6 @@ export const useCaptureStore = create<CaptureState>((set) => ({
   addBatchText: (text) => set((s) => ({ batchTexts: [...s.batchTexts, text] })),
   removeBatchText: (index) => set((s) => ({ batchTexts: s.batchTexts.filter((_, i) => i !== index) })),
   clearBatch: () => set({ batchTexts: [], batchMode: false }),
+  openPendingReview: () => set({ isOpen: true, phase: "reviewing", pendingReview: false }),
+  dismissPendingReview: () => set({ pendingReview: false, decompositionData: null, pendingText: "", phase: "input" }),
 }));

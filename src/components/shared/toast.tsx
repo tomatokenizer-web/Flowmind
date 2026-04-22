@@ -92,6 +92,15 @@ function ToastNotification({ toast }: { toast: ToastItem }) {
             Undo
           </ToastPrimitive.Action>
         )}
+        {toast.action && (
+          <ToastPrimitive.Action
+            altText={toast.action.label}
+            className="mt-1 inline-flex text-sm font-medium text-accent-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2"
+            onClick={toast.action.onClick}
+          >
+            {toast.action.label}
+          </ToastPrimitive.Action>
+        )}
       </div>
 
       <ToastPrimitive.Close

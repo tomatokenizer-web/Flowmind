@@ -229,8 +229,22 @@ export function RelationsTab({ unitId, unitContent, projectId }: RelationsTabPro
                     {Math.round(s.strength * 100)}%
                   </span>
                 </div>
+                {/* Target unit content */}
+                {s.targetUnitContent && (
+                  <div className="rounded-md border border-border bg-bg-primary px-2.5 py-2 mb-2">
+                    {s.targetUnitType && (
+                      <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wide">
+                        {s.targetUnitType.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    <p className="text-xs text-text-primary line-clamp-3 leading-relaxed">
+                      {s.targetUnitContent}
+                    </p>
+                  </div>
+                )}
+                {/* Reasoning */}
                 {s.reasoning && (
-                  <p className="text-xs text-text-secondary mb-2">{s.reasoning}</p>
+                  <p className="text-[11px] text-text-tertiary italic mb-2">{s.reasoning}</p>
                 )}
                 <div className="flex items-center gap-1.5 justify-end">
                   <button

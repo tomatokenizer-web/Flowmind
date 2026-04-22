@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   LayoutList,
   LayoutGrid,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -432,11 +433,124 @@ function OrphanList({
     );
   };
 
+  // AI grouping suggestions
+  const suggestGroupings = api.ai.suggestOrphanGroupings.useMutation();
+  const autoCreateContext = api.ai.autoCreateContext.useMutation({
+    onSuccess: (result) => {
+      void utils.feedback.getOrphanUnits.invalidate({ projectId });
+      void utils.context.list.invalidate({ projectId });
+      toast.success(`Context "${result.contextName}" created`, {
+        description: `${result.unitsAdded} units grouped`,
+      });
+    },
+    onError: () => toast.error("Failed to create context"),
+  });
+  const [dismissedGroups, setDismissedGroups] = React.useState<Set<number>>(new Set());
+
+  const activeGroups = (suggestGroupings.data?.groups ?? []).filter(
+    (_, i) => !dismissedGroups.has(i),
+  );
+
   if (isLoading) return <LoadingCards />;
   if (orphans.length === 0) return <EmptyState icon={Unlink} message="No orphan units. All units are connected." />;
 
   return (
     <div className="space-y-3">
+      {/* Suggest Groupings button */}
+      {orphans.length >= 2 && (
+        <button
+          type="button"
+          onClick={() => {
+            setDismissedGroups(new Set());
+            suggestGroupings.mutate({ projectId });
+          }}
+          disabled={suggestGroupings.isPending}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-2.5 text-xs font-medium transition-colors",
+            suggestGroupings.isPending
+              ? "border-accent-primary/30 text-text-tertiary"
+              : "border-accent-primary/50 text-accent-primary hover:border-accent-primary hover:bg-accent-primary/5",
+          )}
+        >
+          {suggestGroupings.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Analyzing groupings...
+            </>
+          ) : (
+            <>
+              <Layers className="h-4 w-4" />
+              {activeGroups.length > 0 ? "Re-analyze Groupings" : `Suggest Groupings for ${orphans.length} orphans`}
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Grouping suggestions */}
+      {activeGroups.length > 0 && (
+        <div className="space-y-2">
+          {activeGroups.map((group, groupIdx) => {
+            const originalIdx = suggestGroupings.data!.groups.indexOf(group);
+            return (
+              <div
+                key={originalIdx}
+                className="rounded-xl border border-accent-primary/20 bg-accent-primary/5 p-4"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-accent-primary" />
+                    <span className="text-sm font-medium text-text-primary">{group.contextName}</span>
+                    <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-[10px] font-medium text-accent-primary">
+                      {group.units.length} units
+                    </span>
+                  </div>
+                </div>
+                {group.description && (
+                  <p className="text-xs text-text-secondary mb-2">{group.description}</p>
+                )}
+                <div className="space-y-1 mb-3">
+                  {group.units.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => onUnitClick(u.id)}
+                      className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent-primary/10 transition-colors"
+                    >
+                      <UnitTypeBadge unitType={u.unitType as UnitType} />
+                      <p className="text-xs text-text-primary line-clamp-1 flex-1">{u.content}</p>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-text-tertiary italic mb-3">{group.reasoning}</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      autoCreateContext.mutate({
+                        projectId,
+                        unitIds: group.units.map((u) => u.id),
+                      })
+                    }
+                    disabled={autoCreateContext.isPending}
+                    className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-3 py-1.5 text-xs font-medium text-accent-primary hover:bg-accent-primary/20 transition-colors"
+                  >
+                    <Check className="h-3 w-3" /> Create Context
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedGroups((prev) => new Set(prev).add(originalIdx))}
+                    className="flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-text-tertiary hover:bg-bg-hover transition-colors"
+                  >
+                    <X className="h-3 w-3" /> Dismiss
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Individual orphan cards */}
       {orphans.map((unit) => (
         <OrphanCard
           key={unit.id}

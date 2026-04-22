@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useCaptureStore } from "~/stores/capture-store";
 import { api } from "~/trpc/react";
+import { toast } from "~/lib/toast";
 
 interface UseCaptureOptions {
   projectId: string;
@@ -56,7 +57,8 @@ export function useCaptureMode({
   // AI decomposition mutation
   const decomposeMutation = api.ai.decomposeText.useMutation({
     onSuccess: (result) => {
-      const text = useCaptureStore.getState().pendingText;
+      const state = useCaptureStore.getState();
+      const text = state.pendingText || result.proposals.map((p) => p.content).join(" ");
       setDecompositionData({
         originalText: text,
         purpose: result.purpose,
@@ -65,6 +67,17 @@ export function useCaptureMode({
         isStructuredDiscourse: result.isStructuredDiscourse,
       });
       setPhase("reviewing");
+      if (!state.isOpen) {
+        useCaptureStore.setState({ pendingReview: true });
+        toast.success("Decomposition ready", {
+          description: `${result.proposals.length} units found. Open capture to review.`,
+          duration: 15000,
+          action: {
+            label: "Review",
+            onClick: () => useCaptureStore.getState().openPendingReview(),
+          },
+        });
+      }
     },
     onError: (error) => {
       console.error("Decomposition failed:", error);

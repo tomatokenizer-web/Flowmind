@@ -2,12 +2,18 @@ import { create } from "zustand";
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastItem {
   id: string;
   type: ToastType;
   title: string;
   description?: string;
   undoAction?: () => void;
+  action?: ToastAction;
   duration?: number;
 }
 

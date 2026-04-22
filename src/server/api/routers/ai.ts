@@ -52,7 +52,7 @@ const contributionRatioSchema = z.object({
 });
 
 const decomposeTextSchema = z.object({
-  text: z.string().min(1).max(10000),
+  text: z.string().min(1).max(50000),
   contextId: z.string().uuid().optional(),
   projectId: z.string().uuid(),
   sessionId: z.string().uuid().optional(),
@@ -242,8 +242,18 @@ export const aiRouter = createTRPCRouter({
           }
         );
 
+        const unitMap = new Map(existingUnits.map((u) => [u.id, u]));
+        const enriched = suggestions.map((s) => {
+          const target = unitMap.get(s.targetUnitId);
+          return {
+            ...s,
+            targetUnitContent: target?.content ?? null,
+            targetUnitType: target?.unitType ?? null,
+          };
+        });
+
         return {
-          suggestions,
+          suggestions: enriched,
           aiTrustLevel: "inferred" as const,
         };
       } catch (error: unknown) {
@@ -2291,6 +2301,116 @@ ${unitList}`,
         description: contextDescription,
         unitsAdded: units.length,
       };
+    }),
+
+  // ─── Suggest groupings for orphan units ──────────────────────────────
+
+  suggestOrphanGroupings: rateLimitedProcedure
+    .input(z.object({ projectId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id!;
+
+      const orphans = await ctx.db.unit.findMany({
+        where: {
+          projectId: input.projectId,
+          userId,
+          lifecycle: { notIn: ["archived", "discarded"] },
+          incubating: false,
+          unitContexts: { none: {} },
+          assemblyItems: { none: {} },
+        },
+        select: { id: true, content: true, unitType: true },
+        orderBy: { createdAt: "asc" },
+        take: 40,
+      });
+
+      if (orphans.length < 2) {
+        return { groups: [] };
+      }
+
+      const unitList = orphans
+        .map((u, i) => `[${i}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 120))}`)
+        .join("\n");
+
+      try {
+        const { getAIProvider } = await import("@/server/ai/provider");
+        const provider = getAIProvider();
+        const { z: zod } = await import("zod");
+
+        const GroupingsSchema = zod.object({
+          groups: zod.array(zod.object({
+            contextName: zod.string(),
+            description: zod.string(),
+            unitIndices: zod.array(zod.number()),
+            reasoning: zod.string(),
+          })),
+        });
+
+        const result = await provider.generateStructured<{
+          groups: Array<{
+            contextName: string;
+            description: string;
+            unitIndices: number[];
+            reasoning: string;
+          }>;
+        }>(`${PROMPT_INJECTION_GUARD}
+
+These orphan thought units have no context assigned. Analyze them and suggest logical groupings — units that share a theme, argument, or topic and would benefit from being in the same context.
+
+Rules:
+- Each group needs at least 2 units
+- A unit can only belong to one group
+- Not every unit needs a group — only group when there's a clear thematic connection
+- Context names should be concise (max 60 chars)
+
+Units:
+${unitList}`, {
+          temperature: 0.5,
+          maxTokens: 2048,
+          zodSchema: GroupingsSchema,
+          schema: {
+            name: "OrphanGroupings",
+            description: "Suggested context groupings for orphan units",
+            properties: {
+              groups: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    contextName: { type: "string", maxLength: 60 },
+                    description: { type: "string", maxLength: 200 },
+                    unitIndices: { type: "array", items: { type: "number" } },
+                    reasoning: { type: "string", maxLength: 200 },
+                  },
+                  required: ["contextName", "description", "unitIndices", "reasoning"],
+                },
+              },
+            },
+            required: ["groups"],
+          },
+        });
+
+        const groups = result.groups
+          .filter((g) => g.unitIndices.length >= 2)
+          .map((g) => ({
+            contextName: g.contextName,
+            description: g.description,
+            reasoning: g.reasoning,
+            units: g.unitIndices
+              .filter((i) => i >= 0 && i < orphans.length)
+              .map((i) => ({
+                id: orphans[i]!.id,
+                content: orphans[i]!.content,
+                unitType: orphans[i]!.unitType,
+              })),
+          }))
+          .filter((g) => g.units.length >= 2);
+
+        return { groups };
+      } catch (error: unknown) {
+        console.error("suggestOrphanGroupings AI call failed:", error);
+        return { groups: [] };
+      }
     }),
 
   // ─── Deep Dive: Generate follow-up questions ─────────────────────────
