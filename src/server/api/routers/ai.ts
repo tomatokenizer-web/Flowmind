@@ -2329,66 +2329,42 @@ ${unitList}`,
       }
 
       const unitList = orphans
-        .map((u, i) => `[${i}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 120))}`)
+        .map((u, i) => `[${i}] (${u.unitType}) ${sanitizeUserContent(u.content.slice(0, 100))}`)
         .join("\n");
 
       try {
         const { getAIProvider } = await import("@/server/ai/provider");
         const provider = getAIProvider();
-        const { z: zod } = await import("zod");
 
-        const GroupingsSchema = zod.object({
-          groups: zod.array(zod.object({
-            contextName: zod.string(),
-            description: zod.string(),
-            unitIndices: zod.array(zod.number()),
-            reasoning: zod.string(),
-          })),
+        const raw = await provider.generateText(`${PROMPT_INJECTION_GUARD}
+
+These orphan thought units have no context assigned. Suggest logical groupings — units sharing a theme or topic.
+
+Rules:
+- Each group needs at least 2 units
+- A unit can only belong to one group
+- Only group when there's a clear thematic connection
+
+Units:
+${unitList}
+
+Return ONLY a JSON object: {"groups":[{"contextName":"...","description":"...","unitIndices":[0,1,2],"reasoning":"..."}]}`, {
+          temperature: 0.5,
+          maxTokens: 2048,
         });
 
-        const result = await provider.generateStructured<{
+        const jsonMatch = raw.match(/\{[\s\S]*"groups"[\s\S]*\}/);
+        if (!jsonMatch) {
+          return { groups: [] };
+        }
+        const result = JSON.parse(jsonMatch[0]) as {
           groups: Array<{
             contextName: string;
             description: string;
             unitIndices: number[];
             reasoning: string;
           }>;
-        }>(`${PROMPT_INJECTION_GUARD}
-
-These orphan thought units have no context assigned. Analyze them and suggest logical groupings — units that share a theme, argument, or topic and would benefit from being in the same context.
-
-Rules:
-- Each group needs at least 2 units
-- A unit can only belong to one group
-- Not every unit needs a group — only group when there's a clear thematic connection
-- Context names should be concise (max 60 chars)
-
-Units:
-${unitList}`, {
-          temperature: 0.5,
-          maxTokens: 2048,
-          zodSchema: GroupingsSchema,
-          schema: {
-            name: "OrphanGroupings",
-            description: "Suggested context groupings for orphan units",
-            properties: {
-              groups: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    contextName: { type: "string", maxLength: 60 },
-                    description: { type: "string", maxLength: 200 },
-                    unitIndices: { type: "array", items: { type: "number" } },
-                    reasoning: { type: "string", maxLength: 200 },
-                  },
-                  required: ["contextName", "description", "unitIndices", "reasoning"],
-                },
-              },
-            },
-            required: ["groups"],
-          },
-        });
+        };
 
         const groups = result.groups
           .filter((g) => g.unitIndices.length >= 2)
