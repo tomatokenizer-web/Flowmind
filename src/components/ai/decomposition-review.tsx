@@ -158,7 +158,7 @@ export function DecompositionReview({
           ...(sourceGroupIdRef.current && {
             sourceGroupId: sourceGroupIdRef.current,
             orderInSource: state.proposal.orderInSource,
-            discourseRole: state.proposal.discourseRole,
+            discourseRole: state.proposal.discourseRole?.slice(0, 100),
           }),
         });
 
