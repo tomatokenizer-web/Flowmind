@@ -11,6 +11,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbopack",
+    "startup": "bash scripts/start.sh",
     "lint": "next lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -34,6 +34,9 @@ pnpm-debug.log*
 *.swp
 *.swo
 
+# postgres data (bind mount)
+pgdata/
+
 # os
 .DS_Store
 Thumbs.db

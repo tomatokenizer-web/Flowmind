@@ -72,6 +72,9 @@ function CaptureMode({ projectId, contextId }: { projectId: string; contextId: s
         setScopeJumpVisible(false);
       }
     },
+    onError: () => {
+      setScopeJumpVisible(false);
+    },
   });
 
   const handleScopeJumpCheck = React.useCallback(

@@ -1219,7 +1219,8 @@ Return JSON: { "refined": "...", "changes": ["change1", "change2"] }`;
           contextId: input.contextId,
         });
       } catch (error: unknown) {
-        handleAIError(error, "Scope jump detection");
+        console.error("[Scope jump detection] AI call failed:", error);
+        return { isJump: false, currentScope: "", suggestedScope: "", confidence: 0 };
       }
     }),
 
