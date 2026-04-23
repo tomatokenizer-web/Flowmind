@@ -141,7 +141,7 @@ const createUnitSchema = z.object({
   // Source Group: structured discourse origin
   sourceGroupId: z.string().uuid().optional(),
   orderInSource: z.number().int().min(0).optional(),
-  discourseRole: z.string().max(100).optional(),
+  discourseRole: z.string().max(500).optional(),
 });
 
 const updateUnitSchema = z.object({

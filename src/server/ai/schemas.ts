@@ -78,7 +78,7 @@ export const DecompositionBoundariesSchema = z.object({
       startMarker: z.string(),
       proposedType: unitTypeEnum,
       confidence: z.number().min(0).max(1),
-      discourseRole: z.string().max(100).optional(),
+      discourseRole: z.string().max(500).optional(),
       rationale: z.string(),
     })
   ),

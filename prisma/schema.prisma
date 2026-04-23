@@ -628,7 +628,7 @@ model Unit {
   // Source Group: structured discourse origin
   sourceGroupId  String?  @map("source_group_id") @db.Uuid
   orderInSource  Int?     @map("order_in_source")
-  discourseRole  String?  @map("discourse_role") @db.VarChar(100)
+  discourseRole  String?  @map("discourse_role") @db.VarChar(500)
   sourceGroup    SourceGroup? @relation(fields: [sourceGroupId], references: [id], onDelete: SetNull)
 
   // AI Analysis (v3.14: reduced to 5)
