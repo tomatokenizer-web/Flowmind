@@ -6,10 +6,11 @@ import { cn } from "~/lib/utils";
 import { ExternalKnowledgePanel } from "~/components/ai/ExternalKnowledgePanel";
 import { toast } from "~/lib/toast";
 import { useAIIntensity, isAtLeastBalanced, isProactive } from "~/hooks/useAIIntensity";
-import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight, Telescope, MessageCircleQuestion, Sparkles, ChevronRight, Layers, Scissors } from "lucide-react";
+import { Loader2, Check, RotateCcw, FolderPlus, ArrowRight, Telescope, MessageCircleQuestion, Sparkles, ChevronRight, Layers, Scissors, GitBranch } from "lucide-react";
 import { useSidebarStore } from "~/stores/sidebar-store";
 import { useProjectId } from "~/contexts/project-context";
 import { useAITabCacheStore } from "~/stores/aiTabCacheStore";
+import { DerivationSuggestions } from "~/components/unit/DerivationSuggestions";
 
 interface AITabProps {
   unitId: string;
@@ -240,6 +241,15 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
         />
       )}
 
+      {/* AI Derivation Suggestions */}
+      {projectId && (
+        <DerivationSuggestions
+          unitId={unitId}
+          contextId={activeContextId}
+          projectId={projectId}
+        />
+      )}
+
       {/* Branch potential — only shown in proactive mode */}
       {showBranchPotential && (
         <div className="flex items-center justify-between rounded-xl border border-border p-3">
@@ -293,7 +303,7 @@ export function AITab({ unitId, content, unitType, branchPotential, onContentCha
 
 // ─── Decompose Sub-component ──────────────────────────────────────────
 
-function DecomposeSection({
+export function DecomposeSection({
   unitId,
   content,
   projectId,
@@ -451,7 +461,7 @@ function DecomposeSection({
 
 // ─── Deep Dive Sub-component ──────────────────────────────────────────
 
-interface DeepDiveProps {
+export interface DeepDiveProps {
   unitId: string;
   content: string;
   unitType?: string;
@@ -468,7 +478,7 @@ const _ANGLE_ICONS: Record<string, string> = {
   application: "action",
 };
 
-function DeepDiveSection({ unitId, content, unitType, projectId, onBranchedUnitsChange }: DeepDiveProps) {
+export function DeepDiveSection({ unitId, content, unitType, projectId, onBranchedUnitsChange }: DeepDiveProps) {
   const aiCache = useAITabCacheStore((s) => s.getCache(unitId));
   const addDeepDiveEntry = useAITabCacheStore((s) => s.addDeepDiveEntry);
   const setDeepDivePrompt = useAITabCacheStore((s) => s.setDeepDivePrompt);
@@ -717,7 +727,7 @@ function DeepDiveSection({ unitId, content, unitType, projectId, onBranchedUnits
 
 // ─── Context Suggestion Sub-component ────────────────────────────────
 
-function ContextSuggestionSection({
+export function ContextSuggestionSection({
   unitId,
   projectId,
   deepDiveUnitIds,

@@ -5,13 +5,10 @@ import { api } from "~/trpc/react";
 import {
   X,
   FileText,
-  Link2,
-  Settings2,
-  Sparkles,
   Compass,
   ChevronDown,
-  GitCommitHorizontal,
   Network,
+  Settings2,
   Trash2,
   ZoomIn,
   ZoomOut,
@@ -27,11 +24,8 @@ import { useSidebarStore } from "~/stores/sidebar-store";
 import { toast } from "~/lib/toast";
 import type { UnitType } from "@prisma/client";
 import { ComponentErrorBoundary } from "~/components/shared/error-boundary";
-import { ProvenanceChain } from "~/components/feedback/ProvenanceChain";
 import { ContentTab } from "~/components/unit/detail-tabs/ContentTab";
-import { RelationsTab } from "~/components/unit/detail-tabs/RelationsTab";
 import { MetadataTab } from "~/components/unit/detail-tabs/MetadataTab";
-import { AITab } from "~/components/unit/detail-tabs/AITab";
 import { ConnectionsTab } from "~/components/unit/detail-tabs/ConnectionsTab";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -105,12 +99,9 @@ function PanelSkeleton() {
 // ─── Tab config ───────────────────────────────────────────────────────
 
 const TAB_CONFIG: { value: DetailTab; label: string; Icon: React.ElementType }[] = [
-  { value: "connections", label: "Connections", Icon: Network },
   { value: "content", label: "Content", Icon: FileText },
-  { value: "relations", label: "Relations", Icon: Link2 },
+  { value: "connections", label: "Connections", Icon: Network },
   { value: "metadata", label: "Metadata", Icon: Settings2 },
-  { value: "ai", label: "AI", Icon: Sparkles },
-  { value: "provenance", label: "Provenance", Icon: GitCommitHorizontal },
 ];
 
 // ─── Add to Navigator ────────────────────────────────────────────────
@@ -265,14 +256,14 @@ export function UnitDetailPanel({
           onValueChange={(v) => setActiveTab(v as DetailTab)}
           className="flex flex-1 flex-col overflow-hidden"
         >
-          <TabsList className="px-space-4 shrink-0 w-full">
+          <TabsList className="px-space-4 shrink-0 w-full overflow-x-auto">
             {TAB_CONFIG.map(({ value, label, Icon }) => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="flex-1 gap-1.5 text-xs"
+                className="gap-1 text-xs px-2"
               >
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                <Icon className="h-3 w-3" aria-hidden="true" />
                 <span>{label}</span>
               </TabsTrigger>
             ))}
@@ -280,49 +271,27 @@ export function UnitDetailPanel({
 
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-space-4" style={{ fontSize: `${zoom}%` }}>
-              <TabsContent value="connections" className="mt-0">
-                <ConnectionsTab
-                  unitId={unit.id}
-                  projectId={unit.projectId ?? ""}
-                />
-              </TabsContent>
-
               <TabsContent value="content" className="mt-0">
                 <ContentTab
                   unit={unit}
                   onContentChange={onContentChange}
                   onLifecycleChange={onLifecycleChange}
+                  onAddAsUnit={onAddAsUnit}
                 />
               </TabsContent>
 
-              <TabsContent value="relations" className="mt-0">
-                <RelationsTab unitId={unit.id} unitContent={unit.content} projectId={unit.projectId} />
+              <TabsContent value="connections" className="mt-0">
+                <ConnectionsTab
+                  unitId={unit.id}
+                  projectId={unit.projectId ?? ""}
+                  unitContent={unit.content}
+                />
               </TabsContent>
 
               <TabsContent value="metadata" className="mt-0">
                 <MetadataTab
                   unit={unit}
                   onMetadataChange={onMetadataChange}
-                  setActiveTab={setActiveTab}
-                />
-              </TabsContent>
-
-              <TabsContent value="ai" className="mt-0">
-                <AITab
-                  unitId={unit.id}
-                  content={unit.content}
-                  unitType={unit.unitType}
-                  branchPotential={unit.branchPotential}
-                  onContentChange={onContentChange}
-                  onMetadataChange={onMetadataChange ? (field, value) => onMetadataChange(field as keyof MetadataValues, value) : undefined}
-                  onAddAsUnit={onAddAsUnit}
-                />
-              </TabsContent>
-
-              <TabsContent value="provenance" className="mt-0">
-                <ProvenanceChain
-                  unitId={unit.id}
-                  onNavigate={(id) => openPanel(id)}
                 />
               </TabsContent>
             </div>

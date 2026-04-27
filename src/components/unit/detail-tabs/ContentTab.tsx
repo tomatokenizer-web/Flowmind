@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as React from "react";
 import { Paperclip } from "lucide-react";
 import { api } from "~/trpc/react";
 import { RichTextEditor } from "~/components/editor/RichTextEditor";
@@ -15,8 +16,11 @@ import { EpistemicHumilityBanner } from "~/components/feedback/EpistemicHumility
 import { UnitAIActionsMenu } from "~/components/unit/UnitAIActionsMenu";
 import { toast } from "~/lib/toast";
 import type { UnitDetailData } from "~/components/panels/UnitDetailPanel";
+import { useSidebarStore } from "~/stores/sidebar-store";
+import { useProjectId } from "~/contexts/project-context";
+import { DeepDiveSection, DecomposeSection, ContextSuggestionSection } from "./AITab";
+import { DerivationSuggestions } from "~/components/unit/DerivationSuggestions";
 
-// Helper: derive resourceType from MIME type
 function mimeToResourceType(
   mime: string,
 ): "image" | "audio" | "video" | "code" | "table" | "link" | "diagram" {
@@ -32,13 +36,17 @@ interface ContentTabProps {
   unit: UnitDetailData;
   onContentChange?: (content: string) => void;
   onLifecycleChange?: (lifecycle: string) => void;
+  onAddAsUnit?: (content: string) => void;
 }
 
-export function ContentTab({ unit, onContentChange, onLifecycleChange }: ContentTabProps) {
+export function ContentTab({ unit, onContentChange, onLifecycleChange, onAddAsUnit }: ContentTabProps) {
   const [localContent, setLocalContent] = useState(unit.content);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [deepDiveUnitIds, setDeepDiveUnitIds] = React.useState<string[]>([]);
   const utils = api.useUtils();
+  const activeContextId = useSidebarStore((s) => s.activeContextId);
+  const projectId = useProjectId();
 
   const uploadResource = api.resource.upload.useMutation({
     onSuccess: () => {
@@ -74,7 +82,6 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
     [unit.id, uploadResource],
   );
 
-  // Sync local content when unit changes
   useEffect(() => {
     setLocalContent(unit.content);
   }, [unit.id, unit.content]);
@@ -91,19 +98,16 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
     [onContentChange],
   );
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
-  // Filter audio resources for the audio detail view
   const audioResources = (unit.resources ?? []).filter(
     (r) => r.resourceType === "audio",
   );
 
-  // Strip HTML tags for word/char counts
   const plainText = localContent.replace(/<[^>]*>/g, "");
   const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
   const charCount = plainText.length;
@@ -123,7 +127,7 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
         </div>
       </div>
 
-      {/* Audio detail view — shown when unit has audio resources */}
+      {/* Audio detail view */}
       {audioResources.length > 0 && (
         <div className="space-y-3">
           {audioResources.map((resource) => (
@@ -141,7 +145,7 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
         </div>
       )}
 
-      {/* Rich text editor (Tiptap) */}
+      {/* Rich text editor */}
       <div className="space-y-1">
         <RichTextEditor
           content={localContent}
@@ -184,6 +188,46 @@ export function ContentTab({ unit, onContentChange, onLifecycleChange }: Content
           ))}
         </div>
       </div>
+
+      {/* Deep Dive — prompt-based exploration */}
+      {projectId && (
+        <DeepDiveSection
+          unitId={unit.id}
+          content={unit.content}
+          unitType={unit.unitType}
+          projectId={projectId}
+          onBranchedUnitsChange={setDeepDiveUnitIds}
+        />
+      )}
+
+      {/* Decompose — split long unit */}
+      {projectId && unit.content.length > 100 && (
+        <DecomposeSection
+          unitId={unit.id}
+          content={unit.content}
+          projectId={projectId}
+          contextId={activeContextId ?? undefined}
+          onAddAsUnit={onAddAsUnit}
+        />
+      )}
+
+      {/* AI Derivation Suggestions */}
+      {projectId && (
+        <DerivationSuggestions
+          unitId={unit.id}
+          contextId={activeContextId}
+          projectId={projectId}
+        />
+      )}
+
+      {/* Context suggestion */}
+      {projectId && (
+        <ContextSuggestionSection
+          unitId={unit.id}
+          projectId={projectId}
+          deepDiveUnitIds={deepDiveUnitIds}
+        />
+      )}
 
       {/* Resources */}
       <div className="space-y-2">

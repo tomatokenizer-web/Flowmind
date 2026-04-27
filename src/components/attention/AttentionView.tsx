@@ -321,17 +321,25 @@ function OrphanList({
 
   // AI grouping suggestions
   const suggestGroupings = api.ai.suggestOrphanGroupings.useMutation();
+  const [dismissedGroups, setDismissedGroups] = React.useState<Set<number>>(new Set());
+  const [creatingGroupIdx, setCreatingGroupIdx] = React.useState<number | null>(null);
   const autoCreateContext = api.ai.autoCreateContext.useMutation({
     onSuccess: (result) => {
       void utils.feedback.getOrphanUnits.invalidate({ projectId });
       void utils.context.list.invalidate({ projectId });
+      if (creatingGroupIdx !== null) {
+        setDismissedGroups((prev) => new Set(prev).add(creatingGroupIdx));
+        setCreatingGroupIdx(null);
+      }
       toast.success(`Context "${result.contextName}" created`, {
         description: `${result.unitsAdded} units grouped`,
       });
     },
-    onError: () => toast.error("Failed to create context"),
+    onError: () => {
+      setCreatingGroupIdx(null);
+      toast.error("Failed to create context");
+    },
   });
-  const [dismissedGroups, setDismissedGroups] = React.useState<Set<number>>(new Set());
 
   const activeGroups = (suggestGroupings.data?.groups ?? []).filter(
     (_, i) => !dismissedGroups.has(i),
@@ -411,16 +419,26 @@ function OrphanList({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      setCreatingGroupIdx(originalIdx);
                       autoCreateContext.mutate({
                         projectId,
                         unitIds: group.units.map((u) => u.id),
-                      })
-                    }
+                      });
+                    }}
                     disabled={autoCreateContext.isPending}
-                    className="flex items-center gap-1 rounded-md bg-accent-primary/10 px-3 py-1.5 text-xs font-medium text-accent-primary hover:bg-accent-primary/20 transition-colors"
+                    className={cn(
+                      "flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      creatingGroupIdx === originalIdx && autoCreateContext.isPending
+                        ? "bg-accent-primary/20 text-accent-primary"
+                        : "bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20",
+                    )}
                   >
-                    <Check className="h-3 w-3" /> Create Context
+                    {creatingGroupIdx === originalIdx && autoCreateContext.isPending ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" /> Creating...</>
+                    ) : (
+                      <><Check className="h-3 w-3" /> Create Context</>
+                    )}
                   </button>
                   <button
                     type="button"

@@ -1,22 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { Calendar, Clock, ExternalLink, History, Sparkles, Loader2 } from "lucide-react";
+import { Calendar, Clock, ExternalLink, History, Sparkles, Loader2, GitCommitHorizontal } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { AILifecycleBadge } from "~/components/unit/lifecycle-badge";
 import { MetadataEditor, type MetadataValues } from "~/components/unit/metadata-editor";
 import type { UnitDetailData } from "~/components/panels/UnitDetailPanel";
-import type { DetailTab } from "~/stores/panel-store";
 import { api } from "~/trpc/react";
 import { toast } from "~/lib/toast";
+import { ProvenanceChain } from "~/components/feedback/ProvenanceChain";
+import { usePanelStore } from "~/stores/panel-store";
 
 interface MetadataTabProps {
   unit: UnitDetailData;
   onMetadataChange?: (field: keyof MetadataValues, value: string | null) => void;
-  setActiveTab: (tab: DetailTab) => void;
 }
 
-export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTabProps) {
+export function MetadataTab({ unit, onMetadataChange }: MetadataTabProps) {
+  const openPanel = usePanelStore((s) => s.openPanel);
   const createdAt =
     typeof unit.createdAt === "string" ? new Date(unit.createdAt) : unit.createdAt;
   const modifiedAt = unit.modifiedAt
@@ -106,13 +107,9 @@ export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTa
             <History className="h-3 w-3" aria-hidden="true" />
             Versions
           </span>
-          <button
-            type="button"
-            onClick={() => setActiveTab("content")}
-            className="text-accent-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded"
-          >
+          <span className="text-text-primary">
             {unit.versionCount ?? 0} version{(unit.versionCount ?? 0) !== 1 ? "s" : ""}
-          </button>
+          </span>
         </div>
       </section>
 
@@ -145,6 +142,18 @@ export function MetadataTab({ unit, onMetadataChange, setActiveTab }: MetadataTa
             stance: (unit.stance as MetadataValues["stance"]) ?? null,
           }}
           onChange={(field, value) => onMetadataChange?.(field, value)}
+        />
+      </section>
+
+      {/* Provenance / Derivation History */}
+      <section className="space-y-2">
+        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+          <GitCommitHorizontal className="h-3 w-3" />
+          Derivation History
+        </h4>
+        <ProvenanceChain
+          unitId={unit.id}
+          onNavigate={(id) => openPanel(id)}
         />
       </section>
     </div>

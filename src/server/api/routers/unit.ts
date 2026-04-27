@@ -138,6 +138,7 @@ const createUnitSchema = z.object({
   stalenessAfter: z.string().max(100).optional(),
   falsificationCondition: z.string().max(2000).optional(),
   recurrencePeriod: z.string().max(100).optional(),
+  contextId: z.string().uuid().optional(),
   // Source Group: structured discourse origin
   sourceGroupId: z.string().uuid().optional(),
   orderInSource: z.number().int().min(0).optional(),
@@ -222,16 +223,25 @@ export const unitRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createUnitSchema)
     .mutation(async ({ ctx, input }) => {
+      const { contextId, ...unitInput } = input;
       const service = createUnitService(ctx.db);
       try {
-        return await service.create(
+        const unit = await service.create(
           {
-            ...input,
-            sourceSpan: input.sourceSpan as Prisma.InputJsonValue | undefined,
-            meta: input.meta as Prisma.InputJsonValue | undefined,
+            ...unitInput,
+            sourceSpan: unitInput.sourceSpan as Prisma.InputJsonValue | undefined,
+            meta: unitInput.meta as Prisma.InputJsonValue | undefined,
           },
           ctx.session.user.id!,
         );
+
+        if (contextId) {
+          await ctx.db.unitContext.create({
+            data: { unitId: unit.id, contextId },
+          });
+        }
+
+        return unit;
       } catch (error) {
         if (error instanceof DuplicateUnitContentError) {
           throw new TRPCError({

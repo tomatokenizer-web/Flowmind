@@ -69,7 +69,7 @@ export function DecompositionReview({
   proposals: initialProposals,
   relationProposals,
   projectId,
-  contextId: _contextId,
+  contextId,
   isStructuredDiscourse = false,
   onComplete,
   onCancel,
@@ -142,7 +142,7 @@ export function DecompositionReview({
         if (isStructuredDiscourse && !sourceGroupIdRef.current) {
           const group = await createSourceGroupMutation.mutateAsync({
             projectId,
-            contextId: _contextId || undefined,
+            contextId: contextId || undefined,
             originalText,
             unitCount: initialProposals.length,
           });
@@ -155,6 +155,7 @@ export function DecompositionReview({
           unitType,
           originType: "ai_generated",
           lifecycle: "draft",
+          ...(contextId && { contextId }),
           ...(sourceGroupIdRef.current && {
             sourceGroupId: sourceGroupIdRef.current,
             orderInSource: state.proposal.orderInSource,
